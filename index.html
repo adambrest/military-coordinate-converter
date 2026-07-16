@@ -237,8 +237,8 @@
     thailand:{ id:"thailand", name:"Thailand MGR", kind:"utm", epsg:"UTM47N",
       basis:"UTM Zone 47N on WGS 84 (EPSG:32647).",
       proj:"+proj=utm +zone=47 +datum=WGS84 +units=m" },
-    brunei:{ id:"brunei", name:"Brunei MGR", kind:"projected", epsg:"BRUNEI", unverified:true,
-      basis:"Custom Timbalai / Borneo RSO grid — UNVERIFIED (no ground-truth check point).",
+    brunei:{ id:"brunei", name:"Brunei MGR", kind:"grid", epsg:"BRUNEI", lead:[44,14], omitDefault:true,
+      basis:"Timbalai / Borneo RSO grid (Transverse Mercator on Everest) — verified against NWP4 & NWP8 to ~10 m. 4-figure grids omit the 44/14 100 km square.",
       proj:"+proj=tmerc +lat_0=0 +lon_0=110 +k=0.997 +x_0=3901134 +y_0=898522 +ellps=evrstSS +towgs84=-678,670,-48,0,0,0,0 +units=m" },
   };
   const PRESET_ORDER = ["wgs84","sg","taiwan","thailand","brunei"];
@@ -250,13 +250,14 @@
   function fmtLat(v,s){ return s.format==="dms"?fmtDMS(v,true):s.format==="ddm"?fmtDDM(v,true):fmtDecWGS(v,true,s.decimals); }
   function fmtLon(v,s){ return s.format==="dms"?fmtDMS(v,false):s.format==="ddm"?fmtDDM(v,false):fmtDecWGS(v,false,s.decimals); }
 
-  function sgHalvesEN(E,N,s){
-    s=s||{}; const d=s.sgDigits||4, step=Math.pow(10,5-d);
-    const Er=Math.round(E*1000)/1000, Nr=Math.round(N*1000)/1000;
-    if(s.sgOmit===false){ // show full easting/northing (leading digit kept)
+  function sgHalvesEN(E,N,s,lead){
+    s=s||{}; lead=lead||[LEAD_E,LEAD_N]; const d=s.sgDigits||4, step=Math.pow(10,5-d);
+    const EPS=0.05; // nudge past sub-cm projection round-trip error so a grid ref round-trips to itself
+    const Er=Math.round(E*1000)/1000+EPS, Nr=Math.round(N*1000)/1000+EPS;
+    if(s.sgOmit===false){ // show full easting/northing (100 km square kept)
       return [String(Math.floor(Er/step)), String(Math.floor(Nr/step))];
     }
-    const e=Math.floor((Er-600000)/step), n=Math.floor((Nr-100000)/step); // leading 6/1 omitted
+    const e=Math.floor((Er-lead[0]*100000)/step), n=Math.floor((Nr-lead[1]*100000)/step); // 100 km square omitted
     const max=Math.pow(10,d)-1;
     if(e<0||e>max||n<0||n>max) return ["————","————"];
     return [String(e).padStart(d,"0"), String(n).padStart(d,"0")];
@@ -272,7 +273,7 @@
       const la=fmtLat(lat,s), lo=fmtLon(lon,s);
       return s.order==="lonlat"?[lo,la]:[la,lo];
     }
-    if(p.kind==="grid"){ const {E,N}=toProjFromWGS(lat,lon,p.epsg); return sgHalvesEN(E,N,s); }
+    if(p.kind==="grid"){ const {E,N}=toProjFromWGS(lat,lon,p.epsg); return sgHalvesEN(E,N,s,p.lead); }
     // utm / projected -> full easting/northing in metres (configurable decimals)
     const {E,N}=toProjFromWGS(lat,lon,p.epsg);
     const dec=(s.decimals|0);
@@ -338,11 +339,12 @@
     return {error:"enter matching easting and northing, e.g. 1234 5678"};
   }
   // grid E/N strings -> WGS84 (SG). corner anchor, restore leading (omit assumed)
-  function sgToWGS(eStr,nStr,s){ // input is always the omitted military form; restore leading, SW-corner anchor
+  function sgToWGS(eStr,nStr,s,lead,epsg){ // omitted military form -> restore 100 km square, SW-corner anchor
+    lead=lead||[LEAD_E,LEAD_N]; epsg=epsg||"EPSG:3168";
     const d=eStr.length, step=Math.pow(10,5-d);
-    const E=LEAD_E*100000 + parseInt(eStr,10)*step;
-    const N=LEAD_N*100000 + parseInt(nStr,10)*step;
-    const r=proj4("EPSG:3168","WGS84",[E,N]); return {lon:r[0],lat:r[1]};
+    const E=lead[0]*100000 + parseInt(eStr,10)*step;
+    const N=lead[1]*100000 + parseInt(nStr,10)*step;
+    const r=proj4(epsg,"WGS84",[E,N]); return {lon:r[0],lat:r[1]};
   }
 
   // parse two cells for a preset -> {lat,lon}|{error, badA,badB}
@@ -359,7 +361,7 @@
       if(!a && !b) return {error:"empty",empty:true};
       if(!/^\d+$/.test(a)||!/^\d+$/.test(b)) return {error:"digits only",badA:!/^\d+$/.test(a),badB:!/^\d+$/.test(b)};
       if(a.length!==b.length) return {error:"unequal length",badA:true,badB:true};
-      return sgToWGS(a,b,s);
+      return sgToWGS(a,b,s,p.lead,p.epsg);
     }
     // utm / projected: two numbers (integer metres)
     if(!a && !b) return {error:"empty",empty:true};
@@ -403,7 +405,7 @@
     return {
       wgs84:{ order:"latlon", format:"dd", decimals:6 },
       sg:{ sgDigits:4, sgOmit:true },
-      taiwan:{ decimals:0 }, thailand:{ decimals:0 }, brunei:{ decimals:0 },
+      taiwan:{ decimals:0 }, thailand:{ decimals:0 }, brunei:{ sgDigits:4, sgOmit:true },
     };
   }
   // per-preset defaults, used by the settings Reset button
@@ -675,9 +677,9 @@
         } else if(p.kind==="grid"){
           h+=`<div class="srow"><span class="k">Precision (digits per axis)</span>${seg([[5,"5 · 1 m"],[4,"4 · 10 m"],[3,"3 · 100 m"],[2,"2 · 1 km"]],s.sgDigits,v=>{s.sgDigits=+v;save();refreshTables();renderSettings();})}</div>`;
           const omId="om_"+id;
-          h+=`<label class="chk"><input type="checkbox" id="${omId}" ${s.sgOmit?"checked":""}> Omit leading grid digit</label>`;
+          h+=`<label class="chk"><input type="checkbox" id="${omId}" ${s.sgOmit!==false?"checked":""}> Omit 100 km square prefix</label>`;
           setTimeout(()=>{ const c=document.getElementById(omId); if(c) c.addEventListener("change",e=>{ s.sgOmit=e.target.checked; save(); refreshTables(); renderSettings(); }); },0);
-          const [ea,nb]=sgHalvesEN(634821,152074,s);
+          const [ea,nb]=sgHalvesEN(p.lead[0]*100000+34821, p.lead[1]*100000+52074, s, p.lead);
           h+=`<div class="example">Underlying 34821 52074 →&nbsp; <b>${ea} ${nb}</b></div>`;
         } else { // utm / projected
           h+=`<div class="srow"><span class="k">Precision (metres)</span>${seg([[0,"1 m"],[1,"10 cm"],[2,"1 cm"],[3,"1 mm"]],s.decimals,v=>{s.decimals=+v;save();refreshTables();renderSettings();})}</div>`;
