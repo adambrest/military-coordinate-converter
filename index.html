@@ -69,6 +69,21 @@
   #toRows.stale{opacity:.4;transition:opacity .15s}
   .convert.pulse{animation:cpulse 1.3s ease-in-out infinite}
   @keyframes cpulse{0%,100%{box-shadow:0 1px 2px rgba(37,99,235,.25)}50%{box-shadow:0 0 0 5px rgba(37,99,235,.18)}}
+
+  /* region chip + square picker */
+  .regionchip{display:inline-flex;align-items:center;gap:4px;align-self:flex-start;font-size:11px;font-weight:600;color:var(--accent);background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px 4px 3px 10px;margin-bottom:8px}
+  .regionchip button{border:none;background:none;color:var(--muted);cursor:pointer;font-size:12px;line-height:1;padding:2px 4px}
+  .regionchip button:hover{color:var(--danger)}
+  .sqmodal{max-width:340px}
+  .sqmap{margin:12px 0;display:flex;justify-content:center}
+  .sqsvg{width:100%;max-width:260px;height:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
+  .sqland{fill:rgba(37,99,235,.06);stroke:var(--line);stroke-width:1}
+  .sqcand circle{fill:var(--accent);cursor:pointer}
+  .sqcand:hover circle{fill:var(--to)}
+  .sqcand text{fill:var(--text);font-size:9px;font-weight:700;pointer-events:none}
+  .sqlist{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow:auto}
+  .sqopt{text-align:left;border:1px solid var(--line);background:#fff;color:var(--text);border-radius:9px;padding:9px 11px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:ui-monospace,Menlo,monospace}
+  .sqopt:hover{border-color:var(--accent);background:var(--panel2)}
   .exportbar{display:flex;gap:8px;margin-top:12px}
   .exportbar button{flex:1 1 0;min-height:42px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--text);font-size:13px;font-weight:700;cursor:pointer}
   .exportbar button.maps{background:var(--ok);color:#fff;border-color:var(--ok)}
@@ -162,6 +177,7 @@
         <div class="side">
           <div class="lbl">From <span id="fromName" hidden></span></div>
           <select class="sys" id="fromSys" aria-label="Input system"></select>
+          <div class="regionchip" id="regionChip" hidden></div>
           <div class="tbl"><div class="thead" id="fromHead"></div><div id="fromRows"></div></div>
           <div class="detect" id="detect"></div>
           <button class="addrow" id="addRow">+ Add row</button>
@@ -210,6 +226,17 @@
     </div>
   </div>
 
+  <!-- region picker -->
+  <div class="overlay" id="sqOverlay">
+    <div class="modal sqmodal">
+      <h3 id="sqTitle">Which region are you in?</h3>
+      <div class="note">This short grid exists in several 100 km squares. Tap the region you're in — it's remembered for your other rows.</div>
+      <div id="sqMap" class="sqmap"></div>
+      <div id="sqList" class="sqlist"></div>
+      <div class="m-actions"><button id="sqCancel">Cancel</button></div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
   <script src="proj4.js"></script>
@@ -231,11 +258,15 @@
     sg:{ id:"sg", name:"Singapore MGR", kind:"grid", epsg:"EPSG:3168", lead:[LEAD_E,LEAD_N], omitDefault:true,
       basis:"Kertau 1948 / RSO Malaya (Everest 1969 ellipsoid) — EPSG:3168.",
       proj:"+proj=omerc +lat_0=4 +lonc=102.25 +alpha=323.0257905 +gamma=323.130102361111 +k=0.99984 +x_0=804670.24 +y_0=0 +ellps=evrst69 +towgs84=-11,851,5,0,0,0,0 +units=m" },
-    taiwan:{ id:"taiwan", name:"Taiwan MGR", kind:"utm", epsg:"UTM51N",
-      basis:"UTM Zone 51N on WGS 84 (EPSG:32651).",
+    taiwan:{ id:"taiwan", name:"Taiwan MGR", kind:"utm", epsg:"UTM51N", large:true,
+      bbox:[21.85,25.35,119.9,122.1],
+      outline:[[120.10,23.00],[120.05,23.60],[120.15,24.30],[120.55,24.90],[121.00,25.15],[121.60,25.30],[121.90,24.85],[121.55,24.00],[121.30,23.20],[120.90,22.50],[120.70,22.00],[120.45,22.35],[120.22,22.60],[120.10,23.00]],
+      basis:"UTM Zone 51N on WGS 84 (EPSG:32651). A truncated grid needs a 100 km square — pick a region.",
       proj:"+proj=utm +zone=51 +datum=WGS84 +units=m" },
-    thailand:{ id:"thailand", name:"Thailand MGR", kind:"utm", epsg:"UTM47N",
-      basis:"UTM Zone 47N on WGS 84 (EPSG:32647).",
+    thailand:{ id:"thailand", name:"Thailand MGR", kind:"utm", epsg:"UTM47N", large:true,
+      bbox:[5.5,20.6,97.3,105.7],
+      outline:[[100.0,20.4],[101.2,20.3],[102.4,18.0],[104.8,17.9],[105.6,15.3],[104.5,14.4],[105.5,14.2],[102.4,13.6],[100.9,13.4],[100.0,12.6],[99.6,10.4],[100.3,7.4],[101.4,6.5],[99.9,6.7],[98.6,9.8],[98.9,12.6],[97.5,16.5],[98.9,19.8],[100.0,20.4]],
+      basis:"UTM Zone 47N on WGS 84 (EPSG:32647). Spans zones 47/48; a truncated grid needs a 100 km square — pick a region.",
       proj:"+proj=utm +zone=47 +datum=WGS84 +units=m" },
     brunei:{ id:"brunei", name:"Brunei MGR", kind:"grid", epsg:"BRUNEI", lead:[44,14], omitDefault:true,
       basis:"Timbalai / Borneo RSO grid (Transverse Mercator on Everest) — verified against NWP4 & NWP8 to ~10 m. 4-figure grids omit the 44/14 100 km square.",
@@ -363,8 +394,16 @@
       if(a.length!==b.length) return {error:"unequal length",badA:true,badB:true};
       return sgToWGS(a,b,s,p.lead,p.epsg);
     }
-    // utm / projected: two numbers (integer metres)
+    // utm: full easting/northing in metres, OR a truncated grid that needs a picked 100 km square
     if(!a && !b) return {error:"empty",empty:true};
+    const trunc = /^\d{1,5}$/.test(a) && /^\d{1,5}$/.test(b) && a.length===b.length;
+    if(p.large && trunc){
+      const sq=s.square;
+      if(!sq) return {error:"pick-square", pick:{e:a,n:b}};
+      const d=a.length, step=Math.pow(10,5-d);
+      const E=sq[0]*100000 + parseInt(a,10)*step, N=sq[1]*100000 + parseInt(b,10)*step;
+      return toWGSfromProj(E,N,p.epsg);
+    }
     const na=Number(a), nb=Number(b);
     if(!isFinite(na)||a==="") return {error:"E not a number",badA:true};
     if(!isFinite(nb)||b==="") return {error:"N not a number",badB:true};
@@ -471,6 +510,7 @@
           A.addEventListener("input",()=>{ clearTimeout(splitTimer); splitTimer=setTimeout(()=>maybeSplit(i,A,B),700); });
         }
       });
+      updateRegionChip();
     }
     function escAttr(s){ return String(s==null?"":s).replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
     function readRows(){ state.rows=[...$("#fromRows").children].map(d=>[d.querySelector(".a").value,d.querySelector(".b").value,d.querySelector(".nm").value]); }
@@ -539,6 +579,61 @@
       for(let k=0;k<count;k++){ const el=rows[start+k]; if(!el) continue; const A=el.querySelector(".a"),B=el.querySelector(".b"); A&&A.classList.add("flash"); B&&B.classList.add("flash"); setTimeout(()=>{A&&A.classList.remove("flash");B&&B.classList.remove("flash");},800); }
     }
 
+    /* ---- large-country 100 km square disambiguation ---- */
+    function squareCandidates(presetId, pick){
+      const p=PRESETS[presetId], bb=p.bbox;
+      const d=pick.e.length, step=Math.pow(10,5-d);
+      const we=parseInt(pick.e,10)*step, wn=parseInt(pick.n,10)*step;
+      const out=[];
+      for(let eB=0;eB<=9;eB++) for(let nB=0;nB<=99;nB++){
+        const E=eB*100000+we, N=nB*100000+wn; if(N>10000000) continue;
+        let w; try{ w=proj4(p.epsg,"WGS84",[E,N]); }catch(_){ continue; }
+        const lon=w[0], lat=w[1];
+        if(lat>=bb[0]&&lat<=bb[1]&&lon>=bb[2]&&lon<=bb[3]) out.push({eB,nB,lat,lon});
+      }
+      return out;
+    }
+    function regionLabel(p,lat,lon){
+      const bb=p.bbox, ns=(lat-bb[0])/(bb[1]-bb[0]), ew=(lon-bb[2])/(bb[3]-bb[2]);
+      const v=ns>0.62?"North":ns<0.38?"South":"Central", h=ew>0.62?"East":ew<0.38?"West":"";
+      return (v+(h?" "+h:"")).trim();
+    }
+    function setSquare(presetId,eB,nB){ (state.settings[presetId]=state.settings[presetId]||{}).square=[+eB,+nB]; save(); updateRegionChip(); }
+    function showSquarePicker(presetId, pick){
+      const p=PRESETS[presetId], cands=squareCandidates(presetId, pick), short=p.name.replace(" MGR","");
+      if(!cands.length){ detect(`That grid isn't inside ${short}.`,"err"); return; }
+      if(cands.length===1){ setSquare(presetId,cands[0].eB,cands[0].nB); convert(); return; }
+      buildSquareMap(presetId, cands);
+      const t=$("#sqTitle"); if(t) t.textContent=`${short}: where is ${pick.e} ${pick.n}?`;
+      $("#sqOverlay").classList.add("open");
+    }
+    function buildSquareMap(presetId, cands){
+      const p=PRESETS[presetId], bb=p.bbox, W=300, H=380, pad=16;
+      const X=lon=>pad+((lon-bb[2])/(bb[3]-bb[2]))*(W-2*pad);
+      const Y=lat=>pad+((bb[1]-lat)/(bb[1]-bb[0]))*(H-2*pad);
+      let svg=`<svg viewBox="0 0 ${W} ${H}" class="sqsvg" preserveAspectRatio="xMidYMid meet">`;
+      if(p.outline){ const dp=p.outline.map((pt,i)=>(i?"L":"M")+X(pt[0]).toFixed(1)+" "+Y(pt[1]).toFixed(1)).join(" ")+" Z"; svg+=`<path d="${dp}" class="sqland"/>`; }
+      cands.forEach(c=>{ const cx=X(c.lon).toFixed(1), cy=Y(c.lat).toFixed(1);
+        svg+=`<g class="sqcand" data-e="${c.eB}" data-n="${c.nB}"><circle cx="${cx}" cy="${cy}" r="8"/><text x="${cx}" y="${(+cy-11).toFixed(1)}" text-anchor="middle">${escAttr(regionLabel(p,c.lat,c.lon))}</text></g>`;
+      });
+      svg+="</svg>";
+      $("#sqMap").innerHTML=svg;
+      $("#sqList").innerHTML=cands.map(c=>`<button class="sqopt" data-e="${c.eB}" data-n="${c.nB}">${escAttr(regionLabel(p,c.lat,c.lon))} · ${c.lat.toFixed(3)}, ${c.lon.toFixed(3)}</button>`).join("");
+      const pickSq=(e,n)=>{ setSquare(presetId,e,n); $("#sqOverlay").classList.remove("open"); convert(); };
+      $("#sqMap").querySelectorAll(".sqcand").forEach(g=>g.addEventListener("click",()=>pickSq(g.dataset.e,g.dataset.n)));
+      $("#sqList").querySelectorAll(".sqopt").forEach(b=>b.addEventListener("click",()=>pickSq(b.dataset.e,b.dataset.n)));
+    }
+    function updateRegionChip(){
+      const chip=$("#regionChip"); if(!chip) return;
+      const p=PRESETS[state.from], s=state.settings[state.from]||{};
+      if(p.large && s.square){ chip.hidden=false;
+        chip.innerHTML=`Region: square ${s.square[0]}/${s.square[1]} <button id="regionClear" title="Change region" aria-label="Change region">✕</button>`;
+        const rc=$("#regionClear"); if(rc) rc.addEventListener("click",()=>{ delete state.settings[state.from].square; save(); updateRegionChip(); detect("Region cleared — next Convert will ask again.",""); });
+      } else { chip.hidden=true; chip.innerHTML=""; }
+    }
+    $("#sqCancel").addEventListener("click",()=>$("#sqOverlay").classList.remove("open"));
+    $("#sqOverlay").addEventListener("click",e=>{ if(e.target.id==="sqOverlay") $("#sqOverlay").classList.remove("open"); });
+
     /* ---- stale output indicator ---- */
     function markStale(){ if((state.points||[]).length){ stale=true; applyStale(); } }
     function applyStale(){
@@ -552,16 +647,18 @@
     function convert(){
       if(pairInvalid()){ detect("Two different grids can't be converted — set one side to Global Lat/Long.","err"); return; }
       readRows();
-      const pts=[]; let bad=false;
+      const pts=[]; let bad=false, needPick=null;
       const rowsEl=$("#fromRows").children;
       state.rows.forEach((r,i)=>{
         const rowEl=rowsEl[i]; const A=rowEl.querySelector(".a"), B=rowEl.querySelector(".b");
         A.classList.remove("bad"); B.classList.remove("bad");
         if(!r[0].trim() && !r[1].trim() && !r[2].trim()) return; // skip fully empty
         const res=parseCells(state.from, r[0], r[1], state.settings);
+        if(res.error==="pick-square"){ if(!needPick) needPick=res.pick; return; }
         if(res.error){ if(res.empty && !r[2].trim()) return; bad=true; if(res.badA!==false)A.classList.add("bad"); if(res.badB!==false)B.classList.add("bad"); return; }
         pts.push({lat:res.lat,lon:res.lon,name:r[2].trim()});
       });
+      if(needPick){ showSquarePicker(state.from, needPick); return; }
       if(bad){ detect("Some rows could not be read — fix the highlighted fields.","err"); return; }
       if(!pts.length){ detect("Enter at least one coordinate.","err"); return; }
       detect("");
