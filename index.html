@@ -55,7 +55,8 @@
   .cell.flash{animation:flash .8s ease}
   @keyframes flash{0%{background:rgba(37,99,235,.18)}100%{background:#fff}}
   .trow.out .cell{background:transparent;border:none;padding:8px 6px;user-select:text}
-  .del{width:30px;height:34px;border:none;background:transparent;color:var(--danger);font-size:18px;border-radius:7px;cursor:pointer}
+  .del{width:26px;height:30px;border:none;background:transparent;color:var(--muted);font-size:18px;line-height:1;border-radius:6px;cursor:pointer;opacity:.5;justify-self:center;display:grid;place-items:center;transition:opacity .12s,color .12s,background .12s}
+  .del:hover{opacity:1;color:var(--danger);background:var(--panel2)}
   .trow.out .del{visibility:hidden}
   .detect{font-size:11px;color:var(--muted);padding:3px 8px 6px;min-height:6px}
   .detect.warn{color:var(--warn)} .detect.err{color:var(--danger)}
@@ -63,7 +64,11 @@
   .convert{min-height:46px;padding:0 22px;border-radius:10px;border:none;background:var(--accent);color:var(--accent-ink);font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 1px 2px rgba(37,99,235,.25)}
   .convert:active{transform:translateY(1px)}
   .convert:disabled{opacity:.45;pointer-events:none;box-shadow:none}
-  .badpair{font-size:11px;color:var(--danger);text-align:center;max-width:130px;line-height:1.4}
+  .badpair{font-size:12px;font-weight:600;color:var(--danger);text-align:center;line-height:1.4;max-width:840px;margin:12px auto 0}
+  .staleflag{font-size:11px;color:var(--warn);font-weight:600;margin-top:6px}
+  #toRows.stale{opacity:.4;transition:opacity .15s}
+  .convert.pulse{animation:cpulse 1.3s ease-in-out infinite}
+  @keyframes cpulse{0%,100%{box-shadow:0 1px 2px rgba(37,99,235,.25)}50%{box-shadow:0 0 0 5px rgba(37,99,235,.18)}}
   .exportbar{display:flex;gap:8px;margin-top:12px}
   .exportbar button{flex:1 1 0;min-height:42px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--text);font-size:13px;font-weight:700;cursor:pointer}
   .exportbar button.maps{background:var(--ok);color:#fff;border-color:var(--ok)}
@@ -166,7 +171,6 @@
         <div class="middle">
           <button class="convert" id="convertBtn">Convert</button>
           <button class="swap" id="swapBtn" title="Swap input/output" aria-label="Swap input and output">⇄</button>
-          <div class="badpair" id="badPair" hidden>Two different grids can't be converted</div>
         </div>
 
         <!-- OUTPUT -->
@@ -174,6 +178,7 @@
           <div class="lbl">To <span id="toName" hidden></span></div>
           <select class="sys" id="toSys" aria-label="Output system"></select>
           <div class="tbl"><div class="thead" id="toHead"></div><div id="toRows"></div></div>
+          <div class="staleflag" id="staleFlag" hidden>⚠ Input changed — press Convert to refresh</div>
           <div class="exportbar">
             <button class="maps" id="mapsBtn" disabled>Open in Maps</button>
             <button id="gpxBtn" disabled>Download GPX</button>
@@ -181,6 +186,7 @@
           </div>
         </div>
       </div>
+      <div class="badpair" id="badPair" hidden>Two different grids can't be converted — set one side to Global Lat/Long.</div>
     </section>
 
     <!-- SETTINGS -->
@@ -213,7 +219,7 @@
   proj4.defs("EPSG:3168","+proj=omerc +no_uoff +lat_0=4 +lonc=102.25 +alpha=323.0257905 +gamma=323.130102361111 +k=0.99984 +x_0=804670.24 +y_0=0 +ellps=evrst69 +towgs84=-11,851,5,0,0,0,0 +units=m +no_defs");
   proj4.defs("UTM51N","+proj=utm +zone=51 +datum=WGS84 +units=m +no_defs");
   proj4.defs("UTM47N","+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs");
-  proj4.defs("BRUNEI","+proj=merc +lon_0=110 +k=0.997 +x_0=3900000 +y_0=900000 +ellps=bessel +units=m +no_defs");
+  proj4.defs("BRUNEI","+proj=tmerc +lat_0=0 +lon_0=110 +k=0.997 +x_0=3901134 +y_0=898522 +ellps=evrstSS +towgs84=-678,670,-48,0,0,0,0 +units=m +no_defs");
   const LEAD_E=6, LEAD_N=1; // Singapore
 
   /* ============================ presets ============================ */
@@ -231,9 +237,9 @@
     thailand:{ id:"thailand", name:"Thailand MGR", kind:"utm", epsg:"UTM47N",
       basis:"UTM Zone 47N on WGS 84 (EPSG:32647).",
       proj:"+proj=utm +zone=47 +datum=WGS84 +units=m" },
-    brunei:{ id:"brunei", name:"Brunei MGR (T735 / NEI)", kind:"projected", epsg:"BRUNEI",
-      basis:"Netherlands East Indies Equatorial Zone military grid used on Brunei T735 mapping (EPSG conversion 19905), on the Bessel spheroid.",
-      proj:"+proj=merc +lon_0=110 +k=0.997 +x_0=3900000 +y_0=900000 +ellps=bessel +units=m" },
+    brunei:{ id:"brunei", name:"Brunei MGR", kind:"projected", epsg:"BRUNEI", unverified:true,
+      basis:"Custom Timbalai / Borneo RSO grid — UNVERIFIED (no ground-truth check point).",
+      proj:"+proj=tmerc +lat_0=0 +lon_0=110 +k=0.997 +x_0=3901134 +y_0=898522 +ellps=evrstSS +towgs84=-678,670,-48,0,0,0,0 +units=m" },
   };
   const PRESET_ORDER = ["wgs84","sg","taiwan","thailand","brunei"];
 
@@ -425,7 +431,7 @@
     function detect(msg,cls){ const d=$("#detect"); d.textContent=msg||""; d.className="detect"+(cls?" "+cls:""); }
     function toast(msg,warn){ const t=$("#toast"); t.textContent=msg; t.className="toast show"+(warn?" warn":""); clearTimeout(toast._t); toast._t=setTimeout(()=>t.className="toast",1600); }
 
-    let splitTimer=null;
+    let splitTimer=null, stale=false;
     /* ---- render FROM table ---- */
     function renderFrom(){
       const cols=colsFor(state.from,state.settings);
@@ -440,7 +446,7 @@
           `<input class="cell a" value="${escAttr(r[0])}" placeholder="${escAttr(cols[0])}">`+
           `<input class="cell b" value="${escAttr(r[1])}" placeholder="${escAttr(cols[1])}">`+
           `<input class="cell nm" value="${escAttr(r[2])}" placeholder="name">`+
-          `<button class="del" aria-label="${canDelete?"Delete":"Clear"} row" title="${canDelete?"Delete":"Clear"} row">${canDelete?"✕":"⌫"}</button>`;
+          `<button class="del" aria-label="${canDelete?"Delete":"Clear"} row" title="${canDelete?"Delete":"Clear"} row">×</button>`;
         rowsEl.appendChild(div);
         const delEl=div.querySelector(".del");
         if(delEl) delEl.addEventListener("click",()=>{
@@ -451,7 +457,7 @@
           renderFrom(); renderTo(); detect(""); save();
         });
         const A=div.querySelector(".a"),B=div.querySelector(".b"),NM=div.querySelector(".nm");
-        [A,B,NM].forEach(inp=>inp.addEventListener("input",()=>{ readRows(); save(); }));
+        [A,B,NM].forEach(inp=>inp.addEventListener("input",()=>{ readRows(); markStale(); save(); }));
         [A,B].forEach(inp=>inp.addEventListener("blur",()=>{ inp.classList.remove("bad"); }));
         // Enter starts a new row and focuses it
         [A,B,NM].forEach(inp=>inp.addEventListener("keydown",e=>{
@@ -507,6 +513,7 @@
       const n=res.rows.length;
       const msg = n>1 ? `Detected ${n} points${res.bad?` · ${res.bad} line(s) skipped`:""}` : `Detected: ${res.label||"coordinate"}${res.warn?" — "+res.warn:""}`;
       detect(msg, (res.warn||res.bad)?"warn":"");
+      markStale();
       save();
     }
     function maybeSplit(i,A,B){
@@ -530,6 +537,15 @@
       for(let k=0;k<count;k++){ const el=rows[start+k]; if(!el) continue; const A=el.querySelector(".a"),B=el.querySelector(".b"); A&&A.classList.add("flash"); B&&B.classList.add("flash"); setTimeout(()=>{A&&A.classList.remove("flash");B&&B.classList.remove("flash");},800); }
     }
 
+    /* ---- stale output indicator ---- */
+    function markStale(){ if((state.points||[]).length){ stale=true; applyStale(); } }
+    function applyStale(){
+      const on = stale && (state.points||[]).length>0;
+      const tr=$("#toRows"); if(tr) tr.classList.toggle("stale",on);
+      const f=$("#staleFlag"); if(f) f.hidden=!on;
+      const cb=$("#convertBtn"); if(cb) cb.classList.toggle("pulse",on);
+    }
+
     /* ---- convert ---- */
     function convert(){
       if(pairInvalid()){ detect("Two different grids can't be converted — set one side to Global Lat/Long.","err"); return; }
@@ -548,6 +564,7 @@
       if(!pts.length){ detect("Enter at least one coordinate.","err"); return; }
       detect("");
       state.points=pts;
+      stale=false;
       renderTo();
       save();
     }
@@ -575,6 +592,7 @@
       });
       const has=pts.length>0;
       $("#mapsBtn").disabled=!has; $("#gpxBtn").disabled=!has; $("#copyBtn").disabled=!has;
+      applyStale();
     }
 
     /* ---- swap ---- */
