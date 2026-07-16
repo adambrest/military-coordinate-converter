@@ -213,7 +213,7 @@
   proj4.defs("EPSG:3168","+proj=omerc +no_uoff +lat_0=4 +lonc=102.25 +alpha=323.0257905 +gamma=323.130102361111 +k=0.99984 +x_0=804670.24 +y_0=0 +ellps=evrst69 +towgs84=-11,851,5,0,0,0,0 +units=m +no_defs");
   proj4.defs("UTM51N","+proj=utm +zone=51 +datum=WGS84 +units=m +no_defs");
   proj4.defs("UTM47N","+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs");
-  proj4.defs("BRUNEI","+proj=tmerc +lat_0=0 +lon_0=110 +k=0.997 +x_0=3901134 +y_0=898522 +ellps=evrstSS +towgs84=-678,670,-48,0,0,0,0 +units=m +no_defs");
+  proj4.defs("BRUNEI","+proj=merc +lon_0=110 +k=0.997 +x_0=3900000 +y_0=900000 +ellps=bessel +units=m +no_defs");
   const LEAD_E=6, LEAD_N=1; // Singapore
 
   /* ============================ presets ============================ */
@@ -231,9 +231,9 @@
     thailand:{ id:"thailand", name:"Thailand MGR", kind:"utm", epsg:"UTM47N",
       basis:"UTM Zone 47N on WGS 84 (EPSG:32647).",
       proj:"+proj=utm +zone=47 +datum=WGS84 +units=m" },
-    brunei:{ id:"brunei", name:"Brunei MGR", kind:"projected", epsg:"BRUNEI", unverified:true,
-      basis:"Custom Timbalai / Borneo RSO grid — UNVERIFIED (no ground-truth check point).",
-      proj:"+proj=tmerc +lat_0=0 +lon_0=110 +k=0.997 +x_0=3901134 +y_0=898522 +ellps=evrstSS +towgs84=-678,670,-48,0,0,0,0 +units=m" },
+    brunei:{ id:"brunei", name:"Brunei MGR (T735 / NEI)", kind:"projected", epsg:"BRUNEI",
+      basis:"Netherlands East Indies Equatorial Zone military grid used on Brunei T735 mapping (EPSG conversion 19905), on the Bessel spheroid.",
+      proj:"+proj=merc +lon_0=110 +k=0.997 +x_0=3900000 +y_0=900000 +ellps=bessel +units=m" },
   };
   const PRESET_ORDER = ["wgs84","sg","taiwan","thailand","brunei"];
 
@@ -435,15 +435,21 @@
       const rowsEl=$("#fromRows"); rowsEl.innerHTML="";
       state.rows.forEach((r,i)=>{
         const div=document.createElement("div"); div.className="trow"; div.dataset.i=i;
-        const canDelete = state.rows.length>1;   // never show a delete on the sole row
+        const canDelete = state.rows.length>1;
         div.innerHTML=`<span class="n">${i+1}</span>`+
           `<input class="cell a" value="${escAttr(r[0])}" placeholder="${escAttr(cols[0])}">`+
           `<input class="cell b" value="${escAttr(r[1])}" placeholder="${escAttr(cols[1])}">`+
           `<input class="cell nm" value="${escAttr(r[2])}" placeholder="name">`+
-          (canDelete?`<button class="del" aria-label="Delete row">✕</button>`:`<span></span>`);
+          `<button class="del" aria-label="${canDelete?"Delete":"Clear"} row" title="${canDelete?"Delete":"Clear"} row">${canDelete?"✕":"⌫"}</button>`;
         rowsEl.appendChild(div);
         const delEl=div.querySelector(".del");
-        if(delEl) delEl.addEventListener("click",()=>{ readRows(); state.rows.splice(i,1); if(!state.rows.length)state.rows.push(["","",""]); renderFrom(); save(); });
+        if(delEl) delEl.addEventListener("click",()=>{
+          readRows();
+          if(state.rows.length===1) state.rows=[["","",""]];
+          else state.rows.splice(i,1);
+          state.points=[];
+          renderFrom(); renderTo(); detect(""); save();
+        });
         const A=div.querySelector(".a"),B=div.querySelector(".b"),NM=div.querySelector(".nm");
         [A,B,NM].forEach(inp=>inp.addEventListener("input",()=>{ readRows(); save(); }));
         [A,B].forEach(inp=>inp.addEventListener("blur",()=>{ inp.classList.remove("bad"); }));
