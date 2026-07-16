@@ -263,7 +263,7 @@
       outline:[[120.10,23.00],[120.05,23.60],[120.15,24.30],[120.55,24.90],[121.00,25.15],[121.60,25.30],[121.90,24.85],[121.55,24.00],[121.30,23.20],[120.90,22.50],[120.70,22.00],[120.45,22.35],[120.22,22.60],[120.10,23.00]],
       basis:"UTM Zone 51N on WGS 84 (EPSG:32651). A truncated grid needs a 100 km square — pick a region.",
       proj:"+proj=utm +zone=51 +datum=WGS84 +units=m" },
-    thailand:{ id:"thailand", name:"Thailand MGR", kind:"utm", epsg:"UTM47N", large:true,
+    thailand:{ id:"thailand", name:"Thailand MGR", kind:"utm", epsg:"UTM47N", large:true, anchor:[14.25,98.90], anchorRadiusKm:55,
       bbox:[5.5,20.6,97.3,105.7],
       outline:[[100.0,20.4],[101.2,20.3],[102.4,18.0],[104.8,17.9],[105.6,15.3],[104.5,14.4],[105.5,14.2],[102.4,13.6],[100.9,13.4],[100.0,12.6],[99.6,10.4],[100.3,7.4],[101.4,6.5],[99.9,6.7],[98.6,9.8],[98.9,12.6],[97.5,16.5],[98.9,19.8],[100.0,20.4]],
       basis:"UTM Zone 47N on WGS 84 (EPSG:32647). Spans zones 47/48; a truncated grid needs a 100 km square — pick a region.",
@@ -599,9 +599,17 @@
       return (v+(h?" "+h:"")).trim();
     }
     function setSquare(presetId,eB,nB){ (state.settings[presetId]=state.settings[presetId]||{}).square=[+eB,+nB]; save(); updateRegionChip(); }
+    function distKm(la1,lo1,la2,lo2){ const dx=(lo2-lo1)*111.32*Math.cos(la1*Math.PI/180), dy=(la2-la1)*110.95; return Math.sqrt(dx*dx+dy*dy); }
     function showSquarePicker(presetId, pick){
-      const p=PRESETS[presetId], cands=squareCandidates(presetId, pick), short=p.name.replace(" MGR","");
+      const p=PRESETS[presetId], short=p.name.replace(" MGR","");
+      let cands=squareCandidates(presetId, pick);
       if(!cands.length){ detect(`That grid isn't inside ${short}.`,"err"); return; }
+      // fixed operating area (e.g. Sai Yok): auto-resolve when exactly one candidate is inside the AO radius
+      if(p.anchor){
+        const near=cands.filter(c=>distKm(c.lat,c.lon,p.anchor[0],p.anchor[1])<=(p.anchorRadiusKm||55));
+        if(near.length===1){ setSquare(presetId,near[0].eB,near[0].nB); convert(); return; }
+        if(near.length>1) cands=near; // only the genuinely ambiguous (boundary-straddle) ones reach the map
+      }
       if(cands.length===1){ setSquare(presetId,cands[0].eB,cands[0].nB); convert(); return; }
       buildSquareMap(presetId, cands);
       const t=$("#sqTitle"); if(t) t.textContent=`${short}: where is ${pick.e} ${pick.n}?`;
