@@ -36,8 +36,6 @@
   .middle{display:flex;flex-direction:column;align-items:center;gap:10px;align-self:start;margin-top:60px}
   select.sys{width:100%;appearance:none;-webkit-appearance:none;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:9px 28px 9px 10px;font-size:14px;font-weight:600;margin-bottom:8px;
     background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 15px) 50%,calc(100% - 10px) 50%;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
-  .grid-desc{font-size:11px;color:var(--muted);line-height:1.4;margin:-2px 2px 8px}
-  .grid-desc[hidden]{display:none}
   .swap{width:38px;height:38px;border:1px solid var(--line);background:#fff;color:var(--accent);border-radius:9px;font-size:16px;cursor:pointer}
   .swap:active{background:var(--panel2)}
   .lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:0 2px 6px}
@@ -103,9 +101,12 @@
   .seg button.on{background:var(--accent);color:var(--accent-ink)}
   .example{font:600 13px ui-monospace,Menlo,monospace;color:var(--muted);background:var(--panel2);border-radius:7px;padding:8px;margin-top:4px}
   .example b{color:var(--text)}
-  label.chk{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer}
+  .grid-example{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .grid-example .arrow{color:var(--accent);font-size:16px}
+  label.chk{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:10px}
   label.chk input{width:18px;height:18px}
   .note{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5}
+  .precision-note{margin:-6px 0 12px}
 
   /* modal */
   .overlay{position:fixed;inset:0;background:rgba(2,6,23,.72);z-index:60;display:none;align-items:center;justify-content:center;padding:16px}
@@ -143,7 +144,6 @@
   .preset-body{display:none;padding:12px 14px}
   .preset.open .preset-body{display:block}
   .basis{font-size:12px;color:var(--text);margin-bottom:6px;line-height:1.5}
-  .proj{font:500 11px/1.5 ui-monospace,Menlo,monospace;color:var(--muted);background:var(--panel2);border-radius:7px;padding:8px 10px;margin-bottom:12px;overflow-x:auto;white-space:pre-wrap;word-break:break-word}
   .hint{font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0}
   .reset{margin-top:6px;background:none;border:1px solid var(--line);color:var(--muted);font-weight:600;font-size:12px;cursor:pointer;padding:8px 12px;border-radius:8px}
   .reset:hover{color:var(--danger);border-color:var(--danger)}
@@ -157,11 +157,12 @@
     .convert{flex:1 1 0}
     .swap{flex:0 0 auto}
   }
+  @media (max-width:640px) and (orientation:portrait){.wide-title{display:none}}
 </style>
 </head>
 <body>
   <header>
-    <h1>Military Coordinate Converter</h1>
+    <h1><span class="wide-title">Military </span>Coordinate Converter</h1>
     <nav class="tabs">
       <button id="tab-conv" class="on">Converter</button>
       <button id="tab-set">Settings</button>
@@ -196,7 +197,6 @@
         <div class="side">
           <div class="lbl">To <span id="toName" hidden></span></div>
           <select class="sys" id="toSys" aria-label="Output system"></select>
-          <div class="grid-desc" id="toDesc" hidden></div>
           <div class="tbl"><div class="thead" id="toHead"></div><div id="toRows"></div></div>
           <div class="staleflag" id="staleFlag" hidden>⚠ Input changed — press Convert to refresh</div>
           <div class="exportbar">
@@ -253,23 +253,23 @@
   // Each preset: parse(fields,settings)->{lat,lon}|{error}; format(lat,lon,settings)->[a,b]; cols; kind
   const PRESETS = {
     wgs84:{ id:"wgs84", name:"Global Lat/Long (WGS 84)", kind:"latlong",
-      basis:"WGS 84 geographic coordinates (EPSG:4326) — the global GPS datum.",
+      basis:"WGS 84.",
       proj:"EPSG:4326 · +proj=longlat +datum=WGS84 +no_defs" },
-    sg:{ id:"sg", name:"Singapore MGR", kind:"grid", epsg:"EPSG:3168", lead:[LEAD_E,LEAD_N], omitDefault:true, squareDesc:"local 100 km square 6/1",
-      basis:"Kertau 1948 / RSO Malaya (Everest 1969 ellipsoid) — EPSG:3168. Standard output is 4+4 (10 m), resolving around local 100 km square 6/1.",
+    sg:{ id:"sg", name:"Singapore MGR", kind:"grid", epsg:"EPSG:3168", lead:[LEAD_E,LEAD_N], omitDefault:true,
+      basis:"a custom Singapore grid.",
       proj:"+proj=omerc +lat_0=4 +lonc=102.25 +alpha=323.0257905 +gamma=323.130102361111 +k=0.99984 +x_0=804670.24 +y_0=0 +ellps=evrst69 +towgs84=-11,851,5,0,0,0,0 +units=m" },
-    taiwan:{ id:"taiwan", name:"Taiwan MGR", kind:"utm", epsg:"UTM51N", large:true, shortGrid:true, exampleLead:[3,27], squareDesc:"100 km square determined per point",
+    taiwan:{ id:"taiwan", name:"Taiwan MGR", kind:"utm", epsg:"UTM51N", large:true, shortGrid:true, exampleLead:[3,27],
       bbox:[21.85,25.35,119.9,122.1],
       outline:[[120.10,23.00],[120.05,23.60],[120.15,24.30],[120.55,24.90],[121.00,25.15],[121.60,25.30],[121.90,24.85],[121.55,24.00],[121.30,23.20],[120.90,22.50],[120.70,22.00],[120.45,22.35],[120.22,22.60],[120.10,23.00]],
-      basis:"UTM Zone 51N on WGS 84 (EPSG:32651). Standard output is 4+4 (10 m); the 100 km square is determined per point, and a short input asks for its region.",
+      basis:"WGS 84 / UTM Zone 51N.",
       proj:"+proj=utm +zone=51 +datum=WGS84 +units=m" },
-    thailand:{ id:"thailand", name:"Thailand MGR", kind:"utm", epsg:"UTM47N", large:true, shortGrid:true, lead:[5,15], anchor:[14.00287,99.24459], anchorRadiusKm:55, squareDesc:"UTM 47N square 5/15 (E 500–600 km, N 1,500–1,600 km)",
+    thailand:{ id:"thailand", name:"Thailand MGR", kind:"utm", epsg:"UTM47N", large:true, shortGrid:true, lead:[5,15], anchor:[14.00287,99.24459], anchorRadiusKm:55,
       bbox:[5.5,20.6,97.3,105.7],
       outline:[[100.0,20.4],[101.2,20.3],[102.4,18.0],[104.8,17.9],[105.6,15.3],[104.5,14.4],[105.5,14.2],[102.4,13.6],[100.9,13.4],[100.0,12.6],[99.6,10.4],[100.3,7.4],[101.4,6.5],[99.9,6.7],[98.6,9.8],[98.9,12.6],[97.5,16.5],[98.9,19.8],[100.0,20.4]],
-      basis:"UTM Zone 47N on WGS 84 (EPSG:32647). Standard output is 4+4 (10 m), resolving around the Sai Yok SAF Camp in 100 km square 5/15 (E 500–600 km, N 1,500–1,600 km); elsewhere a truncated grid may need a region choice.",
+      basis:"WGS 84 / UTM Zone 47N.",
       proj:"+proj=utm +zone=47 +datum=WGS84 +units=m" },
-    brunei:{ id:"brunei", name:"Brunei MGR", kind:"grid", epsg:"BRUNEI", lead:[44,14], omitDefault:true, squareDesc:"local 100 km square 44/14",
-      basis:"Timbalai / Borneo RSO grid (Transverse Mercator on Everest) — verified against NWP4 & NWP8 to ~10 m. Standard output is 4+4 (10 m), resolving around local 100 km square 44/14.",
+    brunei:{ id:"brunei", name:"Brunei MGR", kind:"grid", epsg:"BRUNEI", lead:[44,14], omitDefault:true,
+      basis:"a custom Brunei grid.",
       proj:"+proj=tmerc +lat_0=0 +lon_0=110 +k=0.997 +x_0=3901134 +y_0=898522 +ellps=evrstSS +towgs84=-678,670,-48,0,0,0,0 +units=m" },
   };
   const PRESET_ORDER = ["wgs84","sg","taiwan","thailand","brunei"];
@@ -317,13 +317,6 @@
     const p=PRESETS[presetId], s=S[presetId]||{};
     if(p.kind==="latlong") return s.order==="lonlat"?["Longitude","Latitude"]:["Latitude","Longitude"];
     return ["Easting","Northing"];
-  }
-  function gridDescription(presetId,S){
-    const p=PRESETS[presetId], s=S[presetId]||{};
-    if(!(p.kind==="grid"||p.shortGrid)) return "";
-    const d=s.sgDigits||4, precision=d===5?"1 m":d===4?"10 m":d===3?"100 m":"1 km";
-    const standard=d===4?"Standard 4+4 (10 m)":`${d}+${d} (${precision}); standard is 4+4 (10 m)`;
-    return `${standard} · ${p.squareDesc||`100 km square ${p.lead[0]}/${p.lead[1]}`}`;
   }
 
   /* ============================ parsing ============================ */
@@ -683,8 +676,6 @@
     function renderTo(){
       const cols=colsFor(state.to,state.settings);
       $("#toName").textContent=PRESETS[state.to].name;
-      const desc=gridDescription(state.to,state.settings), descEl=$("#toDesc");
-      descEl.textContent=desc; descEl.hidden=!desc;
       $("#toHead").innerHTML=`<span>#</span><span>${cols[0]}</span><span>${cols[1]}</span><span>Name</span><span></span>`;
       const rowsEl=$("#toRows"); rowsEl.innerHTML="";
       const pts=state.points||[];
@@ -787,15 +778,18 @@
           const la=fmtLat(1.352083,s),lo=fmtLon(103.819836,s);
           h+=`<div class="example">Example&nbsp; <b>${s.order==="lonlat"?lo+"&nbsp;&nbsp;&nbsp;"+la:la+"&nbsp;&nbsp;&nbsp;"+lo}</b></div>`;
         } else if(p.kind==="grid"||p.shortGrid){
-          h+=`<div class="srow"><span class="k">Precision (digits per axis)</span>${seg([[4,"4 · 10 m · standard"],[5,"5 · 1 m"],[3,"3 · 100 m"],[2,"2 · 1 km"]],s.sgDigits||4,v=>{s.sgDigits=+v;save();refreshTables();renderSettings();})}</div>`;
+          const digits=s.sgDigits||4, precision=digits===5?"1 metre":digits===4?"10 metres":"100 metres";
+          h+=`<div class="srow"><span class="k">Precision</span>${seg([[5,"5"],[4,"4"],[3,"3"]],digits,v=>{s.sgDigits=+v;save();refreshTables();renderSettings();})}</div>`;
+          h+=`<div class="note precision-note">${digits} digits per axis · ${precision}</div>`;
           const omId="om_"+id;
-          h+=`<label class="chk"><input type="checkbox" id="${omId}" ${s.sgOmit!==false?"checked":""}> Omit 100 km square prefix</label>`;
+          h+=`<label class="chk"><input type="checkbox" id="${omId}" ${s.sgOmit!==false?"checked":""}> Omit leading number</label>`;
           setTimeout(()=>{ const c=document.getElementById(omId); if(c) c.addEventListener("change",e=>{ s.sgOmit=e.target.checked; save(); refreshTables(); renderSettings(); }); },0);
           const lead=p.lead||p.exampleLead, fullE=lead[0]*100000+99999, fullN=lead[1]*100000+99999;
           const [ea,nb]=sgHalvesEN(fullE,fullN,s,lead);
-          h+=`<div class="example">Full grid&nbsp; <b>${fullE} ${fullN}</b><br>With these settings&nbsp; <b>${ea} ${nb}</b></div>`;
-          if(p.id==="thailand") h+=`<div class="note">Short references resolve around UTM 47N square 5/15 near Sai Yok. Inputs outside it ask for a region when necessary.</div>`;
-          if(p.id==="taiwan") h+=`<div class="note">Taiwan's square varies by location. Outputs use each point's square; short inputs ask for a region.</div>`;
+          h+=`<div class="example grid-example"><span>${fullE} ${fullN}</span><span class="arrow" aria-hidden="true">→</span><b>${ea} ${nb}</b></div>`;
+          h+=`<div class="note">Complete reference → displayed reference</div>`;
+          if(p.id==="thailand") h+=`<div class="note">Sai Yok short grids use square 5/15.</div>`;
+          if(p.id==="taiwan") h+=`<div class="note">The square varies by location.</div>`;
         } else { // utm / projected
           h+=`<div class="srow"><span class="k">Precision (metres)</span>${seg([[0,"1 m"],[1,"10 cm"],[2,"1 cm"],[3,"1 mm"]],s.decimals,v=>{s.decimals=+v;save();refreshTables();renderSettings();})}</div>`;
           h+=`<div class="note">Full projected easting / northing in metres, no zone code.</div>`;
@@ -808,8 +802,7 @@
         html+=`<div class="preset${open?" open":""}" data-id="${id}">`;
         html+=`<button class="preset-head" data-head="${id}"><span class="pname">${p.name}${p.unverified?' <span class="tagu">unverified</span>':''}</span><span class="chev">${open?"▾":"▸"}</span></button>`;
         html+=`<div class="preset-body">`;
-        html+=`<div class="basis">Based on: ${p.basis}</div>`;
-        html+=`<div class="proj">${escAttr(p.proj)}</div>`;
+        html+=`<div class="basis">Based on ${p.basis}</div>`;
         html+=controls(id);
         html+=`<button class="reset" data-reset="${id}" ${settingsAtDefaults(id)?"disabled":""}>Reset</button>`;
         html+=`</div></div>`;
