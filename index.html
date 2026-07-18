@@ -36,6 +36,8 @@
   .middle{display:flex;flex-direction:column;align-items:center;gap:10px;align-self:start;margin-top:60px}
   select.sys{width:100%;appearance:none;-webkit-appearance:none;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:9px 28px 9px 10px;font-size:14px;font-weight:600;margin-bottom:8px;
     background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 15px) 50%,calc(100% - 10px) 50%;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+  .grid-desc{font-size:11px;color:var(--muted);line-height:1.4;margin:-2px 2px 8px}
+  .grid-desc[hidden]{display:none}
   .swap{width:38px;height:38px;border:1px solid var(--line);background:#fff;color:var(--accent);border-radius:9px;font-size:16px;cursor:pointer}
   .swap:active{background:var(--panel2)}
   .lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:0 2px 6px}
@@ -145,6 +147,7 @@
   .hint{font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0}
   .reset{margin-top:6px;background:none;border:1px solid var(--line);color:var(--muted);font-weight:600;font-size:12px;cursor:pointer;padding:8px 12px;border-radius:8px}
   .reset:hover{color:var(--danger);border-color:var(--danger)}
+  .reset:disabled{color:var(--muted);border-color:var(--line);background:var(--panel2);opacity:.45;cursor:default}
 
   /* mobile: stack the tables, convert sits between them */
   @media (max-width:640px){
@@ -193,6 +196,7 @@
         <div class="side">
           <div class="lbl">To <span id="toName" hidden></span></div>
           <select class="sys" id="toSys" aria-label="Output system"></select>
+          <div class="grid-desc" id="toDesc" hidden></div>
           <div class="tbl"><div class="thead" id="toHead"></div><div id="toRows"></div></div>
           <div class="staleflag" id="staleFlag" hidden>⚠ Input changed — press Convert to refresh</div>
           <div class="exportbar">
@@ -212,11 +216,7 @@
   <!-- GPX modal -->
   <div class="overlay" id="gpxOverlay">
     <div class="modal">
-      <h3>Export GPX</h3>
-      <div class="seg" id="gpxMode">
-        <button data-m="points" class="on">Points</button>
-        <button data-m="route">Route</button>
-      </div>
+      <h3>Download GPX points</h3>
       <input type="text" id="gpxName" placeholder="Name (required)" autocomplete="off">
       <div class="note" id="gpxNote"></div>
       <div class="m-actions">
@@ -255,21 +255,21 @@
     wgs84:{ id:"wgs84", name:"Global Lat/Long (WGS 84)", kind:"latlong",
       basis:"WGS 84 geographic coordinates (EPSG:4326) — the global GPS datum.",
       proj:"EPSG:4326 · +proj=longlat +datum=WGS84 +no_defs" },
-    sg:{ id:"sg", name:"Singapore MGR", kind:"grid", epsg:"EPSG:3168", lead:[LEAD_E,LEAD_N], omitDefault:true,
-      basis:"Kertau 1948 / RSO Malaya (Everest 1969 ellipsoid) — EPSG:3168.",
+    sg:{ id:"sg", name:"Singapore MGR", kind:"grid", epsg:"EPSG:3168", lead:[LEAD_E,LEAD_N], omitDefault:true, squareDesc:"local 100 km square 6/1",
+      basis:"Kertau 1948 / RSO Malaya (Everest 1969 ellipsoid) — EPSG:3168. Standard output is 4+4 (10 m), resolving around local 100 km square 6/1.",
       proj:"+proj=omerc +lat_0=4 +lonc=102.25 +alpha=323.0257905 +gamma=323.130102361111 +k=0.99984 +x_0=804670.24 +y_0=0 +ellps=evrst69 +towgs84=-11,851,5,0,0,0,0 +units=m" },
-    taiwan:{ id:"taiwan", name:"Taiwan MGR", kind:"utm", epsg:"UTM51N", large:true,
+    taiwan:{ id:"taiwan", name:"Taiwan MGR", kind:"utm", epsg:"UTM51N", large:true, shortGrid:true, exampleLead:[3,27], squareDesc:"100 km square determined per point",
       bbox:[21.85,25.35,119.9,122.1],
       outline:[[120.10,23.00],[120.05,23.60],[120.15,24.30],[120.55,24.90],[121.00,25.15],[121.60,25.30],[121.90,24.85],[121.55,24.00],[121.30,23.20],[120.90,22.50],[120.70,22.00],[120.45,22.35],[120.22,22.60],[120.10,23.00]],
-      basis:"UTM Zone 51N on WGS 84 (EPSG:32651). A truncated grid needs a 100 km square — pick a region.",
+      basis:"UTM Zone 51N on WGS 84 (EPSG:32651). Standard output is 4+4 (10 m); the 100 km square is determined per point, and a short input asks for its region.",
       proj:"+proj=utm +zone=51 +datum=WGS84 +units=m" },
-    thailand:{ id:"thailand", name:"Thailand MGR", kind:"utm", epsg:"UTM47N", large:true, anchor:[14.25,98.90], anchorRadiusKm:55,
+    thailand:{ id:"thailand", name:"Thailand MGR", kind:"utm", epsg:"UTM47N", large:true, shortGrid:true, lead:[5,15], anchor:[14.00287,99.24459], anchorRadiusKm:55, squareDesc:"UTM 47N square 5/15 (E 500–600 km, N 1,500–1,600 km)",
       bbox:[5.5,20.6,97.3,105.7],
       outline:[[100.0,20.4],[101.2,20.3],[102.4,18.0],[104.8,17.9],[105.6,15.3],[104.5,14.4],[105.5,14.2],[102.4,13.6],[100.9,13.4],[100.0,12.6],[99.6,10.4],[100.3,7.4],[101.4,6.5],[99.9,6.7],[98.6,9.8],[98.9,12.6],[97.5,16.5],[98.9,19.8],[100.0,20.4]],
-      basis:"UTM Zone 47N on WGS 84 (EPSG:32647). Spans zones 47/48; a truncated grid needs a 100 km square — pick a region.",
+      basis:"UTM Zone 47N on WGS 84 (EPSG:32647). Standard output is 4+4 (10 m), resolving around the Sai Yok SAF Camp in 100 km square 5/15 (E 500–600 km, N 1,500–1,600 km); elsewhere a truncated grid may need a region choice.",
       proj:"+proj=utm +zone=47 +datum=WGS84 +units=m" },
-    brunei:{ id:"brunei", name:"Brunei MGR", kind:"grid", epsg:"BRUNEI", lead:[44,14], omitDefault:true,
-      basis:"Timbalai / Borneo RSO grid (Transverse Mercator on Everest) — verified against NWP4 & NWP8 to ~10 m. 4-figure grids omit the 44/14 100 km square.",
+    brunei:{ id:"brunei", name:"Brunei MGR", kind:"grid", epsg:"BRUNEI", lead:[44,14], omitDefault:true, squareDesc:"local 100 km square 44/14",
+      basis:"Timbalai / Borneo RSO grid (Transverse Mercator on Everest) — verified against NWP4 & NWP8 to ~10 m. Standard output is 4+4 (10 m), resolving around local 100 km square 44/14.",
       proj:"+proj=tmerc +lat_0=0 +lon_0=110 +k=0.997 +x_0=3901134 +y_0=898522 +ellps=evrstSS +towgs84=-678,670,-48,0,0,0,0 +units=m" },
   };
   const PRESET_ORDER = ["wgs84","sg","taiwan","thailand","brunei"];
@@ -304,7 +304,10 @@
       const la=fmtLat(lat,s), lo=fmtLon(lon,s);
       return s.order==="lonlat"?[lo,la]:[la,lo];
     }
-    if(p.kind==="grid"){ const {E,N}=toProjFromWGS(lat,lon,p.epsg); return sgHalvesEN(E,N,s,p.lead); }
+    if(p.kind==="grid"||p.shortGrid){
+      const {E,N}=toProjFromWGS(lat,lon,p.epsg), lead=p.lead||[Math.floor(E/100000),Math.floor(N/100000)];
+      return sgHalvesEN(E,N,s,lead);
+    }
     // utm / projected -> full easting/northing in metres (configurable decimals)
     const {E,N}=toProjFromWGS(lat,lon,p.epsg);
     const dec=(s.decimals|0);
@@ -314,6 +317,13 @@
     const p=PRESETS[presetId], s=S[presetId]||{};
     if(p.kind==="latlong") return s.order==="lonlat"?["Longitude","Latitude"]:["Latitude","Longitude"];
     return ["Easting","Northing"];
+  }
+  function gridDescription(presetId,S){
+    const p=PRESETS[presetId], s=S[presetId]||{};
+    if(!(p.kind==="grid"||p.shortGrid)) return "";
+    const d=s.sgDigits||4, precision=d===5?"1 m":d===4?"10 m":d===3?"100 m":"1 km";
+    const standard=d===4?"Standard 4+4 (10 m)":`${d}+${d} (${precision}); standard is 4+4 (10 m)`;
+    return `${standard} · ${p.squareDesc||`100 km square ${p.lead[0]}/${p.lead[1]}`}`;
   }
 
   /* ============================ parsing ============================ */
@@ -413,18 +423,12 @@
   /* ============================ GPX ============================ */
   function xmlEsc(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"}[c])); }
   function safeFilename(name){ return String(name).trim().replace(/\s+/g,"-").replace(/[^A-Za-z0-9._-]/g,"").replace(/^-+|-+$/g,"") || "coordinates"; }
-  function generateGpx(mode, name, points, isoTime){
+  function generateGpx(name, points, isoTime){
     const nm=xmlEsc(name);
     const head=`<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Coordinate Converter" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">\n  <metadata>\n    <name>${nm}</name>\n    <time>${isoTime}</time>\n  </metadata>\n`;
     const nameOf=(p,i)=>xmlEsc(p.name && p.name.trim() ? p.name : `Point ${i+1}`);
     let body="";
-    if(mode==="route"){
-      body+=`  <rte>\n    <name>${nm}</name>\n`;
-      points.forEach((p,i)=>{ body+=`    <rtept lat="${p.lat.toFixed(6)}" lon="${p.lon.toFixed(6)}">\n      <name>${nameOf(p,i)}</name>\n    </rtept>\n`; });
-      body+=`  </rte>\n`;
-    } else {
-      points.forEach((p,i)=>{ body+=`  <wpt lat="${p.lat.toFixed(6)}" lon="${p.lon.toFixed(6)}">\n    <name>${nameOf(p,i)}</name>\n  </wpt>\n`; });
-    }
+    points.forEach((p,i)=>{ body+=`  <wpt lat="${p.lat.toFixed(6)}" lon="${p.lon.toFixed(6)}">\n    <name>${nameOf(p,i)}</name>\n  </wpt>\n`; });
     return head+body+`</gpx>\n`;
   }
 
@@ -444,7 +448,7 @@
     return {
       wgs84:{ order:"latlon", format:"dd", decimals:6 },
       sg:{ sgDigits:4, sgOmit:true },
-      taiwan:{ decimals:0 }, thailand:{ decimals:0 }, brunei:{ sgDigits:4, sgOmit:true },
+      taiwan:{ sgDigits:4, sgOmit:true }, thailand:{ sgDigits:4, sgOmit:true }, brunei:{ sgDigits:4, sgOmit:true },
     };
   }
   // per-preset defaults, used by the settings Reset button
@@ -478,7 +482,7 @@
       const cols=colsFor(state.from,state.settings);
       $("#fromName").textContent=PRESETS[state.from].name;
       $("#fromHead").innerHTML=`<span>#</span><span>${cols[0]}</span><span>${cols[1]}</span><span>Name</span><span></span>`;
-      const smart = PRESETS[state.from].kind==="grid" || PRESETS[state.from].kind==="latlong"; // smart paste + split on for grid + latlong
+      const smart = PRESETS[state.from].kind==="grid" || PRESETS[state.from].shortGrid || PRESETS[state.from].kind==="latlong"; // smart paste + split on for short grids + latlong
       const rowsEl=$("#fromRows"); rowsEl.innerHTML="";
       state.rows.forEach((r,i)=>{
         const div=document.createElement("div"); div.className="trow"; div.dataset.i=i;
@@ -528,7 +532,7 @@
           const r=parseLatLon(line, state.settings.wgs84.order==="lonlat"?"lonlat":"latlon");
           if(r.error){ bad++; continue; }
           out.push(llCells(r.lat,r.lon)); if(r.warning) warn=r.warning; label=r.detected;
-        } else if(p.kind==="grid"){
+        } else if(p.kind==="grid"||p.shortGrid){
           const g=splitGrid(line);
           if(g.error){ bad++; continue; }
           out.push([g.e,g.n]); label=`${g.d}+${g.d} grid reference`;
@@ -540,9 +544,9 @@
       const text=(e.clipboardData||window.clipboardData).getData("text");
       if(!text) return;
       const p=PRESETS[state.from];
-      if(p.kind!=="latlong" && p.kind!=="grid") return;
+      if(p.kind!=="latlong" && p.kind!=="grid" && !p.shortGrid) return;
       const res=parseBlock(text);
-      if(!res.rows.length){ detect(p.kind==="grid"?"Enter matching easting and northing, such as 1234 5678.":"Latitude/longitude format not recognised.","err"); return; }
+      if(!res.rows.length){ detect((p.kind==="grid"||p.shortGrid)?"Enter matching easting and northing, such as 1234 5678.":"Latitude/longitude format not recognised.","err"); return; }
       e.preventDefault();
       readRows();
       res.rows.forEach((cells,k)=>{
@@ -561,7 +565,7 @@
     function maybeSplit(i,A,B){
       if(B.value.trim()!=="") return;                    // never overwrite a filled second box
       const p=PRESETS[state.from], v=A.value.trim();
-      if(p.kind==="grid"){
+      if(p.kind==="grid"||p.shortGrid){
         const hasSep=/[\s,;\/]/.test(v), pureEven=/^\d+$/.test(v)&&v.length%2===0&&v.length>=6;
         if(!hasSep && !pureEven) return;
         const g=splitGrid(v); if(g.error) return;
@@ -679,6 +683,8 @@
     function renderTo(){
       const cols=colsFor(state.to,state.settings);
       $("#toName").textContent=PRESETS[state.to].name;
+      const desc=gridDescription(state.to,state.settings), descEl=$("#toDesc");
+      descEl.textContent=desc; descEl.hidden=!desc;
       $("#toHead").innerHTML=`<span>#</span><span>${cols[0]}</span><span>${cols[1]}</span><span>Name</span><span></span>`;
       const rowsEl=$("#toRows"); rowsEl.innerHTML="";
       const pts=state.points||[];
@@ -732,25 +738,22 @@
     });
 
     /* ---- GPX modal ---- */
-    let gpxMode="points";
     function openGpx(){ if(!state.points||!state.points.length)return; $("#gpxName").value=""; updateGpxNote(); $("#gpxOverlay").classList.add("open"); $("#gpxName").focus(); }
     function closeGpx(){ $("#gpxOverlay").classList.remove("open"); }
     function updateGpxNote(){
       const n=(state.points||[]).length;
-      let msg=""; let ok=$("#gpxName").value.trim().length>0 && n>0;
-      if(gpxMode==="route" && n<2){ msg="A route requires at least two points."; ok=false; }
-      $("#gpxNote").textContent = msg || `${n} point${n!==1?"s":""} • WGS 84 decimal degrees`;
+      const ok=$("#gpxName").value.trim().length>0 && n>0;
+      $("#gpxNote").textContent = `${n} waypoint${n!==1?"s":""} • Garmin can build a route from these points`;
       $("#gpxDownload").disabled=!ok;
     }
     $("#gpxBtn").addEventListener("click",openGpx);
     $("#gpxCancel").addEventListener("click",closeGpx);
     $("#gpxOverlay").addEventListener("click",e=>{ if(e.target.id==="gpxOverlay")closeGpx(); });
     $("#gpxName").addEventListener("input",updateGpxNote);
-    $("#gpxMode").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b)return; gpxMode=b.dataset.m; [...e.currentTarget.children].forEach(x=>x.classList.toggle("on",x===b)); updateGpxNote(); });
     $("#gpxDownload").addEventListener("click",()=>{
       const name=$("#gpxName").value.trim(); if(!name)return;
-      const pts=state.points||[]; if(gpxMode==="route"&&pts.length<2)return;
-      const xml=generateGpx(gpxMode,name,pts,new Date().toISOString());
+      const pts=state.points||[]; if(!pts.length)return;
+      const xml=generateGpx(name,pts,new Date().toISOString());
       const blob=new Blob([xml],{type:"application/gpx+xml;charset=utf-8"});
       const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=safeFilename(name)+".gpx"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
       closeGpx(); toast("GPX downloaded");
@@ -767,6 +770,10 @@
 
     /* ---- settings: per-preset accordion ---- */
     let openPreset = null;
+    function settingsAtDefaults(id){
+      const cur=state.settings[id]||{}, def=defaultsFor(id);
+      return Object.keys(def).every(k=>cur[k]===def[k]);
+    }
     function renderSettings(){
       const S=state.settings; const el=$("#view-set");
       const seg=(opts,cur,cb)=>{ const id="seg"+Math.random().toString(36).slice(2); setTimeout(()=>{ const g=document.getElementById(id); if(!g)return; g.addEventListener("click",e=>{const b=e.target.closest("button"); if(!b)return; [...g.children].forEach(x=>x.classList.toggle("on",x===b)); cb(b.dataset.v); }); },0); return `<div class="seg" id="${id}">${opts.map(o=>`<button data-v="${o[0]}" class="${String(cur)===String(o[0])?"on":""}">${o[1]}</button>`).join("")}</div>`; };
@@ -779,13 +786,16 @@
           h+=`<div class="srow"><span class="k">Decimal places <span class="hint">6 ≈ 0.1 m</span></span>${seg([[4,"4"],[5,"5"],[6,"6"],[7,"7"]],s.decimals,v=>{s.decimals=+v;save();refreshTables();renderSettings();})}</div>`;
           const la=fmtLat(1.352083,s),lo=fmtLon(103.819836,s);
           h+=`<div class="example">Example&nbsp; <b>${s.order==="lonlat"?lo+"&nbsp;&nbsp;&nbsp;"+la:la+"&nbsp;&nbsp;&nbsp;"+lo}</b></div>`;
-        } else if(p.kind==="grid"){
-          h+=`<div class="srow"><span class="k">Precision (digits per axis)</span>${seg([[5,"5 · 1 m"],[4,"4 · 10 m"],[3,"3 · 100 m"],[2,"2 · 1 km"]],s.sgDigits,v=>{s.sgDigits=+v;save();refreshTables();renderSettings();})}</div>`;
+        } else if(p.kind==="grid"||p.shortGrid){
+          h+=`<div class="srow"><span class="k">Precision (digits per axis)</span>${seg([[4,"4 · 10 m · standard"],[5,"5 · 1 m"],[3,"3 · 100 m"],[2,"2 · 1 km"]],s.sgDigits||4,v=>{s.sgDigits=+v;save();refreshTables();renderSettings();})}</div>`;
           const omId="om_"+id;
           h+=`<label class="chk"><input type="checkbox" id="${omId}" ${s.sgOmit!==false?"checked":""}> Omit 100 km square prefix</label>`;
           setTimeout(()=>{ const c=document.getElementById(omId); if(c) c.addEventListener("change",e=>{ s.sgOmit=e.target.checked; save(); refreshTables(); renderSettings(); }); },0);
-          const [ea,nb]=sgHalvesEN(p.lead[0]*100000+34821, p.lead[1]*100000+52074, s, p.lead);
-          h+=`<div class="example">Underlying 34821 52074 →&nbsp; <b>${ea} ${nb}</b></div>`;
+          const lead=p.lead||p.exampleLead, fullE=lead[0]*100000+99999, fullN=lead[1]*100000+99999;
+          const [ea,nb]=sgHalvesEN(fullE,fullN,s,lead);
+          h+=`<div class="example">Full grid&nbsp; <b>${fullE} ${fullN}</b><br>With these settings&nbsp; <b>${ea} ${nb}</b></div>`;
+          if(p.id==="thailand") h+=`<div class="note">Short references resolve around UTM 47N square 5/15 near Sai Yok. Inputs outside it ask for a region when necessary.</div>`;
+          if(p.id==="taiwan") h+=`<div class="note">Taiwan's square varies by location. Outputs use each point's square; short inputs ask for a region.</div>`;
         } else { // utm / projected
           h+=`<div class="srow"><span class="k">Precision (metres)</span>${seg([[0,"1 m"],[1,"10 cm"],[2,"1 cm"],[3,"1 mm"]],s.decimals,v=>{s.decimals=+v;save();refreshTables();renderSettings();})}</div>`;
           h+=`<div class="note">Full projected easting / northing in metres, no zone code.</div>`;
@@ -801,7 +811,7 @@
         html+=`<div class="basis">Based on: ${p.basis}</div>`;
         html+=`<div class="proj">${escAttr(p.proj)}</div>`;
         html+=controls(id);
-        html+=`<button class="reset" data-reset="${id}">↺ Reset ${p.name} to defaults</button>`;
+        html+=`<button class="reset" data-reset="${id}" ${settingsAtDefaults(id)?"disabled":""}>Reset</button>`;
         html+=`</div></div>`;
       });
       el.innerHTML=html;
