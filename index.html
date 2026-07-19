@@ -336,9 +336,14 @@
     }
     if(comps.length<2) return {error:"need two coordinates"};
     const a=comps[0], b=comps[1];
-    let lat, lon, warning, confidence="certain";
+    let lat, lon, warning, confidence="certain", detectedOrder=null;
+    const roleOf=c=>/^[NS]$/.test(c.card)?"lat":/^[EW]$/.test(c.card)?"lon":null;
     const applyCard=(c)=>{ if(c.card==="N")return{lat:c.val}; if(c.card==="S")return{lat:-c.val}; if(c.card==="E")return{lon:c.val}; if(c.card==="W")return{lon:-c.val}; return {}; };
     if(a.card||b.card){
+      const ar=roleOf(a), br=roleOf(b);
+      if(ar&&br&&ar!==br) detectedOrder=ar==="lat"?"latlon":"lonlat";
+      else if(ar&&!br) detectedOrder=ar==="lat"?"latlon":"lonlat";
+      else if(!ar&&br) detectedOrder=br==="lat"?"lonlat":"latlon";
       for(const c of [a,b]){ const r=applyCard(c); if(r.lat!==undefined)lat=r.lat; if(r.lon!==undefined)lon=r.lon;
         if(c.card && ((c.card==="N"||c.card==="S")===false && (c.card==="E"||c.card==="W")===false)){} }
       // sign/cardinal conflict note
@@ -348,8 +353,8 @@
     } else {
       // no cardinals: signs + magnitude + order inference
       const av=a.neg?-a.val:a.val, bv=b.neg?-b.val:b.val;
-      if(Math.abs(av)>90 && Math.abs(bv)<=90){ lon=av; lat=bv; if(preferredOrder==="latlon"){warning="Values appeared reversed and were interpreted as Longitude, Latitude.";} }
-      else if(Math.abs(bv)>90 && Math.abs(av)<=90){ lat=av; lon=bv; }
+      if(Math.abs(av)>90 && Math.abs(bv)<=90){ lon=av; lat=bv; detectedOrder="lonlat"; if(preferredOrder==="latlon"){warning="Values appeared reversed and were interpreted as Longitude, Latitude.";} }
+      else if(Math.abs(bv)>90 && Math.abs(av)<=90){ lat=av; lon=bv; detectedOrder="latlon"; }
       else { // both <=90 : ambiguous -> use preferred order
         if(preferredOrder==="lonlat"){ lon=av; lat=bv; } else { lat=av; lon=bv; }
         confidence="ambiguous"; warning=`Interpreted as ${preferredOrder==="lonlat"?"Longitude, Latitude":"Latitude, Longitude"}. Swap if wrong.`;
@@ -359,7 +364,7 @@
     // range fix
     if(Math.abs(lat)>90 && Math.abs(lon)<=90){ const t=lat;lat=lon;lon=t; warning="Values appeared reversed and were swapped."; }
     if(Math.abs(lat)>90||Math.abs(lon)>180) return {error:"out of range"};
-    return {lat,lon,warning,confidence,detected:describeLL(a,b)};
+    return {lat,lon,warning,confidence,detected:describeLL(a,b),detectedOrder};
   }
   function describeLL(a,b){ const dms=a.hasMinSec||b.hasMinSec; const card=a.card||b.card; return `WGS 84 ${dms?"DMS/DDM":"decimal"}${card?" with hemisphere":""}`; }
 
@@ -389,7 +394,7 @@
       if(!a && !b) return {error:"empty",empty:true};
       const r=parseLatLon(`${a} ${b}`, s.order==="lonlat"?"lonlat":"latlon");
       if(r.error) return {error:r.error,badA:true,badB:true};
-      return {lat:r.lat,lon:r.lon,warning:r.warning};
+      return {lat:r.lat,lon:r.lon,warning:r.warning,detectedOrder:r.detectedOrder};
     }
     if(p.kind==="grid"){
       if(!a && !b) return {error:"empty",empty:true};
@@ -520,12 +525,20 @@
       const p=PRESETS[state.from];
       const lines=String(text).replace(/\r/g,"").split("\n").map(s=>s.trim()).filter(Boolean);
       const out=[]; let bad=0, warn=null, label=null;
-      for(const line of lines){
-        if(p.kind==="latlong"){
+      if(p.kind==="latlong"){
+        const parsed=[], orders=new Set();
+        for(const line of lines){
           const r=parseLatLon(line, state.settings.wgs84.order==="lonlat"?"lonlat":"latlon");
           if(r.error){ bad++; continue; }
-          out.push(llCells(r.lat,r.lon)); if(r.warning) warn=r.warning; label=r.detected;
-        } else if(p.kind==="grid"||p.shortGrid){
+          parsed.push(r); if(r.warning) warn=r.warning; label=r.detected;
+          if(r.detectedOrder) orders.add(r.detectedOrder);
+        }
+        if(orders.size===1) state.settings.wgs84.order=[...orders][0];
+        parsed.forEach(r=>out.push(llCells(r.lat,r.lon)));
+        return {rows:out,bad,warn,label};
+      }
+      for(const line of lines){
+        if(p.kind==="grid"||p.shortGrid){
           const g=splitGrid(line);
           if(g.error){ bad++; continue; }
           out.push([g.e,g.n]); label=`${g.d}+${g.d} grid reference`;
@@ -567,6 +580,7 @@
       } else if(p.kind==="latlong"){
         const r=parseLatLon(v, state.settings.wgs84.order==="lonlat"?"lonlat":"latlon");
         if(r.error) return;
+        if(r.detectedOrder) state.settings.wgs84.order=r.detectedOrder;
         const [a,b]=llCells(r.lat,r.lon); A.value=a; B.value=b; readRows(); save(); flashRows(i,1);
         detect("Split: "+(r.detected||"coordinate")+(r.warning?" — "+r.warning:""), r.warning?"warn":"");
       }
@@ -652,7 +666,7 @@
     function convert(){
       if(pairInvalid()){ detect("Two different grids can't be converted — set one side to Global Lat/Long.","err"); return; }
       readRows();
-      const pts=[]; let bad=false, needPick=null;
+      const pts=[]; let bad=false, needPick=null; const detectedOrders=new Set();
       const rowsEl=$("#fromRows").children;
       state.rows.forEach((r,i)=>{
         const rowEl=rowsEl[i]; const A=rowEl.querySelector(".a"), B=rowEl.querySelector(".b");
@@ -661,12 +675,16 @@
         const res=parseCells(state.from, r[0], r[1], state.settings);
         if(res.error==="pick-square"){ if(!needPick) needPick=res.pick; return; }
         if(res.error){ if(res.empty && !r[2].trim()) return; bad=true; if(res.badA!==false)A.classList.add("bad"); if(res.badB!==false)B.classList.add("bad"); return; }
+        if(state.from==="wgs84"&&res.detectedOrder) detectedOrders.add(res.detectedOrder);
         pts.push({lat:res.lat,lon:res.lon,name:r[2].trim()});
       });
       if(needPick){ showSquarePicker(state.from, needPick); return; }
       if(bad){ detect("Some rows could not be read — fix the highlighted fields.","err"); return; }
       if(!pts.length){ detect("Enter at least one coordinate.","err"); return; }
-      detect("");
+      const detectedOrder=detectedOrders.size===1?[...detectedOrders][0]:null;
+      const orderUpdated=detectedOrder&&state.settings.wgs84.order!==detectedOrder;
+      if(orderUpdated){ state.settings.wgs84.order=detectedOrder; renderFrom(); }
+      detect(orderUpdated?`Detected ${detectedOrder==="lonlat"?"Longitude, Latitude":"Latitude, Longitude"}; order updated.`:"");
       state.points=pts;
       stale=false;
       renderTo();
@@ -779,27 +797,28 @@
       // editable controls, limited to what each preset allows
       const controls=(id)=>{
         const p=PRESETS[id], s=S[id]; let h="";
+        const changed=(sourceLayout=false)=>{ save(); if(sourceLayout&&state.from===id){ readRows(); renderFrom(); } if(state.to===id) renderTo(); renderSettings(); };
         if(p.kind==="latlong"){
-          h+=`<div class="srow"><span class="k">Axis order (flip)</span>${seg([["latlon","Lat, Long"],["lonlat","Long, Lat"]],s.order,v=>{s.order=v;save();refreshTables();renderSettings();})}</div>`;
-          h+=`<div class="srow"><span class="k">Format</span>${seg([["dd","Decimal"],["ddm","Deg + Min"],["dms","D M S"]],s.format,v=>{s.format=v;save();refreshTables();renderSettings();})}</div>`;
+          h+=`<div class="srow"><span class="k">Axis order (flip)</span>${seg([["latlon","Lat, Long"],["lonlat","Long, Lat"]],s.order,v=>{s.order=v;changed(true);})}</div>`;
+          h+=`<div class="srow"><span class="k">Format</span>${seg([["dd","Decimal"],["ddm","Deg + Min"],["dms","D M S"]],s.format,v=>{s.format=v;changed();})}</div>`;
           const decimals=s.decimals??6, precision=decimals===7?"about 1 centimeter":decimals===6?"about 10 centimeters":decimals===5?"about 1 meter":"about 10 meters";
-          h+=`<div class="srow"><span class="k">Precision</span>${seg([[7,"7"],[6,"6"],[5,"5"],[4,"4"]],decimals,v=>{s.decimals=+v;save();refreshTables();renderSettings();})}</div>`;
+          h+=`<div class="srow"><span class="k">Precision</span>${seg([[7,"7"],[6,"6"],[5,"5"],[4,"4"]],decimals,v=>{s.decimals=+v;changed();})}</div>`;
           h+=`<div class="note precision-note">${decimals} decimal places · ${precision}</div>`;
           const la=fmtLat(1.352083,s),lo=fmtLon(103.819836,s);
           h+=`<div class="example">Example&nbsp; <b>${s.order==="lonlat"?lo+"&nbsp;&nbsp;&nbsp;"+la:la+"&nbsp;&nbsp;&nbsp;"+lo}</b></div>`;
         } else if(p.kind==="grid"||p.shortGrid){
           const digits=s.sgDigits||4, precision=digits===5?"1 meter":digits===4?"10 meters":"100 meters";
-          h+=`<div class="srow"><span class="k">Precision</span>${seg([[5,"5"],[4,"4"],[3,"3"]],digits,v=>{s.sgDigits=+v;save();refreshTables();renderSettings();})}</div>`;
+          h+=`<div class="srow"><span class="k">Precision</span>${seg([[5,"5"],[4,"4"],[3,"3"]],digits,v=>{s.sgDigits=+v;changed();})}</div>`;
           h+=`<div class="note precision-note">${digits} digits per axis · ${precision}</div>`;
           const omId="om_"+id;
           h+=`<label class="chk"><input type="checkbox" id="${omId}" ${s.sgOmit!==false?"checked":""}> Omit leading number</label>`;
-          setTimeout(()=>{ const c=document.getElementById(omId); if(c) c.addEventListener("change",e=>{ s.sgOmit=e.target.checked; save(); refreshTables(); renderSettings(); }); },0);
+          setTimeout(()=>{ const c=document.getElementById(omId); if(c) c.addEventListener("change",e=>{ s.sgOmit=e.target.checked; changed(); }); },0);
           const lead=p.lead||p.exampleLead, fullE=lead[0]*100000+99999, fullN=lead[1]*100000+99999;
           const [ea,nb]=sgHalvesEN(fullE,fullN,s,lead);
           h+=`<div class="example grid-example"><span>${fullE} ${fullN}</span><span class="arrow" aria-hidden="true">→</span><b>${ea} ${nb}</b></div>`;
           h+=`<div class="note">Complete reference → displayed reference</div>`;
         } else { // utm / projected
-          h+=`<div class="srow"><span class="k">Precision (meters)</span>${seg([[0,"1 m"],[1,"10 cm"],[2,"1 cm"],[3,"1 mm"]],s.decimals,v=>{s.decimals=+v;save();refreshTables();renderSettings();})}</div>`;
+          h+=`<div class="srow"><span class="k">Precision (meters)</span>${seg([[0,"1 m"],[1,"10 cm"],[2,"1 cm"],[3,"1 mm"]],s.decimals,v=>{s.decimals=+v;changed();})}</div>`;
           h+=`<div class="note">Full projected easting / northing in meters, no zone code.</div>`;
         }
         return h;
@@ -817,10 +836,8 @@
       });
       el.innerHTML=html;
       el.querySelectorAll(".preset-head").forEach(btn=>btn.addEventListener("click",()=>{ const id=btn.dataset.head; openPreset=(openPreset===id)?null:id; renderSettings(); }));
-      el.querySelectorAll(".reset").forEach(btn=>btn.addEventListener("click",()=>{ const id=btn.dataset.reset; state.settings[id]=defaultsFor(id); save(); refreshTables(); renderSettings(); toast(PRESETS[id].name+" reset"); }));
+      el.querySelectorAll(".reset").forEach(btn=>btn.addEventListener("click",()=>{ const id=btn.dataset.reset; state.settings[id]=defaultsFor(id); save(); if(state.from===id){readRows();renderFrom();} if(state.to===id)renderTo(); renderSettings(); toast(PRESETS[id].name+" reset"); }));
     }
-
-    function refreshTables(){ renderFrom(); if(state.points&&state.points.length) renderTo(); }
 
     /* ---- force update (keeps localStorage => keeps coords+settings) ---- */
     $("#refresh").addEventListener("click",async()=>{
