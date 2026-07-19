@@ -1,6 +1,6 @@
 /* MGR Converter — cache-first service worker. Bump CACHE to force an update. */
-const CACHE = "mgr-conv-v13";
-const ASSETS = ["./","./index.html","./proj4.js","./manifest.webmanifest","./icon-192.png","./icon-512.png"];
+const CACHE = "mgr-conv-v14";
+const ASSETS = ["./","./index.html","./proj4.js","./manifest.webmanifest"];
 self.addEventListener("install", e => e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener("activate", e => e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener("fetch", e => {

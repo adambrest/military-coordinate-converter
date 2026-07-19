@@ -6,7 +6,6 @@
 <meta name="theme-color" content="#ffffff">
 <title>Military Coordinate Converter</title>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <style>
@@ -72,6 +71,7 @@
 
   /* region chip + square picker */
   .regionchip{display:inline-flex;align-items:center;gap:4px;align-self:flex-start;font-size:11px;font-weight:600;color:var(--accent);background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px 4px 3px 10px;margin-bottom:8px}
+  .regionchip[hidden]{display:none}
   .regionchip button{border:none;background:none;color:var(--muted);cursor:pointer;font-size:12px;line-height:1;padding:2px 4px}
   .regionchip button:hover{color:var(--danger)}
   .sqmodal{max-width:340px}
@@ -256,7 +256,7 @@
       basis:"WGS 84.",
       proj:"EPSG:4326 · +proj=longlat +datum=WGS84 +no_defs" },
     sg:{ id:"sg", name:"Singapore MGR", kind:"grid", epsg:"EPSG:3168", lead:[LEAD_E,LEAD_N], omitDefault:true,
-      basis:"a custom Singapore grid.",
+      basis:"Kertau 1948 / RSO Malaya.",
       proj:"+proj=omerc +lat_0=4 +lonc=102.25 +alpha=323.0257905 +gamma=323.130102361111 +k=0.99984 +x_0=804670.24 +y_0=0 +ellps=evrst69 +towgs84=-11,851,5,0,0,0,0 +units=m" },
     taiwan:{ id:"taiwan", name:"Taiwan MGR", kind:"utm", epsg:"UTM51N", large:true, shortGrid:true, exampleLead:[3,27],
       bbox:[21.85,25.35,119.9,122.1],
@@ -308,7 +308,7 @@
       const {E,N}=toProjFromWGS(lat,lon,p.epsg), lead=p.lead||[Math.floor(E/100000),Math.floor(N/100000)];
       return sgHalvesEN(E,N,s,lead);
     }
-    // utm / projected -> full easting/northing in metres (configurable decimals)
+    // utm / projected -> full easting/northing in meters (configurable decimals)
     const {E,N}=toProjFromWGS(lat,lon,p.epsg);
     const dec=(s.decimals|0);
     return [E.toFixed(dec), N.toFixed(dec)];
@@ -397,7 +397,7 @@
       if(a.length!==b.length) return {error:"unequal length",badA:true,badB:true};
       return sgToWGS(a,b,s,p.lead,p.epsg);
     }
-    // utm: full easting/northing in metres, OR a truncated grid that needs a picked 100 km square
+    // utm: full easting/northing in meters, OR a truncated grid that needs a picked 100 km square
     if(!a && !b) return {error:"empty",empty:true};
     const trunc = /^\d{1,5}$/.test(a) && /^\d{1,5}$/.test(b) && a.length===b.length;
     if(p.large && trunc){
@@ -601,7 +601,7 @@
       const p=PRESETS[presetId], short=p.name.replace(" MGR","");
       let cands=squareCandidates(presetId, pick);
       if(!cands.length){ detect(`That grid isn't inside ${short}.`,"err"); return; }
-      // fixed operating area (e.g. Sai Yok): auto-resolve when exactly one candidate is inside the AO radius
+      // fixed operating area: auto-resolve when exactly one candidate is inside the AO radius
       if(p.anchor){
         const near=cands.filter(c=>distKm(c.lat,c.lon,p.anchor[0],p.anchor[1])<=(p.anchorRadiusKm||55));
         if(near.length===1){ setSquare(presetId,near[0].eB,near[0].nB); convert(); return; }
@@ -715,8 +715,16 @@
     function isGrid(id){ return PRESETS[id].kind!=="latlong"; }
     function pairInvalid(){ return isGrid(state.from) && isGrid(state.to) && state.from!==state.to; }
     function updatePairState(){ const bad=pairInvalid(); $("#convertBtn").disabled=bad; const bp=$("#badPair"); if(bp) bp.hidden=!bad; return bad; }
-    $("#fromSys").addEventListener("change",()=>{ state.from=$("#fromSys").value; state.rows=[["","",""]]; state.points=[]; renderFrom(); renderTo(); updatePairState(); detect(""); save(); });
-    $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value; if(pairInvalid()) state.points=[]; renderTo(); updatePairState(); detect(""); save(); });
+    $("#fromSys").addEventListener("change",()=>{
+      readRows();
+      const hasInput=state.rows.some(r=>r.some(v=>String(v).trim()));
+      state.from=$("#fromSys").value;
+      state.points=[]; stale=false;
+      renderFrom(); renderTo(); updatePairState();
+      detect(hasInput?"Input kept — review it for the selected coordinate system.":"",hasInput?"warn":"");
+      save();
+    });
+    $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value; renderTo(); updatePairState(); detect(""); save(); });
     $("#addRow").addEventListener("click",()=>{ readRows(); state.rows.push(["","",""]); renderFrom(); save(); });
     $("#convertBtn").addEventListener("click",convert);
 
@@ -774,11 +782,13 @@
         if(p.kind==="latlong"){
           h+=`<div class="srow"><span class="k">Axis order (flip)</span>${seg([["latlon","Lat, Long"],["lonlat","Long, Lat"]],s.order,v=>{s.order=v;save();refreshTables();renderSettings();})}</div>`;
           h+=`<div class="srow"><span class="k">Format</span>${seg([["dd","Decimal"],["ddm","Deg + Min"],["dms","D M S"]],s.format,v=>{s.format=v;save();refreshTables();renderSettings();})}</div>`;
-          h+=`<div class="srow"><span class="k">Decimal places <span class="hint">6 ≈ 0.1 m</span></span>${seg([[4,"4"],[5,"5"],[6,"6"],[7,"7"]],s.decimals,v=>{s.decimals=+v;save();refreshTables();renderSettings();})}</div>`;
+          const decimals=s.decimals??6, precision=decimals===7?"about 1 centimeter":decimals===6?"about 10 centimeters":decimals===5?"about 1 meter":"about 10 meters";
+          h+=`<div class="srow"><span class="k">Precision</span>${seg([[7,"7"],[6,"6"],[5,"5"],[4,"4"]],decimals,v=>{s.decimals=+v;save();refreshTables();renderSettings();})}</div>`;
+          h+=`<div class="note precision-note">${decimals} decimal places · ${precision}</div>`;
           const la=fmtLat(1.352083,s),lo=fmtLon(103.819836,s);
           h+=`<div class="example">Example&nbsp; <b>${s.order==="lonlat"?lo+"&nbsp;&nbsp;&nbsp;"+la:la+"&nbsp;&nbsp;&nbsp;"+lo}</b></div>`;
         } else if(p.kind==="grid"||p.shortGrid){
-          const digits=s.sgDigits||4, precision=digits===5?"1 metre":digits===4?"10 metres":"100 metres";
+          const digits=s.sgDigits||4, precision=digits===5?"1 meter":digits===4?"10 meters":"100 meters";
           h+=`<div class="srow"><span class="k">Precision</span>${seg([[5,"5"],[4,"4"],[3,"3"]],digits,v=>{s.sgDigits=+v;save();refreshTables();renderSettings();})}</div>`;
           h+=`<div class="note precision-note">${digits} digits per axis · ${precision}</div>`;
           const omId="om_"+id;
@@ -788,11 +798,9 @@
           const [ea,nb]=sgHalvesEN(fullE,fullN,s,lead);
           h+=`<div class="example grid-example"><span>${fullE} ${fullN}</span><span class="arrow" aria-hidden="true">→</span><b>${ea} ${nb}</b></div>`;
           h+=`<div class="note">Complete reference → displayed reference</div>`;
-          if(p.id==="thailand") h+=`<div class="note">Sai Yok short grids use square 5/15.</div>`;
-          if(p.id==="taiwan") h+=`<div class="note">The square varies by location.</div>`;
         } else { // utm / projected
-          h+=`<div class="srow"><span class="k">Precision (metres)</span>${seg([[0,"1 m"],[1,"10 cm"],[2,"1 cm"],[3,"1 mm"]],s.decimals,v=>{s.decimals=+v;save();refreshTables();renderSettings();})}</div>`;
-          h+=`<div class="note">Full projected easting / northing in metres, no zone code.</div>`;
+          h+=`<div class="srow"><span class="k">Precision (meters)</span>${seg([[0,"1 m"],[1,"10 cm"],[2,"1 cm"],[3,"1 mm"]],s.decimals,v=>{s.decimals=+v;save();refreshTables();renderSettings();})}</div>`;
+          h+=`<div class="note">Full projected easting / northing in meters, no zone code.</div>`;
         }
         return h;
       };
