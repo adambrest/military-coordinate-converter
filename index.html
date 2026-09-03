@@ -452,6 +452,16 @@
     if(m){ const dig=m[1]; if(dig.length%2!==0) return {error:"odd number of digits"}; const d=dig.length/2; if(d<1||d>5) return {error:"too many digits"}; return {e:dig.slice(0,d),n:dig.slice(d),d}; }
     return {error:"enter matching easting and northing, e.g. 1234 5678"};
   }
+  function classifyPaste(text, preferredType){
+    const lines=String(text).replace(/\r/g,"").split("\n").map(s=>s.trim()).filter(Boolean);
+    if(!lines.length) return null;
+    const coordinates=lines.every(line=>!parseLatLon(line,"latlon").error);
+    const mgr=lines.every(line=>!splitGrid(line).error);
+    if(coordinates&&mgr) return preferredType||"coordinates";
+    if(coordinates) return "coordinates";
+    if(mgr) return "mgr";
+    return null;
+  }
   // Grid E/N strings -> WGS84, anchored at the south-west corner of the stated square.
   function sgToWGS(eStr,nStr,s,lead,epsg){
     lead=lead||[LEAD_E,LEAD_N]; epsg=epsg||"EPSG:3168";
@@ -528,7 +538,7 @@
   function defaultsFor(id){ return defaultSettings()[id] || {}; }
 
   /* ============================ expose for tests ============================ */
-  if(typeof module!=="undefined"){ module.exports={ parseLatLon,extractMapCoordinate,splitGrid,sgToWGS,parseCells,formatPoint,generateGpx,xmlEsc,safeFilename,routeUrl,PRESETS,defaultSettings }; }
+  if(typeof module!=="undefined"){ module.exports={ parseLatLon,extractMapCoordinate,splitGrid,classifyPaste,sgToWGS,parseCells,formatPoint,generateGpx,xmlEsc,safeFilename,routeUrl,PRESETS,defaultSettings }; }
 
   /* ============================ UI / state ============================ */
   if(typeof document!=="undefined") (function(){
@@ -536,6 +546,8 @@
     $("#appVersion").textContent="v"+globalThis.APP_VERSION;
     const STORAGE="mgrconv-v1";
     let state = loadState();
+    let lastGridFrom=state.lastGridFrom&&PRESETS[state.lastGridFrom]&&PRESETS[state.lastGridFrom].kind!=="latlong"
+      ? state.lastGridFrom : (PRESETS[state.from].kind!=="latlong"?state.from:"sg");
     function loadState(){
       try{ const j=JSON.parse(localStorage.getItem(STORAGE)); if(j&&j.settings) return j; }catch(_){}
       return { from:"sg", to:"wgs84", rows:[["","",""]], out:null, points:[], settings:defaultSettings() };
@@ -551,11 +563,18 @@
     function toast(msg,warn){ const t=$("#toast"); t.textContent=msg; t.className="toast show"+(warn?" warn":""); clearTimeout(toast._t); toast._t=setTimeout(()=>t.className="toast",1600); }
 
     let splitTimer=null, stale=false;
+    function rowsHaveContent(){ return state.rows.some(r=>r.some(v=>String(v).trim())); }
+    function updatePasteHint(){
+      const hint=$("#pasteHint");
+      if(!rowsHaveContent()) hint.textContent="Paste coordinates/MGR or a Google/Apple Maps link to autofill.";
+      else if(PRESETS[state.from].kind==="latlong") hint.textContent="Coordinates: paste latitude and longitude together. Google/Apple Maps links also work.";
+      else hint.textContent="MGR: paste easting then northing, spaced or joined.";
+    }
     /* ---- render FROM table ---- */
     function renderFrom(){
       const cols=colsFor(state.from,state.settings);
       $("#fromName").textContent=PRESETS[state.from].name;
-      $("#pasteHint").textContent="Paste coordinates/MGR or a Google/Apple Maps link to autofill.";
+      updatePasteHint();
       $("#fromHead").innerHTML=`<span>#</span><span>${cols[0]}</span><span>${cols[1]}</span><span>Name</span><span></span>`;
       const smart = PRESETS[state.from].kind==="grid" || PRESETS[state.from].shortGrid || PRESETS[state.from].kind==="latlong"; // smart paste + split on for short grids + latlong
       const rowsEl=$("#fromRows"); rowsEl.innerHTML="";
@@ -577,7 +596,7 @@
           renderFrom(); renderTo(); detect(""); save();
         });
         const A=div.querySelector(".a"),B=div.querySelector(".b"),NM=div.querySelector(".nm");
-        [A,B,NM].forEach(inp=>inp.addEventListener("input",()=>{ readRows(); markStale(); save(); }));
+        [A,B,NM].forEach(inp=>inp.addEventListener("input",()=>{ readRows(); updatePasteHint(); markStale(); save(); }));
         [A,B].forEach(inp=>inp.addEventListener("blur",()=>{ inp.classList.remove("bad"); }));
         // Enter starts a new row and focuses it
         [A,B,NM].forEach(inp=>inp.addEventListener("keydown",e=>{
@@ -626,10 +645,23 @@
     function onPaste(e,i,A,B){
       const text=(e.clipboardData||window.clipboardData).getData("text");
       if(!text) return;
-      const map=extractMapCoordinate(text); let switched=false;
-      if(map&&!map.error&&state.from!=="wgs84"){
-        readRows(); state.from="wgs84"; state.points=[]; stale=false; switched=true;
-        $("#fromSys").value="wgs84";
+      readRows();
+      const blank=!rowsHaveContent();
+      const currentType=PRESETS[state.from].kind==="latlong"?"coordinates":"mgr";
+      const pastedType=classifyPaste(text,currentType);
+      let switched=false;
+      if(pastedType&&pastedType!==currentType){
+        if(!blank){
+          e.preventDefault();
+          detect(`${pastedType==="coordinates"?"Coordinate":"MGR"} paste blocked — clear the table to switch formats.`,"err");
+          return;
+        }
+        if(pastedType==="coordinates"){
+          if(PRESETS[state.from].kind!=="latlong"){ lastGridFrom=state.from; state.lastGridFrom=state.from; }
+          state.from="wgs84";
+        } else state.from=lastGridFrom;
+        state.points=[]; stale=false; switched=true;
+        $("#fromSys").value=state.from;
       }
       const p=PRESETS[state.from];
       if(p.kind!=="latlong" && p.kind!=="grid" && !p.shortGrid) return;
@@ -805,6 +837,7 @@
       // move converted results into FROM (as new-from = old-to system)
       const pts=state.points||[];
       state.from=nf; state.to=nt;
+      if(PRESETS[nf].kind!=="latlong"){ lastGridFrom=nf; state.lastGridFrom=nf; }
       $("#fromSys").value=nf; $("#toSys").value=nt;
       if(pts.length){ state.rows=pts.map(p=>{ const [a,b]=formatPoint(p.lat,p.lon,nf,state.settings); return [a,b,p.name||""]; }); }
       state.points=[]; renderFrom(); renderTo(); updatePairState(); detect(""); save();
@@ -819,6 +852,7 @@
       readRows();
       const hasInput=state.rows.some(r=>r.some(v=>String(v).trim()));
       state.from=$("#fromSys").value;
+      if(PRESETS[state.from].kind!=="latlong"){ lastGridFrom=state.from; state.lastGridFrom=state.from; }
       state.points=[]; stale=false;
       renderFrom(); renderTo(); updatePairState();
       detect(hasInput?"Input kept — review it for the selected coordinate system.":"",hasInput?"warn":"");
