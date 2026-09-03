@@ -278,6 +278,11 @@
       basis:"WGS 84 / UTM Zone 47N.",
       proj:"+proj=utm +zone=47 +datum=WGS84 +units=m" },
     brunei:{ id:"brunei", name:"Brunei MGR", kind:"grid", epsg:"BRUNEI", lead:[44,14], omitDefault:true,
+      bbox:[4.00,5.46,113.99,115.46],
+      regions:[
+        [[115.146,4.909],[115.170,4.870],[115.207,4.826],[115.273,4.637],[115.267,4.556],[115.273,4.475],[115.309,4.405],[115.361,4.330],[115.324,4.315],[115.275,4.340],[115.221,4.360],[115.113,4.382],[115.092,4.405],[115.068,4.543],[115.027,4.660],[115.023,4.741],[115.030,4.821],[115.086,4.836],[115.131,4.852],[115.116,4.896],[115.146,4.909]],
+        [[114.982,4.889],[114.955,4.851],[114.948,4.819],[114.896,4.812],[114.838,4.795],[114.788,4.754],[114.741,4.729],[114.768,4.657],[114.782,4.498],[114.806,4.433],[114.848,4.424],[114.836,4.357],[114.782,4.285],[114.818,4.260],[114.787,4.207],[114.767,4.132],[114.675,4.044],[114.628,4.017],[114.587,4.021],[114.569,4.064],[114.477,4.145],[114.433,4.247],[114.401,4.261],[114.317,4.263],[114.278,4.274],[114.290,4.361],[114.263,4.449],[114.238,4.484],[114.209,4.508],[114.140,4.551],[114.064,4.570],[113.999,4.601],[114.252,4.593],[114.327,4.607],[114.494,4.681],[114.566,4.743],[114.723,4.876],[114.928,5.001],[115.058,5.054],[115.103,5.037],[115.049,4.999],[115.023,4.934],[114.982,4.889]]
+      ],
       basis:"Transverse Mercator grid.",
       specs:[
         ["Datum","Timbalai 1948"],
@@ -337,6 +342,28 @@
     return ["Easting","Northing"];
   }
 
+  function pointInPolygon(lat,lon,polygon){
+    let inside=false;
+    for(let i=0,j=polygon.length-1;i<polygon.length;j=i++){
+      const xi=polygon[i][0], yi=polygon[i][1], xj=polygon[j][0], yj=polygon[j][1];
+      if(((yi>lat)!==(yj>lat)) && lon<(xj-xi)*(lat-yi)/(yj-yi)+xi) inside=!inside;
+    }
+    return inside;
+  }
+  function presetContains(presetId,lat,lon){
+    const p=PRESETS[presetId], bb=p.bbox;
+    if(bb&&(lat<bb[0]||lat>bb[1]||lon<bb[2]||lon>bb[3])) return false;
+    if(p.regions) return p.regions.some(poly=>pointInPolygon(lat,lon,poly));
+    if(p.outline) return pointInPolygon(lat,lon,p.outline);
+    return !!bb;
+  }
+  function suggestedGrid(points){
+    for(const id of ["brunei","thailand","taiwan"]){
+      if(points.length&&points.every(p=>presetContains(id,p.lat,p.lon))) return id;
+    }
+    return "sg";
+  }
+
   /* ============================ parsing ============================ */
   const DEC="[-+]?\\d{1,3}(?:\\.\\d+)?";
   function decimalPair(text){
@@ -357,7 +384,7 @@
   // zoom levels, place IDs, or other numeric URL data. Opaque short links cannot be decoded offline.
   function extractMapCoordinate(text){
     const clean=String(text).replace(/\\&/g,"&").replace(/&amp;/gi,"&");
-    const urls=clean.match(/https?:\/\/[^\s<>"'\]]+/gi)||[];
+    const urls=clean.match(/https?:\/\/[^\s<>"\]]+/gi)||[];
     let sawMapLink=false, sawShortLink=false;
     for(let token of urls){
       token=token.replace(/[),.;]+$/g,"");
@@ -538,7 +565,7 @@
   function defaultsFor(id){ return defaultSettings()[id] || {}; }
 
   /* ============================ expose for tests ============================ */
-  if(typeof module!=="undefined"){ module.exports={ parseLatLon,extractMapCoordinate,splitGrid,classifyPaste,sgToWGS,parseCells,formatPoint,generateGpx,xmlEsc,safeFilename,routeUrl,PRESETS,defaultSettings }; }
+  if(typeof module!=="undefined"){ module.exports={ parseLatLon,extractMapCoordinate,splitGrid,classifyPaste,pointInPolygon,presetContains,suggestedGrid,sgToWGS,parseCells,formatPoint,generateGpx,xmlEsc,safeFilename,routeUrl,PRESETS,defaultSettings }; }
 
   /* ============================ UI / state ============================ */
   if(typeof document!=="undefined") (function(){
@@ -631,7 +658,7 @@
         }
         if(orders.size===1) state.settings.wgs84.order=[...orders][0];
         parsed.forEach(r=>out.push(llCells(r.lat,r.lon)));
-        return {rows:out,bad,warn,label};
+        return {rows:out,points:parsed.map(r=>({lat:r.lat,lon:r.lon})),bad,warn,label};
       }
       for(const line of lines){
         if(p.kind==="grid"||p.shortGrid){
@@ -647,6 +674,7 @@
       if(!text) return;
       readRows();
       const blank=!rowsHaveContent();
+      const outputWasEmpty=!(state.points||[]).length;
       const currentType=PRESETS[state.from].kind==="latlong"?"coordinates":"mgr";
       const pastedType=classifyPaste(text,currentType);
       let switched=false;
@@ -669,13 +697,18 @@
       if(!res.rows.length){ detect((p.kind==="grid"||p.shortGrid)?"Enter matching easting and northing, such as 1234 5678.":"Latitude/longitude format not recognised.","err"); return; }
       e.preventDefault();
       readRows();
+      let outputChanged=false;
+      if(blank&&outputWasEmpty&&res.points&&res.points.length){
+        const next=suggestedGrid(res.points); outputChanged=state.to!==next; state.to=next;
+        $("#toSys").value=state.to;
+      }
       res.rows.forEach((cells,k)=>{
         const idx=i+k;
         if(idx>=state.rows.length) state.rows.push(["","",""]);
         const name=state.rows[idx][2]||"";
         state.rows[idx]=[cells[0],cells[1],name];
       });
-      renderFrom(); if(switched){ renderTo(); updatePairState(); } flashRows(i,res.rows.length);
+      renderFrom(); if(switched||outputChanged){ renderTo(); updatePairState(); } flashRows(i,res.rows.length);
       const n=res.rows.length;
       const msg = n>1 ? `Detected ${n} points${res.bad?` · ${res.bad} line(s) skipped`:""}` : `Detected: ${res.label||"coordinate"}${res.warn?" — "+res.warn:""}`;
       detect(msg, (res.warn||res.bad)?"warn":"");
