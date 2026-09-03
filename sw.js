@@ -1,6 +1,7 @@
-/* MGR Converter — cache-first service worker. Bump CACHE to force an update. */
-const CACHE = "mgr-conv-v16";
-const ASSETS = ["./","./index.html","./proj4.js","./manifest.webmanifest"];
+/* MGR Converter — cache-first service worker. Update version.js to force an update. */
+importScripts("./version.js");
+const CACHE = `mgr-conv-v${self.APP_VERSION}`;
+const ASSETS = ["./","./index.html","./version.js","./proj4.js","./manifest.webmanifest","./icons/favicon-32.png","./icons/apple-touch-icon.png","./icons/icon-192.png","./icons/icon-512.png"];
 self.addEventListener("install", e => e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener("activate", e => e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener("fetch", e => {

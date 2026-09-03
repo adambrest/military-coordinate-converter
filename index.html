@@ -6,6 +6,8 @@
 <meta name="theme-color" content="#ffffff">
 <title>Military Coordinate Converter</title>
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <style>
@@ -19,6 +21,8 @@
   body{margin:0;background:var(--bg);color:var(--text);font:500 15px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;overscroll-behavior:none;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
   header{padding:11px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex:0 0 auto}
   header h1{margin:0;font-size:15px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
+  .version{flex:0 0 auto;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:2px 6px;font-size:9px;font-weight:800;letter-spacing:.2px}
+  .version:empty{display:none}
   .refresh{margin-left:auto;flex:0 0 auto;width:34px;height:34px;border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:8px;font-size:17px;cursor:pointer;display:grid;place-items:center}
   .refresh:active{background:var(--panel2)}
   .tabs{display:flex;gap:2px;margin-left:6px;flex:0 0 auto}
@@ -165,7 +169,7 @@
 </head>
 <body>
   <header>
-    <h1><span class="wide-title">Military </span>Coordinate Converter</h1>
+    <h1><span class="wide-title">Military </span>Coordinate Converter</h1><span class="version" id="appVersion"></span>
     <nav class="tabs">
       <button id="tab-conv" class="on">Converter</button>
       <button id="tab-set">Settings</button>
@@ -243,6 +247,7 @@
 
   <div class="toast" id="toast"></div>
 
+  <script src="version.js"></script>
   <script src="proj4.js"></script>
   <script>
   "use strict";
@@ -528,6 +533,7 @@
   /* ============================ UI / state ============================ */
   if(typeof document!=="undefined") (function(){
     const $=s=>document.querySelector(s);
+    $("#appVersion").textContent="v"+globalThis.APP_VERSION;
     const STORAGE="mgrconv-v1";
     let state = loadState();
     function loadState(){
