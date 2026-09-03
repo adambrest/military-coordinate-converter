@@ -59,6 +59,7 @@
   .trow.out .del{visibility:hidden}
   .detect{font-size:11px;color:var(--muted);padding:3px 8px 6px;min-height:6px}
   .detect.warn{color:var(--warn)} .detect.err{color:var(--danger)}
+  .pastehint{font-size:11px;color:var(--muted);line-height:1.45;margin:-2px 2px 8px}
 
   .convert{min-height:46px;padding:0 22px;border-radius:10px;border:none;background:var(--accent);color:var(--accent-ink);font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 1px 2px rgba(37,99,235,.25)}
   .convert:active{transform:translateY(1px)}
@@ -144,6 +145,8 @@
   .preset-body{display:none;padding:12px 14px}
   .preset.open .preset-body{display:block}
   .basis{font-size:12px;color:var(--text);margin-bottom:6px;line-height:1.5}
+  .specs{display:grid;grid-template-columns:max-content 1fr;gap:4px 10px;margin:10px 0 12px;padding:10px;background:var(--panel2);border-radius:8px;font-size:11px;line-height:1.45}
+  .specs dt{color:var(--muted);font-weight:700}.specs dd{margin:0;color:var(--text)}
   .hint{font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0}
   .reset{margin-top:6px;background:none;border:1px solid var(--line);color:var(--muted);font-weight:600;font-size:12px;cursor:pointer;padding:8px 12px;border-radius:8px}
   .reset:hover{color:var(--danger);border-color:var(--danger)}
@@ -181,6 +184,7 @@
         <div class="side">
           <div class="lbl">From <span id="fromName" hidden></span></div>
           <select class="sys" id="fromSys" aria-label="Input system"></select>
+          <div class="pastehint" id="pasteHint"></div>
           <div class="regionchip" id="regionChip" hidden></div>
           <div class="tbl"><div class="thead" id="fromHead"></div><div id="fromRows"></div></div>
           <div class="detect" id="detect"></div>
@@ -253,10 +257,10 @@
   // Each preset: parse(fields,settings)->{lat,lon}|{error}; format(lat,lon,settings)->[a,b]; cols; kind
   const PRESETS = {
     wgs84:{ id:"wgs84", name:"Global Lat/Long (WGS 84)", kind:"latlong",
-      basis:"WGS 84.",
+      basis:"WGS 84 geographic coordinates (EPSG:4326).",
       proj:"EPSG:4326 · +proj=longlat +datum=WGS84 +no_defs" },
     sg:{ id:"sg", name:"Singapore MGR", kind:"grid", epsg:"EPSG:3168", lead:[LEAD_E,LEAD_N], omitDefault:true,
-      basis:"Kertau 1948 / RSO Malaya.",
+      basis:"Kertau 1948 / RSO Malaya (EPSG:3168).",
       proj:"+proj=omerc +lat_0=4 +lonc=102.25 +alpha=323.0257905 +gamma=323.130102361111 +k=0.99984 +x_0=804670.24 +y_0=0 +ellps=evrst69 +towgs84=-11,851,5,0,0,0,0 +units=m" },
     taiwan:{ id:"taiwan", name:"Taiwan MGR", kind:"utm", epsg:"UTM51N", large:true, shortGrid:true, exampleLead:[3,27],
       bbox:[21.85,25.35,119.9,122.1],
@@ -269,7 +273,16 @@
       basis:"WGS 84 / UTM Zone 47N.",
       proj:"+proj=utm +zone=47 +datum=WGS84 +units=m" },
     brunei:{ id:"brunei", name:"Brunei MGR", kind:"grid", epsg:"BRUNEI", lead:[44,14], omitDefault:true,
-      basis:"a custom Brunei grid.",
+      basis:"Custom Transverse Mercator military grid — not standard UTM/MGRS and not an EPSG-defined projected CRS.",
+      specs:[
+        ["Datum / ellipsoid","Timbalai 1948; Everest 1830 (1967 Definition, PROJ evrstSS)"],
+        ["Natural origin","Latitude 0°; central meridian 110° E"],
+        ["Central scale","0.997"],
+        ["False origin","E 3,901,134 m; N 898,522 m"],
+        ["To WGS 84","Brunei Shell Petroleum 3-parameter shift: ΔX −678 m, ΔY +670 m, ΔZ −48 m"],
+        ["Short-grid prefix","Easting square 44 (4,400,000 m); northing square 14 (1,400,000 m)"],
+        ["Grid-square anchor","The reported point is the south-west corner of the square at the selected precision"]
+      ],
       proj:"+proj=tmerc +lat_0=0 +lon_0=110 +k=0.997 +x_0=3901134 +y_0=898522 +ellps=evrstSS +towgs84=-678,670,-48,0,0,0,0 +units=m" },
   };
   const PRESET_ORDER = ["wgs84","sg","taiwan","thailand","brunei"];
@@ -320,9 +333,66 @@
   }
 
   /* ============================ parsing ============================ */
+  const DEC="[-+]?\\d{1,3}(?:\\.\\d+)?";
+  function decimalPair(text){
+    let s=String(text||"");
+    try{ s=decodeURIComponent(s); }catch(_){}
+    s=s.replace(/\+/g," ");
+    const m=s.match(new RegExp(`(${DEC})\\s*,\\s*(${DEC})`));
+    if(!m) return null;
+    const lat=Number(m[1]), lon=Number(m[2]);
+    return isFinite(lat)&&isFinite(lon)&&Math.abs(lat)<=90&&Math.abs(lon)<=180 ? {lat,lon} : null;
+  }
+  function mapPoint(lat,lon,detected){
+    lat=Number(lat); lon=Number(lon);
+    if(!isFinite(lat)||!isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180) return null;
+    return {lat,lon,confidence:"certain",detected,detectedOrder:"latlon"};
+  }
+  // Extract coordinates from full Google/Apple Maps URLs before the general number parser sees
+  // zoom levels, place IDs, or other numeric URL data. Opaque short links cannot be decoded offline.
+  function extractMapCoordinate(text){
+    const clean=String(text).replace(/\\&/g,"&").replace(/&amp;/gi,"&");
+    const urls=clean.match(/https?:\/\/[^\s<>"'\]]+/gi)||[];
+    let sawMapLink=false, sawShortLink=false;
+    for(let token of urls){
+      token=token.replace(/[),.;]+$/g,"");
+      let u; try{ u=new URL(token); }catch(_){ continue; }
+      let decoded=token; try{ decoded=decodeURIComponent(token); }catch(_){}
+      const host=u.hostname.toLowerCase();
+      const google=/(^|\.)google\.[a-z.]+$/.test(host)||host==="maps.google.com";
+      const googleShort=host==="maps.app.goo.gl"||(host==="goo.gl"&&u.pathname.startsWith("/maps"));
+      const apple=host==="maps.apple.com"||host.endsWith(".maps.apple.com");
+      const appleShort=host==="maps.apple"||host.endsWith(".maps.apple");
+      if(googleShort||appleShort){ sawMapLink=true; sawShortLink=true; continue; }
+      if(!google&&!apple) continue;
+      sawMapLink=true;
+      if(google){
+        // Place/pin coordinates are more specific than the @ map-camera coordinates.
+        let m=decoded.match(new RegExp(`!3d(${DEC})!4d(${DEC})`,"i"));
+        if(m){ const p=mapPoint(m[1],m[2],"Google Maps pin"); if(p) return p; }
+        m=decoded.match(new RegExp(`!2d(${DEC})!3d(${DEC})`,"i"));
+        if(m){ const p=mapPoint(m[2],m[1],"Google Maps pin"); if(p) return p; }
+        for(const key of ["query","q","viewpoint","destination","origin","waypoints","center"]){
+          const pair=decimalPair(u.searchParams.get(key));
+          if(pair) return mapPoint(pair.lat,pair.lon,"Google Maps link");
+        }
+        m=decoded.match(new RegExp(`@(${DEC}),(${DEC})(?:[,/]|$)`,"i"));
+        if(m){ const p=mapPoint(m[1],m[2],"Google Maps view"); if(p) return p; }
+      } else {
+        // Unified Apple Maps (coordinate/center/source/destination) and legacy Map Links.
+        for(const key of ["coordinate","ll","destination","daddr","center","source","saddr","q","sll","near","waypoint"]){
+          const pair=decimalPair(u.searchParams.get(key));
+          if(pair) return mapPoint(pair.lat,pair.lon,"Apple Maps link");
+        }
+      }
+    }
+    if(sawMapLink) return {error:sawShortLink?"short map link has no embedded coordinates":"map link has no readable coordinates",mapLink:true};
+    return null;
+  }
   // ---- lat/long pair parser (paste). preferredOrder: 'latlon'|'lonlat'
   function parseLatLon(text, preferredOrder){
     const raw=String(text).trim(); if(!raw) return {error:"empty"};
+    const map=extractMapCoordinate(raw); if(map) return map;
     const norm=raw.replace(/[，]/g,",").replace(/[°º]/g,"°");
     const re=/([NSEW])?\s*(-?\d+(?:\.\d+)?)\s*°?\s*(?:(\d+(?:\.\d+)?)\s*['′])?\s*(?:(\d+(?:\.\d+)?)\s*["″])?\s*([NSEW])?/gi;
     const comps=[]; let m;
@@ -377,12 +447,12 @@
     if(m){ const dig=m[1]; if(dig.length%2!==0) return {error:"odd number of digits"}; const d=dig.length/2; if(d<1||d>5) return {error:"too many digits"}; return {e:dig.slice(0,d),n:dig.slice(d),d}; }
     return {error:"enter matching easting and northing, e.g. 1234 5678"};
   }
-  // grid E/N strings -> WGS84 (SG). corner anchor, restore leading (omit assumed)
-  function sgToWGS(eStr,nStr,s,lead,epsg){ // omitted military form -> restore 100 km square, SW-corner anchor
+  // Grid E/N strings -> WGS84, anchored at the south-west corner of the stated square.
+  function sgToWGS(eStr,nStr,s,lead,epsg){
     lead=lead||[LEAD_E,LEAD_N]; epsg=epsg||"EPSG:3168";
-    const d=eStr.length, step=Math.pow(10,5-d);
-    const E=lead[0]*100000 + parseInt(eStr,10)*step;
-    const N=lead[1]*100000 + parseInt(nStr,10)*step;
+    const d=s&&s.sgOmit===false ? (s.sgDigits||4) : eStr.length, step=Math.pow(10,5-d);
+    const E=s&&s.sgOmit===false ? parseInt(eStr,10)*step : lead[0]*100000 + parseInt(eStr,10)*step;
+    const N=s&&s.sgOmit===false ? parseInt(nStr,10)*step : lead[1]*100000 + parseInt(nStr,10)*step;
     const r=proj4(epsg,"WGS84",[E,N]); return {lon:r[0],lat:r[1]};
   }
 
@@ -453,7 +523,7 @@
   function defaultsFor(id){ return defaultSettings()[id] || {}; }
 
   /* ============================ expose for tests ============================ */
-  if(typeof module!=="undefined"){ module.exports={ parseLatLon,splitGrid,sgToWGS,parseCells,formatPoint,generateGpx,xmlEsc,safeFilename,routeUrl,PRESETS,defaultSettings }; }
+  if(typeof module!=="undefined"){ module.exports={ parseLatLon,extractMapCoordinate,splitGrid,sgToWGS,parseCells,formatPoint,generateGpx,xmlEsc,safeFilename,routeUrl,PRESETS,defaultSettings }; }
 
   /* ============================ UI / state ============================ */
   if(typeof document!=="undefined") (function(){
@@ -479,6 +549,12 @@
     function renderFrom(){
       const cols=colsFor(state.from,state.settings);
       $("#fromName").textContent=PRESETS[state.from].name;
+      const p=PRESETS[state.from], hint=$("#pasteHint");
+      hint.textContent=p.kind==="latlong"
+        ? "Paste anything containing a location into either box — decimal, DMS/DDM, or a full Google Maps or Apple Maps link. Latitude and longitude autofill."
+        : (p.kind==="grid"||p.shortGrid)
+          ? "Paste a complete grid reference into either box — spaced, comma-separated, or joined. Easting and northing autofill."
+          : "";
       $("#fromHead").innerHTML=`<span>#</span><span>${cols[0]}</span><span>${cols[1]}</span><span>Name</span><span></span>`;
       const smart = PRESETS[state.from].kind==="grid" || PRESETS[state.from].shortGrid || PRESETS[state.from].kind==="latlong"; // smart paste + split on for short grids + latlong
       const rowsEl=$("#fromRows"); rowsEl.innerHTML="";
@@ -806,12 +882,13 @@
           h+=`<div class="note precision-note">${decimals} decimal places · ${precision}</div>`;
           const la=fmtLat(1.352083,s),lo=fmtLon(103.819836,s);
           h+=`<div class="example">Example&nbsp; <b>${s.order==="lonlat"?lo+"&nbsp;&nbsp;&nbsp;"+la:la+"&nbsp;&nbsp;&nbsp;"+lo}</b></div>`;
+          h+=`<div class="note"><b>Smart paste:</b> paste anything containing a location into either box and both boxes autofill. Reads decimal, DDM, DMS, Google Maps pins/views/search/Street View/directions destinations, and Apple Maps marked locations/places/map views/directions destinations. Full links must contain coordinates; opaque short links cannot be decoded offline.</div>`;
         } else if(p.kind==="grid"||p.shortGrid){
           const digits=s.sgDigits||4, precision=digits===5?"1 meter":digits===4?"10 meters":"100 meters";
           h+=`<div class="srow"><span class="k">Precision</span>${seg([[5,"5"],[4,"4"],[3,"3"]],digits,v=>{s.sgDigits=+v;changed();})}</div>`;
           h+=`<div class="note precision-note">${digits} digits per axis · ${precision}</div>`;
           const omId="om_"+id;
-          h+=`<label class="chk"><input type="checkbox" id="${omId}" ${s.sgOmit!==false?"checked":""}> Omit leading number</label>`;
+          h+=`<label class="chk"><input type="checkbox" id="${omId}" ${s.sgOmit!==false?"checked":""}> Omit 100 km square prefix</label>`;
           setTimeout(()=>{ const c=document.getElementById(omId); if(c) c.addEventListener("change",e=>{ s.sgOmit=e.target.checked; changed(); }); },0);
           const lead=p.lead||p.exampleLead, fullE=lead[0]*100000+99999, fullN=lead[1]*100000+99999;
           const [ea,nb]=sgHalvesEN(fullE,fullN,s,lead);
@@ -829,7 +906,8 @@
         html+=`<div class="preset${open?" open":""}" data-id="${id}">`;
         html+=`<button class="preset-head" data-head="${id}"><span class="pname">${p.name}${p.unverified?' <span class="tagu">unverified</span>':''}</span><span class="chev">${open?"▾":"▸"}</span></button>`;
         html+=`<div class="preset-body">`;
-        html+=`<div class="basis">Based on ${p.basis}</div>`;
+        html+=`<div class="basis">${p.basis}</div>`;
+        if(p.specs) html+=`<dl class="specs">${p.specs.map(x=>`<dt>${x[0]}</dt><dd>${x[1]}</dd>`).join("")}</dl>`;
         html+=controls(id);
         html+=`<button class="reset" data-reset="${id}" ${settingsAtDefaults(id)?"disabled":""}>Reset</button>`;
         html+=`</div></div>`;
