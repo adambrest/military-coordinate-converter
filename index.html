@@ -681,7 +681,7 @@
       if(pastedType&&pastedType!==currentType){
         if(!blank){
           e.preventDefault();
-          detect(`${pastedType==="coordinates"?"Coordinate":"MGR"} paste blocked — clear the table to switch formats.`,"err");
+          detect(`This table expects ${currentType==="mgr"?"MGR":"coordinates"}.`,"err");
           return;
         }
         if(pastedType==="coordinates"){
