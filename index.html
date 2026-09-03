@@ -278,15 +278,15 @@
       basis:"WGS 84 / UTM Zone 47N.",
       proj:"+proj=utm +zone=47 +datum=WGS84 +units=m" },
     brunei:{ id:"brunei", name:"Brunei MGR", kind:"grid", epsg:"BRUNEI", lead:[44,14], omitDefault:true,
-      basis:"Custom Transverse Mercator military grid — not standard UTM/MGRS and not an EPSG-defined projected CRS.",
+      basis:"Transverse Mercator grid.",
       specs:[
-        ["Datum / ellipsoid","Timbalai 1948; Everest 1830 (1967 Definition, PROJ evrstSS)"],
-        ["Natural origin","Latitude 0°; central meridian 110° E"],
-        ["Central scale","0.997"],
-        ["False origin","E 3,901,134 m; N 898,522 m"],
-        ["To WGS 84","Brunei Shell Petroleum 3-parameter shift: ΔX −678 m, ΔY +670 m, ΔZ −48 m"],
-        ["Short-grid prefix","Easting square 44 (4,400,000 m); northing square 14 (1,400,000 m)"],
-        ["Grid-square anchor","The reported point is the south-west corner of the square at the selected precision"]
+        ["Datum","Timbalai 1948"],
+        ["Ellipsoid","Everest 1830 (1967)"],
+        ["Origin","0° N, 110° E"],
+        ["Scale","0.997"],
+        ["False E / N","3,901,134 m / 898,522 m"],
+        ["WGS 84 shift","−678, +670, −48 m"],
+        ["Grid prefix","44 / 14"]
       ],
       proj:"+proj=tmerc +lat_0=0 +lon_0=110 +k=0.997 +x_0=3901134 +y_0=898522 +ellps=evrstSS +towgs84=-678,670,-48,0,0,0,0 +units=m" },
   };
@@ -555,12 +555,7 @@
     function renderFrom(){
       const cols=colsFor(state.from,state.settings);
       $("#fromName").textContent=PRESETS[state.from].name;
-      const p=PRESETS[state.from], hint=$("#pasteHint");
-      hint.textContent=p.kind==="latlong"
-        ? "Paste anything containing a location into either box — decimal, DMS/DDM, or a full Google Maps or Apple Maps link. Latitude and longitude autofill."
-        : (p.kind==="grid"||p.shortGrid)
-          ? "Paste a complete grid reference into either box — spaced, comma-separated, or joined. Easting and northing autofill."
-          : "";
+      $("#pasteHint").textContent="Paste coordinates/MGR or a Google/Apple Maps link to autofill.";
       $("#fromHead").innerHTML=`<span>#</span><span>${cols[0]}</span><span>${cols[1]}</span><span>Name</span><span></span>`;
       const smart = PRESETS[state.from].kind==="grid" || PRESETS[state.from].shortGrid || PRESETS[state.from].kind==="latlong"; // smart paste + split on for short grids + latlong
       const rowsEl=$("#fromRows"); rowsEl.innerHTML="";
@@ -631,6 +626,11 @@
     function onPaste(e,i,A,B){
       const text=(e.clipboardData||window.clipboardData).getData("text");
       if(!text) return;
+      const map=extractMapCoordinate(text); let switched=false;
+      if(map&&!map.error&&state.from!=="wgs84"){
+        readRows(); state.from="wgs84"; state.points=[]; stale=false; switched=true;
+        $("#fromSys").value="wgs84";
+      }
       const p=PRESETS[state.from];
       if(p.kind!=="latlong" && p.kind!=="grid" && !p.shortGrid) return;
       const res=parseBlock(text);
@@ -643,7 +643,7 @@
         const name=state.rows[idx][2]||"";
         state.rows[idx]=[cells[0],cells[1],name];
       });
-      renderFrom(); flashRows(i,res.rows.length);
+      renderFrom(); if(switched){ renderTo(); updatePairState(); } flashRows(i,res.rows.length);
       const n=res.rows.length;
       const msg = n>1 ? `Detected ${n} points${res.bad?` · ${res.bad} line(s) skipped`:""}` : `Detected: ${res.label||"coordinate"}${res.warn?" — "+res.warn:""}`;
       detect(msg, (res.warn||res.bad)?"warn":"");
@@ -888,7 +888,6 @@
           h+=`<div class="note precision-note">${decimals} decimal places · ${precision}</div>`;
           const la=fmtLat(1.352083,s),lo=fmtLon(103.819836,s);
           h+=`<div class="example">Example&nbsp; <b>${s.order==="lonlat"?lo+"&nbsp;&nbsp;&nbsp;"+la:la+"&nbsp;&nbsp;&nbsp;"+lo}</b></div>`;
-          h+=`<div class="note"><b>Smart paste:</b> paste anything containing a location into either box and both boxes autofill. Reads decimal, DDM, DMS, Google Maps pins/views/search/Street View/directions destinations, and Apple Maps marked locations/places/map views/directions destinations. Full links must contain coordinates; opaque short links cannot be decoded offline.</div>`;
         } else if(p.kind==="grid"||p.shortGrid){
           const digits=s.sgDigits||4, precision=digits===5?"1 meter":digits===4?"10 meters":"100 meters";
           h+=`<div class="srow"><span class="k">Precision</span>${seg([[5,"5"],[4,"4"],[3,"3"]],digits,v=>{s.sgDigits=+v;changed();})}</div>`;
