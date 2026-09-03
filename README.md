@@ -20,7 +20,7 @@ Supports:
 5. Click **Convert**.
 6. Use **⇄** to swap the From/To systems, **+ Add row** to convert several points at once, and **Open in Maps** / **Download GPX** / **Copy** to export the results.
 
-If a grid square is ambiguous (e.g. it exists in more than one region), you'll be prompted to pick which region you're in.
+Taiwan and Thailand MGR accept short (truncated) grid references that can exist in more than one 100 km square. If you enter one before confirming which square you're in, you'll be prompted with a map (with real zone codes and known landmarks) to pick your region. You can also confirm a region ahead of time from **Settings** — via a quick-select landmark or by choosing on the map — and until a region is confirmed, converted output always shows the fuller, unambiguous grid reference rather than a truncated one.
 
 ## Installing as an app
 
