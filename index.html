@@ -83,6 +83,8 @@
   .sqmap{margin:12px 0;display:flex;justify-content:center}
   .sqsvg{width:100%;max-width:260px;height:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
   .sqland{fill:rgba(37,99,235,.06);stroke:var(--line);stroke-width:1}
+  .sqroad{fill:none;stroke:var(--warn);stroke-width:1.5;stroke-dasharray:3 2;opacity:.8}
+  .sqgrid{stroke:var(--accent);stroke-width:.5;opacity:.3;pointer-events:none}
   .sqbox{fill:rgba(37,99,235,.10);stroke:var(--accent);stroke-width:1.25;cursor:pointer}
   .sqbox:hover{fill:rgba(124,58,237,.18);stroke:var(--to)}
   .sqcand{cursor:pointer}
@@ -285,6 +287,12 @@
     thailand:{ id:"thailand", name:"Thailand MGR", kind:"utm", epsg:"UTM47N", zoneCode:"47N", large:true, shortGrid:true, exampleLead:[5,15], anchor:[14.00287,99.24459], anchorRadiusKm:55, anchorName:"Sai Yok",
       bbox:[5.5,20.6,97.3,105.7],
       outline:[[100.0,20.4],[101.2,20.3],[102.4,18.0],[104.8,17.9],[105.6,15.3],[104.5,14.4],[105.5,14.2],[102.4,13.6],[100.9,13.4],[100.0,12.6],[99.6,10.4],[100.3,7.4],[101.4,6.5],[99.9,6.7],[98.6,9.8],[98.9,12.6],[97.5,16.5],[98.9,19.8],[100.0,20.4]],
+      // Highway/Route 323 (Kanchanaburi - Sai Yok - Thong Pha Phum), simplified from OpenStreetMap way data (ref=323)
+      road:[[99.9366,13.79],[99.8943,13.81],[99.8753,13.83],[99.8546,13.85],[99.8205,13.87],[99.7996,13.89],[99.774,13.91],[99.7616,13.93],[99.7575,13.95],[99.7195,13.97],[99.5668,13.99],[99.5393,14.01],[99.5274,14.03],[99.4739,14.05],[99.399,14.07],[99.312,14.09],[99.2048,14.11],[99.1645,14.13],[99.1441,14.15],[99.1322,14.17],[99.1186,14.19],[99.0893,14.21],[99.0642,14.23],[99.0467,14.25],[99.025,14.27],[99.0069,14.29],[98.9943,14.31],[98.9792,14.33],[98.9628,14.35],[98.9375,14.38],[98.9166,14.4],[98.8877,14.42],[98.8698,14.44],[98.86,14.46],[98.8495,14.48],[98.8363,14.5],[98.8249,14.52],[98.7968,14.54],[98.7618,14.56],[98.7518,14.58],[98.7414,14.6],[98.7254,14.62],[98.6924,14.64],[98.6714,14.66],[98.6711,14.68],[98.6671,14.7],[98.6642,14.72],[98.6421,14.74],[98.6548,14.76],[98.6684,14.78],[98.6677,14.8]],
+      landmarks:[
+        { name:"Wang Pho", lat:14.1016, lon:99.1667 },
+        { name:"Phanom Thuan", lat:14.13028, lon:99.69889 },
+      ],
       basis:"WGS 84 / UTM Zone 47N.",
       proj:"+proj=utm +zone=47 +datum=WGS84 +units=m" },
     brunei:{ id:"brunei", name:"Brunei MGR", kind:"grid", epsg:"BRUNEI", lead:[44,14], omitDefault:true,
@@ -777,13 +785,6 @@
     }
     // short, reproducible code for a raw square: zone + the numeric square digits themselves
     function zoneCodeLabel(p,eB,nB){ return `${p.zoneCode} · E${eB} N${nB}`; }
-    // compass label relative to a preset's named operating-area anchor (e.g. "Sai Yok North")
-    function sectorLabel(p,lat,lon){
-      const [aLat,aLon]=p.anchor, t=8; // km dead-zone before calling it a direction
-      const dNS=(lat-aLat)*110.95, dEW=(lon-aLon)*111.32*Math.cos(aLat*Math.PI/180);
-      const ns=dNS>t?"North":dNS<-t?"South":"", ew=dEW>t?"East":dEW<-t?"West":"";
-      return `${p.anchorName} ${(ns+(ns&&ew?" ":"")+ew)||"Central"}`;
-    }
     // reproject the 4 corners of an E/N-aligned block (in 100km-square units) to lon/lat
     function squareBoxCorners(epsg,eB0,eB1,nB0,nB1){
       const E0=eB0*100000, E1=(eB1+1)*100000, N0=nB0*100000, N1=(nB1+1)*100000;
@@ -791,22 +792,10 @@
         try{ const w=proj4(epsg,"WGS84",[E,N]); return [w[0],w[1]]; }catch(_){ return null; }
       }).filter(Boolean);
     }
-    // group candidate squares into named directional sectors around a preset's anchor —
-    // one selectable box per sector instead of one per raw square
-    function groupBySector(p,cands){
-      const groups=new Map();
-      cands.forEach(c=>{ const label=sectorLabel(p,c.lat,c.lon); if(!groups.has(label)) groups.set(label,[]); groups.get(label).push(c); });
-      return [...groups.entries()].map(([label,members])=>{
-        const eBs=members.map(m=>m.eB), nBs=members.map(m=>m.nB);
-        const rep=members[0];
-        return { label, eB:rep.eB, nB:rep.nB,
-          lat:members.reduce((s,m)=>s+m.lat,0)/members.length, lon:members.reduce((s,m)=>s+m.lon,0)/members.length,
-          box:[Math.min(...eBs),Math.max(...eBs),Math.min(...nBs),Math.max(...nBs)] };
-      });
-    }
     function setSqHeader(title,note){ const t=$("#sqTitle"); if(t) t.textContent=title; const n=$("#sqNote"); if(n) n.textContent=note; }
     function setSquare(presetId,eB,nB){ (state.settings[presetId]=state.settings[presetId]||{}).square=[+eB,+nB]; save(); updateRegionChips(); if(state.to===presetId) renderTo(); }
     function distKm(la1,lo1,la2,lo2){ const dx=(lo2-lo1)*111.32*Math.cos(la1*Math.PI/180), dy=(la2-la1)*110.95; return Math.sqrt(dx*dx+dy*dy); }
+    function boxItems(p,cands){ return cands.map(c=>({...c,label:zoneCodeLabel(p,c.eB,c.nB),box:[c.eB,c.eB,c.nB,c.nB]})); }
     function showSquarePicker(presetId, pick){
       const p=PRESETS[presetId], short=p.name.replace(" MGR","");
       let cands=squareCandidates(presetId, pick);
@@ -815,42 +804,42 @@
       if(p.anchor){
         const near=cands.filter(c=>distKm(c.lat,c.lon,p.anchor[0],p.anchor[1])<=(p.anchorRadiusKm||55));
         if(near.length===1){ setSquare(presetId,near[0].eB,near[0].nB); convert(); return; }
-        if(near.length>1){ // genuinely ambiguous (boundary-straddle) — present as named sectors, not raw squares
-          const sectors=groupBySector(p,near);
-          if(sectors.length===1){ setSquare(presetId,sectors[0].eB,sectors[0].nB); convert(); return; }
-          buildSquareMap(presetId, sectors, convert);
-          setSqHeader(`${short}: where near ${p.anchorName} are you?`,`This grid falls near ${p.anchorName}'s area boundary. Tap the sector you're in — it's remembered for your other rows.`);
-          $("#sqOverlay").classList.add("open");
-          return;
-        }
+        if(near.length>1) cands=near; // only the genuinely ambiguous (boundary-straddle) ones reach the map
       }
       if(cands.length===1){ setSquare(presetId,cands[0].eB,cands[0].nB); convert(); return; }
-      buildSquareMap(presetId, cands.map(c=>({...c,label:zoneCodeLabel(p,c.eB,c.nB),box:[c.eB,c.eB,c.nB,c.nB]})), convert);
+      // fewer digits given (more of the leading digits omitted) means less of the position within
+      // whatever square is actually known — subdivide the candidate boxes finer to show that visually
+      const gridN=Math.max(1, 6-pick.e.length);
+      buildSquareMap(presetId, boxItems(p,cands), convert, gridN);
       setSqHeader(`${short}: where is ${pick.e} ${pick.n}?`,"This short grid exists in several 100 km squares. Tap the region you're in — it's remembered for your other rows.");
       $("#sqOverlay").classList.add("open");
     }
     // manual entry point (from Settings): browse and pick a region with no pending ambiguous input
     function openSquareBrowser(presetId){
-      const p=PRESETS[presetId], short=p.name.replace(" MGR","");
-      let items;
-      if(p.anchor){
-        const all=allSquaresInBBox(presetId);
-        const near=all.filter(c=>distKm(c.lat,c.lon,p.anchor[0],p.anchor[1])<=(p.anchorRadiusKm||55));
-        items=groupBySector(p, near.length?near:all);
-      } else {
-        items=allSquaresInBBox(presetId).map(c=>({...c,label:zoneCodeLabel(p,c.eB,c.nB),box:[c.eB,c.eB,c.nB,c.nB]}));
-      }
-      buildSquareMap(presetId, items, ()=>renderSettings());
+      const p=PRESETS[presetId], s=state.settings[presetId]||{}, short=p.name.replace(" MGR","");
+      const all=allSquaresInBBox(presetId);
+      // anchor presets: browse a wider neighborhood than the auto-resolve radius, so real nearby
+      // square boundaries actually show up as distinct, pickable options instead of just one
+      const cands = p.anchor ? all.filter(c=>distKm(c.lat,c.lon,p.anchor[0],p.anchor[1])<=(p.anchorRadiusKm||55)*1.6) : all;
+      const gridN=Math.max(1, 6-(s.sgDigits||4)); // no live input here — use the preset's current output precision
+      buildSquareMap(presetId, boxItems(p, cands.length?cands:all), ()=>renderSettings(), gridN);
       setSqHeader(`${short}: choose your region`,"Tap a region to set it as confirmed — it's remembered until you clear it.");
       $("#sqOverlay").classList.add("open");
     }
-    function buildSquareMap(presetId, items, afterPick){
-      const p=PRESETS[presetId], bb=p.bbox, W=300, H=380, pad=16;
+    function buildSquareMap(presetId, items, afterPick, gridN){
+      const p=PRESETS[presetId], W=300, H=380, pad=16;
+      let bb=p.bbox;
+      if(p.anchor){ // zoom to the actual operating area instead of the whole country — the country outline
+        const [aLat,aLon]=p.anchor, spanKm=(p.anchorRadiusKm||55)*1.6; // margin beyond the near-filter radius
+        const dLat=spanKm/110.95, dLon=spanKm/(111.32*Math.cos(aLat*Math.PI/180));
+        bb=[aLat-dLat,aLat+dLat,aLon-dLon,aLon+dLon];
+      }
       const X=lon=>pad+((lon-bb[2])/(bb[3]-bb[2]))*(W-2*pad);
       const Y=lat=>pad+((bb[1]-lat)/(bb[1]-bb[0]))*(H-2*pad);
       let svg=`<svg viewBox="0 0 ${W} ${H}" class="sqsvg" preserveAspectRatio="xMidYMid meet">`;
       const land=[]; if(p.outline) land.push(p.outline); if(p.regions) land.push(...p.regions);
       land.forEach(poly=>{ const dp=poly.map((pt,i)=>(i?"L":"M")+X(pt[0]).toFixed(1)+" "+Y(pt[1]).toFixed(1)).join(" ")+" Z"; svg+=`<path d="${dp}" class="sqland"/>`; });
+      if(p.road){ const dp=p.road.map((pt,i)=>(i?"L":"M")+X(pt[0]).toFixed(1)+" "+Y(pt[1]).toFixed(1)).join(" "); svg+=`<path d="${dp}" class="sqroad"/>`; }
       items.forEach(it=>{
         let labelX=X(it.lon).toFixed(1), labelY=Y(it.lat).toFixed(1);
         if(it.box){
@@ -859,17 +848,25 @@
             const pts=corners.map(([lon,lat])=>`${X(lon).toFixed(1)},${Y(lat).toFixed(1)}`).join(" ");
             svg+=`<polygon class="sqbox" data-e="${it.eB}" data-n="${it.nB}" points="${pts}"/>`;
             // label on the box's south edge (corners[0]=SW, corners[1]=SE) so it doesn't collide with landmark pins
-            const [sw,se]=corners;
-            labelX=((X(sw[0])+X(se[0]))/2).toFixed(1);
-            labelY=(Math.min(Y(sw[1]),Y(se[1]))-6).toFixed(1);
+            const [sw,se,ne,nw]=corners.map(([lon,lat])=>[X(lon),Y(lat)]);
+            labelX=((sw[0]+se[0])/2).toFixed(1);
+            labelY=(Math.min(sw[1],se[1])-6).toFixed(1);
+            // visual-only subdivision: fewer digits given (gridN>1) means less of the in-square position
+            // is actually known, so show a finer grid inside the box to cue how much precision is missing
+            const lerp=(a,b,t)=>[a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t];
+            for(let i=1;i<(gridN||1);i++){
+              const t=i/gridN;
+              const [x1,y1]=lerp(sw,nw,t), [x2,y2]=lerp(se,ne,t);
+              svg+=`<line class="sqgrid" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
+              const [x3,y3]=lerp(sw,se,t), [x4,y4]=lerp(nw,ne,t);
+              svg+=`<line class="sqgrid" x1="${x3.toFixed(1)}" y1="${y3.toFixed(1)}" x2="${x4.toFixed(1)}" y2="${y4.toFixed(1)}"/>`;
+            }
           }
         }
         svg+=`<g class="sqcand" data-e="${it.eB}" data-n="${it.nB}"><text x="${labelX}" y="${labelY}" text-anchor="middle">${escAttr(it.label)}</text></g>`;
       });
-      // named landmarks: visual orientation only, not clickable. Presets with an anchor (Thailand) skip this —
-      // their sector labels ("Sai Yok East"...) already name the operating area, so a separate anchor pin
-      // right next to an equally-named sector box only doubles up the same text at country-map scale.
-      if(!p.anchor) (p.landmarks||[]).forEach(lm=>{ const cx=X(lm.lon).toFixed(1), cy=Y(lm.lat).toFixed(1);
+      // named landmarks: visual orientation only, not clickable
+      (p.landmarks||[]).forEach(lm=>{ const cx=X(lm.lon).toFixed(1), cy=Y(lm.lat).toFixed(1);
         svg+=`<g class="sqmark"><circle cx="${cx}" cy="${cy}" r="3"/><text x="${cx}" y="${(+cy-7).toFixed(1)}" text-anchor="middle">${escAttr(lm.name)}</text></g>`;
       });
       svg+="</svg>";
@@ -879,16 +876,11 @@
       $("#sqMap").querySelectorAll(".sqbox,.sqcand").forEach(g=>g.addEventListener("click",()=>pickSq(g.dataset.e,g.dataset.n)));
       $("#sqList").querySelectorAll(".sqopt").forEach(b=>b.addEventListener("click",()=>pickSq(b.dataset.e,b.dataset.n)));
     }
-    // confirmed-region label shown in the chip / settings status — sector name near an anchor, zone code otherwise
+    // confirmed-region label shown in the chip / settings status
     function regionChipLabel(presetId){
       const p=PRESETS[presetId], s=state.settings[presetId]||{};
       if(!p.large || !s.square) return null;
-      const [eB,nB]=s.square;
-      if(p.anchor){
-        const E=eB*100000+50000, N=nB*100000+50000;
-        try{ const w=proj4(p.epsg,"WGS84",[E,N]); return sectorLabel(p,w[1],w[0]); }catch(_){ return `E${eB} N${nB}`; }
-      }
-      return zoneCodeLabel(p,eB,nB);
+      return zoneCodeLabel(p,s.square[0],s.square[1]);
     }
     function renderRegionChip(chipId,presetId){
       const chip=$(chipId); if(!chip) return;
@@ -1072,18 +1064,6 @@
               setTimeout(()=>{ const b=document.getElementById(clId); if(b) b.addEventListener("click",()=>{ delete state.settings[id].square; updateRegionChips(); changed(); }); },0);
             } else {
               h+=`<div class="note">None yet — until confirmed, the full grid (with square) is always shown. Pick a spot below, or choose on the map.</div>`;
-            }
-            const quick = p.landmarks ? p.landmarks.map(lm=>({name:lm.name,lat:lm.lat,lon:lm.lon})) :
-              (p.anchor ? groupBySector(p, allSquaresInBBox(id).filter(c=>distKm(c.lat,c.lon,p.anchor[0],p.anchor[1])<=(p.anchorRadiusKm||55))).map(sec=>({name:sec.label,eB:sec.eB,nB:sec.nB})) : []);
-            if(quick.length){
-              const qId="quick_"+id;
-              h+=`<div class="srow"><span class="k">Quick-select</span><div id="${qId}" class="seg">${quick.map((q,i)=>`<button data-i="${i}" type="button">${escAttr(q.name)}</button>`).join("")}</div></div>`;
-              setTimeout(()=>{ const g=document.getElementById(qId); if(!g)return; g.addEventListener("click",e=>{
-                const b=e.target.closest("button"); if(!b) return; const q=quick[+b.dataset.i];
-                if(q.eB!==undefined) setSquare(id,q.eB,q.nB);
-                else { const {E,N}=toProjFromWGS(q.lat,q.lon,p.epsg); setSquare(id,Math.floor(E/100000),Math.floor(N/100000)); }
-                changed();
-              }); },0);
             }
             const mapId="mapbtn_"+id;
             h+=`<button class="reset" id="${mapId}" type="button">Choose on map</button>`;
