@@ -91,9 +91,6 @@
   .sqcand text{fill:var(--text);font-size:9px;font-weight:700;pointer-events:none}
   .sqmark circle{fill:var(--danger);stroke:#fff;stroke-width:1}
   .sqmark text{fill:var(--muted);font-size:8px;font-weight:700;pointer-events:none}
-  .sqlist{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow:auto}
-  .sqopt{text-align:left;border:1px solid var(--line);background:#fff;color:var(--text);border-radius:9px;padding:9px 11px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:ui-monospace,Menlo,monospace}
-  .sqopt:hover{border-color:var(--accent);background:var(--panel2)}
   .exportbar{display:flex;gap:8px;margin-top:12px}
   .exportbar button{flex:1 1 0;min-height:42px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--text);font-size:13px;font-weight:700;cursor:pointer}
   .exportbar button.maps{background:var(--ok);color:#fff;border-color:var(--ok)}
@@ -157,7 +154,7 @@
   .specs{display:grid;grid-template-columns:max-content 1fr;gap:4px 10px;margin:10px 0 12px;padding:10px;background:var(--panel2);border-radius:8px;font-size:11px;line-height:1.45}
   .specs dt{color:var(--muted);font-weight:700}.specs dd{margin:0;color:var(--text)}
   .hint{font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0}
-  .reset{margin-top:6px;background:none;border:1px solid var(--line);color:var(--muted);font-weight:600;font-size:12px;cursor:pointer;padding:8px 12px;border-radius:8px}
+  .reset{margin:6px 0 10px;background:none;border:1px solid var(--line);color:var(--muted);font-weight:600;font-size:12px;cursor:pointer;padding:8px 12px;border-radius:8px}
   .reset:hover{color:var(--danger);border-color:var(--danger)}
   .reset:disabled{color:var(--muted);border-color:var(--line);background:var(--panel2);opacity:.45;cursor:default}
 
@@ -243,10 +240,9 @@
   <!-- region picker -->
   <div class="overlay" id="sqOverlay">
     <div class="modal sqmodal">
-      <h3 id="sqTitle">Which region are you in?</h3>
-      <div class="note" id="sqNote">This short grid exists in several 100 km squares. Tap the region you're in — it's remembered for your other rows.</div>
+      <h3 id="sqTitle">Confirm your AO</h3>
+      <div class="note" id="sqNote">This short grid falls in more than one 100 km square. Tap your AO on the map — it's remembered for future entries.</div>
       <div id="sqMap" class="sqmap"></div>
-      <div id="sqList" class="sqlist"></div>
       <div class="m-actions"><button id="sqCancel">Cancel</button></div>
     </div>
   </div>
@@ -284,12 +280,13 @@
       ],
       basis:"WGS 84 / UTM Zone 51N.",
       proj:"+proj=utm +zone=51 +datum=WGS84 +units=m" },
-    thailand:{ id:"thailand", name:"Thailand MGR", kind:"utm", epsg:"UTM47N", zoneCode:"47N", large:true, shortGrid:true, exampleLead:[5,15], anchor:[14.00287,99.24459], anchorRadiusKm:55, anchorName:"Sai Yok",
+    thailand:{ id:"thailand", name:"Thailand MGR", kind:"utm", epsg:"UTM47N", zoneCode:"47N", large:true, shortGrid:true, exampleLead:[5,15], anchor:[14.00287,99.24459], anchorRadiusKm:55,
       bbox:[5.5,20.6,97.3,105.7],
       outline:[[100.0,20.4],[101.2,20.3],[102.4,18.0],[104.8,17.9],[105.6,15.3],[104.5,14.4],[105.5,14.2],[102.4,13.6],[100.9,13.4],[100.0,12.6],[99.6,10.4],[100.3,7.4],[101.4,6.5],[99.9,6.7],[98.6,9.8],[98.9,12.6],[97.5,16.5],[98.9,19.8],[100.0,20.4]],
       // Highway/Route 323 (Kanchanaburi - Sai Yok - Thong Pha Phum), simplified from OpenStreetMap way data (ref=323)
       road:[[99.9366,13.79],[99.8943,13.81],[99.8753,13.83],[99.8546,13.85],[99.8205,13.87],[99.7996,13.89],[99.774,13.91],[99.7616,13.93],[99.7575,13.95],[99.7195,13.97],[99.5668,13.99],[99.5393,14.01],[99.5274,14.03],[99.4739,14.05],[99.399,14.07],[99.312,14.09],[99.2048,14.11],[99.1645,14.13],[99.1441,14.15],[99.1322,14.17],[99.1186,14.19],[99.0893,14.21],[99.0642,14.23],[99.0467,14.25],[99.025,14.27],[99.0069,14.29],[98.9943,14.31],[98.9792,14.33],[98.9628,14.35],[98.9375,14.38],[98.9166,14.4],[98.8877,14.42],[98.8698,14.44],[98.86,14.46],[98.8495,14.48],[98.8363,14.5],[98.8249,14.52],[98.7968,14.54],[98.7618,14.56],[98.7518,14.58],[98.7414,14.6],[98.7254,14.62],[98.6924,14.64],[98.6714,14.66],[98.6711,14.68],[98.6671,14.7],[98.6642,14.72],[98.6421,14.74],[98.6548,14.76],[98.6684,14.78],[98.6677,14.8]],
       landmarks:[
+        { name:"Sai Yok", lat:14.00287, lon:99.24459 },
         { name:"Wang Pho", lat:14.1016, lon:99.1667 },
         { name:"Phanom Thuan", lat:14.13028, lon:99.69889 },
       ],
@@ -811,7 +808,7 @@
       // whatever square is actually known — subdivide the candidate boxes finer to show that visually
       const gridN=Math.max(1, 6-pick.e.length);
       buildSquareMap(presetId, boxItems(p,cands), convert, gridN);
-      setSqHeader(`${short}: where is ${pick.e} ${pick.n}?`,"This short grid exists in several 100 km squares. Tap the region you're in — it's remembered for your other rows.");
+      setSqHeader(`${short}: where is ${pick.e} ${pick.n}?`,"This short grid falls in more than one 100 km square. Tap your AO on the map — it's remembered for future entries.");
       $("#sqOverlay").classList.add("open");
     }
     // manual entry point (from Settings): browse and pick a region with no pending ambiguous input
@@ -823,7 +820,7 @@
       const cands = p.anchor ? all.filter(c=>distKm(c.lat,c.lon,p.anchor[0],p.anchor[1])<=(p.anchorRadiusKm||55)*1.6) : all;
       const gridN=Math.max(1, 6-(s.sgDigits||4)); // no live input here — use the preset's current output precision
       buildSquareMap(presetId, boxItems(p, cands.length?cands:all), ()=>renderSettings(), gridN);
-      setSqHeader(`${short}: choose your region`,"Tap a region to set it as confirmed — it's remembered until you clear it.");
+      setSqHeader(`${short}: confirm your AO`,"Tap your AO on the map — it's remembered until you clear it.");
       $("#sqOverlay").classList.add("open");
     }
     function buildSquareMap(presetId, items, afterPick, gridN){
@@ -871,10 +868,8 @@
       });
       svg+="</svg>";
       $("#sqMap").innerHTML=svg;
-      $("#sqList").innerHTML=items.map(it=>`<button class="sqopt" data-e="${it.eB}" data-n="${it.nB}">${escAttr(it.label)}</button>`).join("");
       const pickSq=(e,n)=>{ setSquare(presetId,e,n); $("#sqOverlay").classList.remove("open"); if(afterPick) afterPick(); };
       $("#sqMap").querySelectorAll(".sqbox,.sqcand").forEach(g=>g.addEventListener("click",()=>pickSq(g.dataset.e,g.dataset.n)));
-      $("#sqList").querySelectorAll(".sqopt").forEach(b=>b.addEventListener("click",()=>pickSq(b.dataset.e,b.dataset.n)));
     }
     // confirmed-region label shown in the chip / settings status
     function regionChipLabel(presetId){
@@ -886,8 +881,8 @@
       const chip=$(chipId); if(!chip) return;
       const label=regionChipLabel(presetId);
       if(label){ chip.hidden=false;
-        chip.innerHTML=`Region: ${escAttr(label)} <button class="regionClear" title="Change region" aria-label="Change region">✕</button>`;
-        const rc=chip.querySelector(".regionClear"); if(rc) rc.addEventListener("click",()=>{ delete state.settings[presetId].square; save(); updateRegionChips(); if(state.to===presetId) renderTo(); detect("Region cleared — next Convert will ask again.",""); });
+        chip.innerHTML=`AO: ${escAttr(label)} <button class="regionClear" title="Change AO" aria-label="Change AO">✕</button>`;
+        const rc=chip.querySelector(".regionClear"); if(rc) rc.addEventListener("click",()=>{ delete state.settings[presetId].square; save(); updateRegionChips(); if(state.to===presetId) renderTo(); detect("AO cleared — next Convert will ask again.",""); });
       } else { chip.hidden=true; chip.innerHTML=""; }
     }
     function updateRegionChips(){ renderRegionChip("#regionChip", state.from); renderRegionChip("#regionChipTo", state.to); }
@@ -1057,13 +1052,13 @@
 
           if(p.large){
             const label=regionChipLabel(id);
-            h+=`<div class="srow"><span class="k">Confirmed region</span></div>`;
+            h+=`<div class="srow"><span class="k">Confirmed AO</span></div>`;
             if(label){
               const clId="rcl_"+id;
               h+=`<div class="example">Currently&nbsp; <b>${escAttr(label)}</b> <button class="reset" id="${clId}" type="button">Clear</button></div>`;
               setTimeout(()=>{ const b=document.getElementById(clId); if(b) b.addEventListener("click",()=>{ delete state.settings[id].square; updateRegionChips(); changed(); }); },0);
             } else {
-              h+=`<div class="note">None yet — until confirmed, the full grid (with square) is always shown. Pick a spot below, or choose on the map.</div>`;
+              h+=`<div class="note">To allow use of shortened MGR coordinates, confirm your AO — until then, the full grid (with square) is always shown.</div>`;
             }
             const mapId="mapbtn_"+id;
             h+=`<button class="reset" id="${mapId}" type="button">Choose on map</button>`;
@@ -1073,7 +1068,7 @@
           const canOmit = !p.large || !!s.square;
           const omId="om_"+id;
           h+=`<label class="chk"><input type="checkbox" id="${omId}" ${s.sgOmit!==false?"checked":""} ${canOmit?"":"disabled"}> Omit 100 km square prefix</label>`;
-          if(!canOmit) h+=`<div class="note">Confirm a region above first — this has no effect until then.</div>`;
+          if(!canOmit) h+=`<div class="note">Confirm your AO above first.</div>`;
           setTimeout(()=>{ const c=document.getElementById(omId); if(c) c.addEventListener("change",e=>{ s.sgOmit=e.target.checked; changed(); }); },0);
           const lead=p.lead||p.exampleLead, fullE=lead[0]*100000+99999, fullN=lead[1]*100000+99999;
           const [ea,nb]=sgHalvesEN(fullE,fullN,s,lead,canOmit);
