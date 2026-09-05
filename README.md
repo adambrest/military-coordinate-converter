@@ -20,7 +20,7 @@ Supports:
 5. Click **Convert**.
 6. Use **⇄** to swap the From/To systems, **+ Add row** to convert several points at once, and **Open in Maps** / **Download GPX** / **Copy** to export the results.
 
-Taiwan and Thailand MGR accept short (truncated) grid references that can exist in more than one 100 km square. If you enter one before confirming which square you're in, you'll be prompted with a map (with real zone codes and known landmarks) to pick your region. You can also confirm a region ahead of time from **Settings** — via a quick-select landmark or by choosing on the map — and until a region is confirmed, converted output always shows the fuller, unambiguous grid reference rather than a truncated one.
+Taiwan and Thailand MGR accept short (truncated) grid references that can exist in more than one 100 km square. If you enter one before confirming which square you're in, you'll be prompted with a map (with real zone codes and known landmarks) to choose your area of operations (AO). You can also choose an AO ahead of time from **Settings**, or paste a nearby WGS 84 coordinate and let the converter select the matching grid and AO automatically. Until an AO is confirmed, converted output always shows the fuller, unambiguous grid reference rather than a truncated one.
 
 ## Installing as an app
 

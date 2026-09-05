@@ -114,6 +114,16 @@
   label.chk input{width:18px;height:18px}
   .note{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5}
   .precision-note{margin:-6px 0 12px}
+  .settings-section{padding-top:12px;margin-top:12px;border-top:1px solid var(--line)}
+  .settings-section:first-child{padding-top:0;margin-top:0;border-top:0}
+  .settings-subhead{margin:0 0 8px;font-size:12px;font-weight:800;color:var(--text)}
+  .ao-panel{padding:12px;border:1px solid var(--line);border-radius:9px;background:var(--panel2)}
+  .ao-panel.needs-ao{border-color:rgba(37,99,235,.45);background:rgba(37,99,235,.06)}
+  .ao-status{font-size:13px;color:var(--text);margin:0 0 10px}
+  .ao-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .setting-action{min-height:36px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text);font-size:12px;font-weight:700;padding:0 12px;cursor:pointer}
+  .setting-action.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+  .setting-action.danger{color:var(--danger)}
 
   /* modal */
   .overlay{position:fixed;inset:0;background:rgba(2,6,23,.72);z-index:60;display:none;align-items:center;justify-content:center;padding:16px}
@@ -154,7 +164,7 @@
   .specs{display:grid;grid-template-columns:max-content 1fr;gap:4px 10px;margin:10px 0 12px;padding:10px;background:var(--panel2);border-radius:8px;font-size:11px;line-height:1.45}
   .specs dt{color:var(--muted);font-weight:700}.specs dd{margin:0;color:var(--text)}
   .hint{font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0}
-  .reset{margin:6px 0 10px;background:none;border:1px solid var(--line);color:var(--muted);font-weight:600;font-size:12px;cursor:pointer;padding:8px 12px;border-radius:8px}
+  .reset{margin:14px 0 2px;background:none;border:1px solid var(--line);color:var(--muted);font-weight:600;font-size:12px;cursor:pointer;padding:8px 12px;border-radius:8px}
   .reset:hover{color:var(--danger);border-color:var(--danger)}
   .reset:disabled{color:var(--muted);border-color:var(--line);background:var(--panel2);opacity:.45;cursor:default}
 
@@ -265,9 +275,11 @@
   const PRESETS = {
     wgs84:{ id:"wgs84", name:"Global Lat/Long (WGS 84)", kind:"latlong",
       basis:"WGS 84 geographic coordinates (EPSG:4326).",
+      specs:[["Map datum","WGS 84"],["Map spheroid","WGS 84"]],
       proj:"EPSG:4326 · +proj=longlat +datum=WGS84 +no_defs" },
     sg:{ id:"sg", name:"Singapore MGR", kind:"grid", epsg:"EPSG:3168", lead:[LEAD_E,LEAD_N], omitDefault:true,
       basis:"Kertau 1948 / RSO Malaya (EPSG:3168).",
+      specs:[["Map datum","Kertau 1948"],["Map spheroid","Everest 1830 (1967 Definition)"]],
       proj:"+proj=omerc +lat_0=4 +lonc=102.25 +alpha=323.0257905 +gamma=323.130102361111 +k=0.99984 +x_0=804670.24 +y_0=0 +ellps=evrst69 +towgs84=-11,851,5,0,0,0,0 +units=m" },
     taiwan:{ id:"taiwan", name:"Taiwan MGR", kind:"utm", epsg:"UTM51N", zoneCode:"51N", large:true, shortGrid:true, exampleLead:[3,27],
       bbox:[21.85,25.35,119.9,122.1],
@@ -279,6 +291,7 @@
         { name:"Heng Chun (Pao Li)", lat:22.065843, lon:120.794543 },
       ],
       basis:"WGS 84 / UTM Zone 51N.",
+      specs:[["Map datum","WGS 84"],["Map spheroid","WGS 84"],["Grid zone","UTM 51N"]],
       proj:"+proj=utm +zone=51 +datum=WGS84 +units=m" },
     thailand:{ id:"thailand", name:"Thailand MGR", kind:"utm", epsg:"UTM47N", zoneCode:"47N", large:true, shortGrid:true, exampleLead:[5,15], anchor:[14.00287,99.24459], anchorRadiusKm:55,
       bbox:[5.5,20.6,97.3,105.7],
@@ -291,6 +304,7 @@
         { name:"Phanom Thuan", lat:14.13028, lon:99.69889 },
       ],
       basis:"WGS 84 / UTM Zone 47N.",
+      specs:[["Map datum","WGS 84"],["Map spheroid","WGS 84"],["Grid zone","UTM 47N"]],
       proj:"+proj=utm +zone=47 +datum=WGS84 +units=m" },
     brunei:{ id:"brunei", name:"Brunei MGR", kind:"grid", epsg:"BRUNEI", lead:[44,14], omitDefault:true,
       bbox:[4.00,5.46,113.99,115.46],
@@ -300,8 +314,8 @@
       ],
       basis:"Transverse Mercator grid.",
       specs:[
-        ["Datum","Timbalai 1948"],
-        ["Ellipsoid","Everest 1830 (1967)"],
+        ["Map datum","Timbalai 1948"],
+        ["Map spheroid","Everest 1830 (1967)"],
         ["Origin","0° N, 110° E"],
         ["Scale","0.997"],
         ["False E / N","3,901,134 m / 898,522 m"],
@@ -378,6 +392,12 @@
       if(points.length&&points.every(p=>presetContains(id,p.lat,p.lon))) return id;
     }
     return "sg";
+  }
+  function suggestedSquare(presetId,points){
+    const p=PRESETS[presetId];
+    if(!p||!p.large||!points.length||!points.every(pt=>presetContains(presetId,pt.lat,pt.lon))) return null;
+    const squares=points.map(pt=>{ const q=toProjFromWGS(pt.lat,pt.lon,p.epsg); return [Math.floor(q.E/100000),Math.floor(q.N/100000)]; });
+    return squares.every(s=>s[0]===squares[0][0]&&s[1]===squares[0][1]) ? squares[0] : null;
   }
 
   /* ============================ parsing ============================ */
@@ -581,7 +601,7 @@
   function defaultsFor(id){ return defaultSettings()[id] || {}; }
 
   /* ============================ expose for tests ============================ */
-  if(typeof module!=="undefined"){ module.exports={ parseLatLon,extractMapCoordinate,splitGrid,classifyPaste,pointInPolygon,presetContains,suggestedGrid,sgToWGS,parseCells,formatPoint,generateGpx,xmlEsc,safeFilename,routeUrl,PRESETS,defaultSettings }; }
+  if(typeof module!=="undefined"){ module.exports={ parseLatLon,extractMapCoordinate,splitGrid,classifyPaste,pointInPolygon,presetContains,suggestedGrid,suggestedSquare,sgToWGS,parseCells,formatPoint,generateGpx,xmlEsc,safeFilename,routeUrl,PRESETS,defaultSettings }; }
 
   /* ============================ UI / state ============================ */
   if(typeof document!=="undefined") (function(){
@@ -714,8 +734,16 @@
       e.preventDefault();
       readRows();
       let outputChanged=false;
+      let autoAO=null;
       if(blank&&outputWasEmpty&&res.points&&res.points.length){
         const next=suggestedGrid(res.points); outputChanged=state.to!==next; state.to=next;
+        const square=suggestedSquare(next,res.points);
+        if(square){
+          const s=state.settings[next]||(state.settings[next]={});
+          const changedSquare=!s.square||s.square[0]!==square[0]||s.square[1]!==square[1];
+          s.square=square; outputChanged=outputChanged||changedSquare;
+          autoAO=zoneCodeLabel(PRESETS[next],square[0],square[1]);
+        }
         $("#toSys").value=state.to;
       }
       res.rows.forEach((cells,k)=>{
@@ -726,7 +754,7 @@
       });
       renderFrom(); if(switched||outputChanged){ renderTo(); updatePairState(); } flashRows(i,res.rows.length);
       const n=res.rows.length;
-      const msg = n>1 ? `Detected ${n} points${res.bad?` · ${res.bad} line(s) skipped`:""}` : `Detected: ${res.label||"coordinate"}${res.warn?" — "+res.warn:""}`;
+      const msg = (n>1 ? `Detected ${n} points${res.bad?` · ${res.bad} line(s) skipped`:""}` : `Detected: ${res.label||"coordinate"}${res.warn?" — "+res.warn:""}`)+(autoAO?` · AO ${autoAO} selected`:"");
       detect(msg, (res.warn||res.bad)?"warn":"");
       markStale();
       save();
@@ -1028,7 +1056,7 @@
     let openPreset = null;
     function settingsAtDefaults(id){
       const cur=state.settings[id]||{}, def=defaultsFor(id);
-      return Object.keys(def).every(k=>cur[k]===def[k]);
+      return Object.keys(cur).length===Object.keys(def).length && Object.keys(def).every(k=>JSON.stringify(cur[k])===JSON.stringify(def[k]));
     }
     function renderSettings(){
       const S=state.settings; const el=$("#view-set");
@@ -1046,34 +1074,38 @@
           const la=fmtLat(1.352083,s),lo=fmtLon(103.819836,s);
           h+=`<div class="example">Example&nbsp; <b>${s.order==="lonlat"?lo+"&nbsp;&nbsp;&nbsp;"+la:la+"&nbsp;&nbsp;&nbsp;"+lo}</b></div>`;
         } else if(p.kind==="grid"||p.shortGrid){
-          const digits=s.sgDigits||4, precision=digits===5?"1 meter":digits===4?"10 meters":"100 meters";
-          h+=`<div class="srow"><span class="k">Precision</span>${seg([[5,"5"],[4,"4"],[3,"3"]],digits,v=>{s.sgDigits=+v;changed();})}</div>`;
-          h+=`<div class="note precision-note">${digits} digits per axis · ${precision}</div>`;
-
           if(p.large){
             const label=regionChipLabel(id);
-            h+=`<div class="srow"><span class="k">Confirmed AO</span></div>`;
+            h+=`<section class="settings-section ao-panel${label?"":" needs-ao"}"><h4 class="settings-subhead">${label?"Area of operations (AO)":"Choose your AO"}</h4>`;
             if(label){
-              const clId="rcl_"+id;
-              h+=`<div class="example">Currently&nbsp; <b>${escAttr(label)}</b> <button class="reset" id="${clId}" type="button">Clear</button></div>`;
-              setTimeout(()=>{ const b=document.getElementById(clId); if(b) b.addEventListener("click",()=>{ delete state.settings[id].square; updateRegionChips(); changed(); }); },0);
+              const clId="rcl_"+id, mapId="mapbtn_"+id;
+              h+=`<p class="ao-status">Confirmed AO: <strong>${escAttr(label)}</strong></p>`;
+              h+=`<div class="ao-actions"><button class="setting-action primary" id="${mapId}" type="button">Change AO on map</button><button class="setting-action danger" id="${clId}" type="button">Clear AO</button></div>`;
+              setTimeout(()=>{ const b=document.getElementById(clId); if(b) b.addEventListener("click",()=>{ delete state.settings[id].square; updateRegionChips(); changed(); }); const m=document.getElementById(mapId); if(m) m.addEventListener("click",()=>openSquareBrowser(id)); },0);
             } else {
-              h+=`<div class="note">To allow use of shortened MGR coordinates, confirm your AO — until then, the full grid (with square) is always shown.</div>`;
+              const mapId="mapbtn_"+id;
+              h+=`<div class="note">Choose your AO now to use shortened MGR coordinates. Until then, the full unambiguous grid is shown.</div>`;
+              h+=`<div class="ao-actions"><button class="setting-action primary" id="${mapId}" type="button">Choose AO on map</button></div>`;
+              h+=`<div class="note">Not sure? Paste a nearby WGS 84 coordinate in the Converter and we'll select the matching AO automatically.</div>`;
+              setTimeout(()=>{ const b=document.getElementById(mapId); if(b) b.addEventListener("click",()=>openSquareBrowser(id)); },0);
             }
-            const mapId="mapbtn_"+id;
-            h+=`<button class="reset" id="${mapId}" type="button">Choose on map</button>`;
-            setTimeout(()=>{ const b=document.getElementById(mapId); if(b) b.addEventListener("click",()=>openSquareBrowser(id)); },0);
+            h+=`</section>`;
           }
 
+          const digits=s.sgDigits||4, precision=digits===5?"1 meter":digits===4?"10 meters":"100 meters";
+          h+=`<section class="settings-section"><h4 class="settings-subhead">Output format</h4>`;
+          h+=`<div class="srow"><span class="k">Precision</span>${seg([[5,"5"],[4,"4"],[3,"3"]],digits,v=>{s.sgDigits=+v;changed();})}</div>`;
+          h+=`<div class="note precision-note">${digits} digits per axis · ${precision}</div>`;
           const canOmit = !p.large || !!s.square;
           const omId="om_"+id;
-          h+=`<label class="chk"><input type="checkbox" id="${omId}" ${s.sgOmit!==false?"checked":""} ${canOmit?"":"disabled"}> Omit 100 km square prefix</label>`;
+          h+=`<label class="chk"><input type="checkbox" id="${omId}" ${canOmit&&s.sgOmit!==false?"checked":""} ${canOmit?"":"disabled"}> Omit 100 km square prefix</label>`;
           if(!canOmit) h+=`<div class="note">Confirm your AO above first.</div>`;
           setTimeout(()=>{ const c=document.getElementById(omId); if(c) c.addEventListener("change",e=>{ s.sgOmit=e.target.checked; changed(); }); },0);
           const lead=p.lead||p.exampleLead, fullE=lead[0]*100000+99999, fullN=lead[1]*100000+99999;
           const [ea,nb]=sgHalvesEN(fullE,fullN,s,lead,canOmit);
           h+=`<div class="example grid-example"><span>${fullE} ${fullN}</span><span class="arrow" aria-hidden="true">→</span><b>${ea} ${nb}</b></div>`;
           h+=`<div class="note">Complete reference → displayed reference</div>`;
+          h+=`</section>`;
         } else { // utm / projected
           h+=`<div class="srow"><span class="k">Precision (meters)</span>${seg([[0,"1 m"],[1,"10 cm"],[2,"1 cm"],[3,"1 mm"]],s.decimals,v=>{s.decimals=+v;changed();})}</div>`;
           h+=`<div class="note">Full projected easting / northing in meters, no zone code.</div>`;
@@ -1089,7 +1121,7 @@
         html+=`<div class="basis">${p.basis}</div>`;
         if(p.specs) html+=`<dl class="specs">${p.specs.map(x=>`<dt>${x[0]}</dt><dd>${x[1]}</dd>`).join("")}</dl>`;
         html+=controls(id);
-        html+=`<button class="reset" data-reset="${id}" ${settingsAtDefaults(id)?"disabled":""}>Reset</button>`;
+        html+=`<button class="reset" data-reset="${id}" ${settingsAtDefaults(id)?"disabled":""}>Reset all ${p.name} settings</button>`;
         html+=`</div></div>`;
       });
       el.innerHTML=html;
@@ -1108,6 +1140,11 @@
     function showUpdate(){ const m=$("#updateMsg"); if(m) m.hidden=false; }
     $("#updateMsg").addEventListener("click",()=>$("#refresh").click());
     if("serviceWorker" in navigator){
+      let replacingWorker=!!navigator.serviceWorker.controller, reloadingForUpdate=false;
+      navigator.serviceWorker.addEventListener("controllerchange",()=>{
+        if(replacingWorker&&!reloadingForUpdate){ reloadingForUpdate=true; location.reload(); }
+        replacingWorker=true;
+      });
       window.addEventListener("load",()=>{
         navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).then(reg=>{
           reg.update().catch(()=>{});
