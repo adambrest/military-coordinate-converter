@@ -75,10 +75,8 @@
   @keyframes cpulse{0%,100%{box-shadow:0 1px 2px rgba(37,99,235,.25)}50%{box-shadow:0 0 0 5px rgba(37,99,235,.18)}}
 
   /* region chip + square picker */
-  .regionchip{display:inline-flex;align-items:center;gap:4px;align-self:flex-start;font-size:11px;font-weight:600;color:var(--accent);background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px 4px 3px 10px;margin-bottom:8px}
+  .regionchip{display:inline-flex;align-items:center;align-self:flex-start;font-size:11px;font-weight:600;color:var(--accent);background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:5px 10px;margin-bottom:8px}
   .regionchip[hidden]{display:none}
-  .regionchip button{border:none;background:none;color:var(--muted);cursor:pointer;font-size:12px;line-height:1;padding:2px 4px}
-  .regionchip button:hover{color:var(--danger)}
   .sqmodal{max-width:340px}
   .sqmap{margin:12px 0;display:flex;justify-content:center}
   .sqsvg{width:100%;max-width:260px;height:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
@@ -967,8 +965,7 @@
       const chip=$(chipId); if(!chip) return;
       const label=regionChipLabel(presetId);
       if(label){ chip.hidden=false;
-        chip.innerHTML=`AO: ${escAttr(label)} <button class="regionClear" title="Change AO" aria-label="Change AO">✕</button>`;
-        const rc=chip.querySelector(".regionClear"); if(rc) rc.addEventListener("click",()=>{ delete state.settings[presetId].square; save(); updateRegionChips(); if(state.to===presetId) renderTo(); detect("AO cleared — next Convert will ask again.",""); });
+        chip.textContent=`AO: ${label}`;
       } else { chip.hidden=true; chip.innerHTML=""; }
     }
     function updateRegionChips(){ renderRegionChip("#regionChip", state.from); renderRegionChip("#regionChipTo", state.to); }
