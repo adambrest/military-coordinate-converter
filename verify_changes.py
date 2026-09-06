@@ -5,7 +5,7 @@ from pyproj import Transformer
 
 root=pathlib.Path(__file__).resolve().parent
 with tempfile.TemporaryDirectory(prefix='mgr-qa-') as tmp:
-    for name in ['index.html','proj4.js','sw.js','version.js','manifest.webmanifest','icons']:
+    for name in ['index.html','proj4.js','australia-map.js','sw.js','version.js','manifest.webmanifest','icons']:
         src=root/name
         if src.is_dir(): shutil.copytree(src,pathlib.Path(tmp)/name)
         else: shutil.copy2(src,tmp)
@@ -48,11 +48,23 @@ with tempfile.TemporaryDirectory(prefix='mgr-qa-') as tmp:
         page.click('#tab-set'); page.click('[data-head="australia"]'); page.click('#mapbtn_australia')
         assert page.locator('#sqMap').get_by_text('Camp Tilpal').is_visible()
         assert page.locator('#sqMap .sqbox').count()>0
+        assert page.locator('#sqMap .sqcoast').count()>0
+        assert page.locator('#sqMap .sqhighway').count()>0
+        assert page.locator('#sqMap .sqwater').count()==1
+        assert page.locator('#sqMap .sqbox[data-e="1"]').count()>0
+        assert page.locator('#sqMap .sqbox[data-n="75"]').count()>0
+        page.set_viewport_size({'width':390,'height':844})
+        labels=page.locator('#sqMap .sqmark text').evaluate_all('(els)=>els.map(e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}})')
+        a,b=labels
+        assert a['right']<b['left'] or b['right']<a['left'] or a['bottom']<b['top'] or b['bottom']<a['top'],labels
+        page.locator('#sqOverlay').screenshot(path=str(pathlib.Path(tmp)/'qa-australia.png'))
         page.locator('#sqMap .sqbox').first.dispatch_event('click')
         assert page.locator('.ao-status').is_visible()
         page.click('[data-head="thailand"]'); page.click('#mapbtn_thailand')
         assert 'Wang Pho' not in page.locator('#sqMap').inner_text()
         assert page.locator('#sqMap').get_by_text('Sai Yok').is_visible()
+        assert page.locator('#sqMap').get_by_text('Route 323').is_visible()
+        page.locator('#sqOverlay').screenshot(path=str(pathlib.Path(tmp)/'qa-thailand.png'))
         page.locator('#sqMap .sqbox').first.dispatch_event('click'); page.click('#tab-conv')
         page.set_viewport_size({'width':390,'height':844})
         page.screenshot(path=str(pathlib.Path(tmp)/'qa-mobile.png'),full_page=True)
@@ -61,7 +73,7 @@ with tempfile.TemporaryDirectory(prefix='mgr-qa-') as tmp:
         pathlib.Path(tmp,'version.js').write_text('globalThis.APP_VERSION = "1.4.0-test";')
         page.evaluate('navigator.serviceWorker.getRegistration().then(r=>r.update())')
         page.locator('#updateMsg').wait_for(state='visible')
-        assert page.locator('#appVersion').inner_text()=='v1.4.0'
+        assert page.locator('#appVersion').inner_text()=='v1.4.2'
         page.click('#updateMsg'); page.wait_for_function('globalThis.APP_VERSION === "1.4.0-test"')
         assert json.loads(page.evaluate('localStorage.getItem("mgrconv-v1")'))['rows']==json.loads(before)['rows']
         context.set_offline(True); page.reload(); assert page.locator('#appVersion').inner_text()=='v1.4.0-test'
