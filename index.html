@@ -19,12 +19,11 @@
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--text);font:500 15px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;overscroll-behavior:none;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
-  header{padding:11px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex:0 0 auto}
+  header{flex-wrap:wrap;padding:11px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex:0 0 auto}
   header h1{margin:0;font-size:15px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
   .version{flex:0 0 auto;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:2px 6px;font-size:9px;font-weight:800;letter-spacing:.2px}
   .version:empty{display:none}
-  .refresh{margin-left:auto;flex:0 0 auto;width:34px;height:34px;border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:8px;font-size:17px;cursor:pointer;display:grid;place-items:center}
-  .refresh:active{background:var(--panel2)}
+  .feedback{color:var(--muted);font-size:12px;text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:8px}
   .tabs{display:flex;gap:2px;margin-left:6px;flex:0 0 auto}
   .tabs button{border:none;background:none;color:var(--muted);font-weight:600;font-size:13px;padding:5px 11px;border-radius:8px;cursor:pointer}
   .tabs button:hover{color:var(--text)}
@@ -189,7 +188,7 @@
     </nav>
     <div class="topright">
       <button class="update-msg" id="updateMsg" title="A new version is ready — click to update" hidden>Update available</button>
-      <button class="refresh" id="refresh" title="Update to latest version" aria-label="Update to latest version">↻</button>
+      <a class="feedback" href="https://github.com/adambrest/military-coordinate-converter/issues/new?title=Converter%20feedback&amp;body=Describe%20your%20feedback%20here%3A%0A" target="_blank" rel="noopener noreferrer" title="Send feedback through GitHub (sign-in required)">Feedback</a>
     </div>
   </header>
 
@@ -257,6 +256,7 @@
         <button type="button" data-country="sg">Singapore</button>
         <button type="button" data-country="taiwan">Taiwan</button>
         <button type="button" data-country="thailand">Thailand</button>
+        <button type="button" data-country="australia">Australia</button>
         <button type="button" data-country="brunei">Brunei</button>
       </div>
       <div class="note">Not sure? Cancel and paste a nearby WGS 84 coordinate first, or choose the grid and AO later in Settings.</div>
@@ -283,6 +283,7 @@
   /* ============================ projections ============================ */
   proj4.defs("EPSG:3168","+proj=omerc +no_uoff +lat_0=4 +lonc=102.25 +alpha=323.0257905 +gamma=323.130102361111 +k=0.99984 +x_0=804670.24 +y_0=0 +ellps=evrst69 +towgs84=-11,851,5,0,0,0,0 +units=m +no_defs");
   proj4.defs("UTM51N","+proj=utm +zone=51 +datum=WGS84 +units=m +no_defs");
+  proj4.defs("UTM56S","+proj=utm +zone=56 +south +datum=WGS84 +units=m +no_defs");
   proj4.defs("UTM47N","+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs");
   proj4.defs("BRUNEI","+proj=tmerc +lat_0=0 +lon_0=110 +k=0.997 +x_0=3901134 +y_0=898522 +ellps=evrstSS +towgs84=-678,670,-48,0,0,0,0 +units=m +no_defs");
   const LEAD_E=6, LEAD_N=1; // Singapore
@@ -318,12 +319,19 @@
       road:[[99.9366,13.79],[99.8943,13.81],[99.8753,13.83],[99.8546,13.85],[99.8205,13.87],[99.7996,13.89],[99.774,13.91],[99.7616,13.93],[99.7575,13.95],[99.7195,13.97],[99.5668,13.99],[99.5393,14.01],[99.5274,14.03],[99.4739,14.05],[99.399,14.07],[99.312,14.09],[99.2048,14.11],[99.1645,14.13],[99.1441,14.15],[99.1322,14.17],[99.1186,14.19],[99.0893,14.21],[99.0642,14.23],[99.0467,14.25],[99.025,14.27],[99.0069,14.29],[98.9943,14.31],[98.9792,14.33],[98.9628,14.35],[98.9375,14.38],[98.9166,14.4],[98.8877,14.42],[98.8698,14.44],[98.86,14.46],[98.8495,14.48],[98.8363,14.5],[98.8249,14.52],[98.7968,14.54],[98.7618,14.56],[98.7518,14.58],[98.7414,14.6],[98.7254,14.62],[98.6924,14.64],[98.6714,14.66],[98.6711,14.68],[98.6671,14.7],[98.6642,14.72],[98.6421,14.74],[98.6548,14.76],[98.6684,14.78],[98.6677,14.8]],
       landmarks:[
         { name:"Sai Yok", lat:14.00287, lon:99.24459 },
-        { name:"Wang Pho", lat:14.1016, lon:99.1667 },
-        { name:"Phanom Thuan", lat:14.13028, lon:99.69889 },
       ],
       basis:"WGS 84 / UTM Zone 47N.",
       specs:[["Map datum","WGS 84"],["Map spheroid","WGS 84"],["Grid zone","UTM 47N"]],
       proj:"+proj=utm +zone=47 +datum=WGS84 +units=m" },
+    australia:{ id:"australia", name:"Australia MGR", kind:"utm", epsg:"UTM56S", zoneCode:"56S", large:true, shortGrid:true, exampleLead:[2,74],
+      bbox:[-23.2,-22.0,150.0,150.9], anchor:[-22.65,150.35], anchorRadiusKm:65,
+      landmarks:[
+        { name:"Camp Tilpal", lat:-22.81253, lon:150.13259 },
+        { name:"Camp Growl", lat:-22.80307, lon:150.33732 },
+      ],
+      basis:"WGS 84 / UTM Zone 56S (EPSG:32756), cropped to a confirmed 100 km square. Scoped to the Shoalwater Bay / Exercise Wallaby area, not all Australia. Camp pins are approximate public-map landmarks.",
+      specs:[["Map datum","WGS 84"],["Map spheroid","WGS 84"],["Grid zone","UTM 56, southern hemisphere"],["Training area","Shoalwater Bay, Queensland"],["Camps","Tilpal / Growl"]],
+      proj:"+proj=utm +zone=56 +south +datum=WGS84 +units=m" },
     brunei:{ id:"brunei", name:"Brunei MGR", kind:"grid", epsg:"BRUNEI", lead:[44,14], omitDefault:true,
       bbox:[4.00,5.46,113.99,115.46],
       regions:[
@@ -342,7 +350,7 @@
       ],
       proj:"+proj=tmerc +lat_0=0 +lon_0=110 +k=0.997 +x_0=3901134 +y_0=898522 +ellps=evrstSS +towgs84=-678,670,-48,0,0,0,0 +units=m" },
   };
-  const PRESET_ORDER = ["wgs84","sg","taiwan","thailand","brunei"];
+  const PRESET_ORDER = ["wgs84","sg","taiwan","thailand","australia","brunei"];
 
   /* ============================ formatting ============================ */
   function fmtDecWGS(v,isLat,dec){ const h=isLat?(v>=0?"N":"S"):(v>=0?"E":"W"); return `${Math.abs(v).toFixed(dec)}° ${h}`; }
@@ -376,7 +384,9 @@
     }
     if(p.kind==="grid"||p.shortGrid){
       const {E,N}=toProjFromWGS(lat,lon,p.epsg), lead=p.lead||[Math.floor(E/100000),Math.floor(N/100000)];
-      const canOmit = !p.large || !!s.square; // large (Taiwan/Thailand): never truncate away the square until one is confirmed
+      const canOmit = !p.large || (s.square && s.square[0]===lead[0] && s.square[1]===lead[1]);
+      // Full UTM references retain meter units, matching the full-reference parser.
+      if(p.large && (!canOmit || s.sgOmit===false)) return [String(Math.floor(E+0.05)),String(Math.floor(N+0.05))];
       return sgHalvesEN(E,N,s,lead,canOmit);
     }
     // utm / projected -> full easting/northing in meters (configurable decimals)
@@ -406,7 +416,7 @@
     return !!bb;
   }
   function suggestedGrid(points){
-    for(const id of ["sg","brunei","taiwan","thailand"]){
+    for(const id of ["sg","brunei","taiwan","thailand","australia"]){
       if(points.length&&points.every(p=>presetContains(id,p.lat,p.lon))) return id;
     }
     return "sg";
@@ -612,6 +622,7 @@
     return {
       wgs84:{ order:"latlon", format:"dd", decimals:6 },
       sg:{ sgDigits:4, sgOmit:true },
+      australia:{ sgDigits:4, sgOmit:true },
       taiwan:{ sgDigits:4, sgOmit:true }, thailand:{ sgDigits:4, sgOmit:true }, brunei:{ sgDigits:4, sgOmit:true },
     };
   }
@@ -633,6 +644,7 @@
       try{
         const j=JSON.parse(localStorage.getItem(STORAGE));
         if(j&&j.settings){
+          j.settings={...defaultSettings(),...j.settings};
           // One-time cleanup for AOs saved by the former Thailand auto-selection behavior.
           if(j.aoSelectionVersion!==2){
             if(j.settings.taiwan) delete j.settings.taiwan.square;
@@ -873,7 +885,7 @@
     }
     function setSqHeader(title,note){ const t=$("#sqTitle"); if(t) t.textContent=title; const n=$("#sqNote"); if(n) n.textContent=note; }
     function clearOtherAOs(presetId){
-      for(const id of ["taiwan","thailand"]) if(id!==presetId&&state.settings[id]) delete state.settings[id].square;
+      for(const id of ["taiwan","thailand","australia"]) if(id!==presetId&&state.settings[id]) delete state.settings[id].square;
     }
     function assignSquare(presetId,eB,nB){
       clearOtherAOs(presetId);
@@ -1009,6 +1021,7 @@
       const orderUpdated=detectedOrder&&state.settings.wgs84.order!==detectedOrder;
       if(orderUpdated){ state.settings.wgs84.order=detectedOrder; renderFrom(); }
       detect(orderUpdated?`Detected ${detectedOrder==="lonlat"?"Longitude, Latitude":"Latitude, Longitude"}; order updated.`:"");
+      if(state.from===state.to) detect("Same grid, same place. Congratulations, you have marched on the spot.");
       state.points=pts;
       stale=false;
       renderTo();
@@ -1162,7 +1175,7 @@
           if(!canOmit) h+=`<div class="note">Confirm your AO above first.</div>`;
           setTimeout(()=>{ const c=document.getElementById(omId); if(c) c.addEventListener("change",e=>{ s.sgOmit=e.target.checked; changed(); }); },0);
           const lead=p.lead||p.exampleLead, fullE=lead[0]*100000+99999, fullN=lead[1]*100000+99999;
-          const [ea,nb]=sgHalvesEN(fullE,fullN,s,lead,canOmit);
+          const [ea,nb]=p.large&&(!canOmit||s.sgOmit===false)?[String(fullE),String(fullN)]:sgHalvesEN(fullE,fullN,s,lead,canOmit);
           h+=`<div class="example grid-example"><span>${fullE} ${fullN}</span><span class="arrow" aria-hidden="true">→</span><b>${ea} ${nb}</b></div>`;
           h+=`<div class="note">Complete reference → displayed reference</div>`;
           h+=`</section>`;
@@ -1189,30 +1202,44 @@
       el.querySelectorAll(".reset[data-reset]").forEach(btn=>btn.addEventListener("click",()=>{ const id=btn.dataset.reset; state.settings[id]=defaultsFor(id); save(); if(state.from===id){readRows();renderFrom();} if(state.to===id)renderTo(); renderSettings(); toast(PRESETS[id].name+" reset"); }));
     }
 
-    /* ---- force update (keeps localStorage => keeps coords+settings) ---- */
-    $("#refresh").addEventListener("click",async()=>{
-      save();
-      try{ if("serviceWorker" in navigator){ const rs=await navigator.serviceWorker.getRegistrations(); await Promise.all(rs.map(r=>r.unregister())); } if(window.caches){ const ks=await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k))); } }catch(_){}
-      const u=new URL(location.href); u.searchParams.set("fresh",Date.now()); location.replace(u.toString());
+    /* ---- updates: install in background, activate only when requested ---- */
+    let updateRegistration=null, applyingUpdate=false, controllerChanged=false;
+    function showUpdate(){ $("#updateMsg").hidden=false; }
+    $("#updateMsg").addEventListener("click",()=>{
+      if(!controllerChanged && (!updateRegistration || !updateRegistration.waiting)) return;
+      readRows(); save(); applyingUpdate=true;
+      if(controllerChanged){ location.reload(); return; }
+      $("#updateMsg").disabled=true;
+      $("#updateMsg").textContent="Updating…";
+      updateRegistration.waiting.postMessage({type:"SKIP_WAITING"});
     });
-    if(location.search.includes("fresh=")){ const u=new URL(location.href); u.searchParams.delete("fresh"); history.replaceState(null,"",u.pathname+u.search+u.hash); }
-
-    function showUpdate(){ const m=$("#updateMsg"); if(m) m.hidden=false; }
-    $("#updateMsg").addEventListener("click",()=>$("#refresh").click());
     if("serviceWorker" in navigator){
-      let replacingWorker=!!navigator.serviceWorker.controller, reloadingForUpdate=false;
+      let hadController=!!navigator.serviceWorker.controller;
       navigator.serviceWorker.addEventListener("controllerchange",()=>{
-        if(replacingWorker&&!reloadingForUpdate){ reloadingForUpdate=true; location.reload(); }
-        replacingWorker=true;
+        if(applyingUpdate){ location.reload(); }
+        else if(hadController){ controllerChanged=true; showUpdate(); }
+        hadController=true;
       });
       window.addEventListener("load",()=>{
         navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).then(reg=>{
-          reg.update().catch(()=>{});
-          if(reg.waiting && navigator.serviceWorker.controller) showUpdate();
+          updateRegistration=reg;
+          let checking=false;
+          const check=async()=>{
+            if(checking || document.visibilityState==="hidden" || !navigator.onLine) return;
+            checking=true;
+            try{ await reg.update(); if(reg.waiting) showUpdate(); }catch(_){}
+            finally{ checking=false; }
+          };
+          if(reg.waiting) showUpdate();
           reg.addEventListener("updatefound",()=>{
             const nw=reg.installing; if(!nw) return;
             nw.addEventListener("statechange",()=>{ if(nw.state==="installed" && navigator.serviceWorker.controller) showUpdate(); });
           });
+          check();
+          setInterval(check,60000);
+          window.addEventListener("focus",check);
+          window.addEventListener("online",check);
+          document.addEventListener("visibilitychange",check);
         }).catch(()=>{});
       });
     }
