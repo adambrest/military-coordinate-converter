@@ -73,7 +73,7 @@ with tempfile.TemporaryDirectory(prefix='mgr-qa-') as tmp:
         pathlib.Path(tmp,'version.js').write_text('globalThis.APP_VERSION = "1.4.0-test";')
         page.evaluate('navigator.serviceWorker.getRegistration().then(r=>r.update())')
         page.locator('#updateMsg').wait_for(state='visible')
-        assert page.locator('#appVersion').inner_text()=='v1.4.2'
+        assert page.locator('#appVersion').inner_text()=='v1.4.3'
         page.click('#updateMsg'); page.wait_for_function('globalThis.APP_VERSION === "1.4.0-test"')
         assert json.loads(page.evaluate('localStorage.getItem("mgrconv-v1")'))['rows']==json.loads(before)['rows']
         context.set_offline(True); page.reload(); assert page.locator('#appVersion').inner_text()=='v1.4.0-test'
