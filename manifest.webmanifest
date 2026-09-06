@@ -1,7 +1,7 @@
 {
   "name": "Military Coordinate Converter",
   "short_name": "MilCoord",
-  "description": "Convert between Singapore/Brunei/Taiwan/Thailand military grids and WGS-84, with Google Maps and GPX export. Works offline.",
+  "description": "Convert military grids and WGS 84 coordinates, with map links and GPX export. Works offline.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

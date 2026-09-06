@@ -640,11 +640,8 @@
   // per-preset defaults, used by the settings Reset button
   function defaultsFor(id){ return defaultSettings()[id] || {}; }
 
-  /* ============================ expose for tests ============================ */
-  if(typeof module!=="undefined"){ module.exports={ parseLatLon,extractMapCoordinate,splitGrid,classifyPaste,pointInPolygon,presetContains,suggestedGrid,suggestedSquare,sgToWGS,parseCells,formatPoint,generateGpx,xmlEsc,safeFilename,routeUrl,PRESETS,defaultSettings }; }
-
   /* ============================ UI / state ============================ */
-  if(typeof document!=="undefined") (function(){
+  (function(){
     const $=s=>document.querySelector(s);
     $("#appVersion").textContent="v"+globalThis.APP_VERSION;
     const STORAGE="mgrconv-v1";
