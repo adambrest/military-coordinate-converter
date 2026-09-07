@@ -1,5 +1,5 @@
 .DS_Store
 *.log
-
 .claude/
+AGENTS.md
 node_modules/

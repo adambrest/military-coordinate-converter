@@ -193,6 +193,7 @@
         <div class="side">
           <div class="lbl">From <span id="fromName" hidden></span></div>
           <select class="sys" id="fromSys" aria-label="Input system"></select>
+          <label class="format-choice" id="fromFormatWrap" hidden>Format <select id="fromFormat" aria-label="Global input format"><option value="mgrs">MGRS</option><option value="globalutm">UTM</option><option value="mercator">Web Mercator</option></select></label>
           <div class="pastehint" id="pasteHint"></div>
           <div class="regionchip" id="regionChip" hidden></div>
           <div class="tbl"><div class="thead" id="fromHead"></div><div id="fromRows"></div></div>
@@ -210,6 +211,7 @@
         <div class="side">
           <div class="lbl">To <span id="toName" hidden></span></div>
           <select class="sys" id="toSys" aria-label="Output system"></select>
+          <label class="format-choice" id="toFormatWrap" hidden>Format <select id="toFormat" aria-label="Global output format"><option value="mgrs">MGRS</option><option value="globalutm">UTM</option><option value="mercator">Web Mercator</option></select></label>
           <div class="regionchip" id="regionChipTo" hidden></div>
           <div class="tbl"><div class="thead" id="toHead"></div><div id="toRows"></div></div>
           <div class="staleflag" id="staleFlag" hidden>⚠ Input changed — press Convert to refresh</div>
@@ -341,6 +343,7 @@
   }
   const PRESET_ORDER = ["wgs84","mgrs","sg","taiwan","thailand","australia","brunei"];
   const COUNTRY_PRESETS = ["sg","taiwan","thailand","australia","brunei"];
+  const GLOBAL_FORMATS = ["mgrs","globalutm","mercator"];
   function projectionFor(presetId){ return PRESETS[presetId].epsg; }
 
   /* ============================ formatting ============================ */
@@ -369,6 +372,15 @@
   // format a WGS84 point into the display cells of a preset
   function formatPoint(lat,lon,presetId,S,inputDigits){
     const p=PRESETS[presetId], s=S[presetId]||{};
+    if(p.kind==="globalutm"){
+      const zone=parseInt(GlobalGrid.parts(lat,lon,0).prefix),south=lat<0;
+      const {E,N}=toProjFromWGS(lat,lon,GlobalGrid.projection(zone,south));
+      return [`UTM ${zone}${south?"S":"N"} ${E.toFixed(3)}`,N.toFixed(3)];
+    }
+    if(p.kind==="mercator"){
+      if(Math.abs(lat)>85.05112878)throw new Error("Web Mercator only supports latitudes between 85.0511° S and N.");
+      const {E,N}=toProjFromWGS(lat,lon,"EPSG:3857");return [E.toFixed(3),N.toFixed(3)];
+    }
     if(p.kind==="mgrs"){
       const digits=Math.min(s.sgDigits??4,inputDigits??5);
       const q=GlobalGrid.parts(lat,lon,digits);
@@ -396,6 +408,8 @@
     const p=PRESETS[presetId], s=S[presetId]||{};
     if(p.kind==="latlong") return s.order==="lonlat"?["Longitude","Latitude"]:["Latitude","Longitude"];
     if(p.kind==="mgrs") return ["Grid / Easting","Northing"];
+    if(p.kind==="globalutm")return ["Zone / Easting","Northing"];
+    if(p.kind==="mercator")return ["X (metres)","Y (metres)"];
     return ["Easting","Northing"];
   }
 
@@ -683,7 +697,7 @@
           delete j.settings.australia.datum;
           // Never restore computed output across engine versions.
           j.points=[];
-          if(!j.rows?.some(r=>r[0]?.trim()||r[1]?.trim())){j.from="auto";j.explicitInput=false;}
+          j.from="auto";j.explicitInput=false;j.aoConfirmed=false;delete j.pendingGrid;
           // One-time cleanup for AOs saved by the former Thailand auto-selection behavior.
           if(j.aoSelectionVersion!==2){
             if(j.settings.taiwan) delete j.settings.taiwan.square;
@@ -698,7 +712,13 @@
     function save(){ try{ localStorage.setItem(STORAGE, JSON.stringify(state)); }catch(_){} }
 
     // build system selects
-    function buildSel(sel){ const ids=sel.id==="fromSys"?["auto",...PRESET_ORDER,"globalutm","mercator"]:PRESET_ORDER;sel.innerHTML=ids.map(id=>`<option value="${id}">${PRESETS[id].name}</option>`).join(""); }
+    function buildSel(sel){ const ids=sel.id==="fromSys"?["auto",...PRESET_ORDER]:PRESET_ORDER;sel.innerHTML=ids.map(id=>`<option value="${id}">${id==="mgrs"?"Global coordinates (WGS 84)":PRESETS[id].name}</option>`).join(""); }
+    function syncFormat(side){
+      const id=state[side],global=GLOBAL_FORMATS.includes(id);
+      $("#"+side+"Sys").value=global?"mgrs":id;
+      $("#"+side+"FormatWrap").hidden=!global;
+      if(global)$("#"+side+"Format").value=id;
+    }
     buildSel($("#fromSys")); buildSel($("#toSys"));
     $("#fromSys").value=state.from; $("#toSys").value=state.to;
 
@@ -710,7 +730,7 @@
     function rowsHaveContent(){ return state.rows.some(r=>r.some(v=>String(v).trim())); }
     function updatePasteHint(){
       const hint=$("#pasteHint");
-      if(state.from==="auto")hint.textContent="Start anywhere: paste coordinates, a grid reference or a Maps link.";
+      if(state.from==="auto")hint.innerHTML="Start anywhere<ul><li>Military grid reference — e.g. 3000 3000</li><li>Google or Apple Maps link</li><li>Latitude / longitude — decimal, degrees or minutes</li><li>MGRS — e.g. 51R TH 1234 5678</li><li>UTM / Garmin — zone, easting, northing</li><li>Web Mercator — labelled EPSG:3857</li></ul>";
       else if(state.from==="globalutm")hint.textContent="WGS 84 UTM · N/S mean hemispheres; other letters mean latitude bands. Check your device datum.";
       else if(state.from==="mercator")hint.textContent="EPSG:3857 · X then Y, in metres.";
       else if(!rowsHaveContent()) hint.textContent="Paste coordinates, MGR or a Maps link.";
@@ -719,6 +739,7 @@
     }
     /* ---- render FROM table ---- */
     function renderFrom(){
+      syncFormat("from");
       const cols=colsFor(state.from,state.settings);
       const flexible=state.from==="auto"||(["mgrs","globalutm","mercator"].includes(state.from)&&!state.rows.some(r=>r[0].trim()||r[1].trim()));
       const prefixed=!flexible&&["mgrs","globalutm"].includes(state.from);
@@ -733,10 +754,10 @@
       state.rows.forEach((r,i)=>{
         const div=document.createElement("div"); div.className="trow"; div.dataset.i=i;
         const canDelete = state.rows.length>1;
-        const pieces=prefixed?r[0].match(/^(.*?[A-Za-z])\s*(\d*)$/):null;
+        const pieces=prefixed?r[0].match(/^(.*?[A-Za-z])\s*(\d*(?:\.\d+)?)$/):null;
         div.innerHTML=`<span class="n">${i+1}</span>`+
           (prefixed?`<input class="cell prefix" aria-label="${state.from==="mgrs"?"MGRS prefix":"UTM zone"}" placeholder="${state.from==="mgrs"?"51R TH":"51N"}" value="${escAttr(pieces?.[1]||"")}">`:"")+
-          `<input class="cell a" aria-label="${flexible?"Coordinate":cols[0]}" value="${escAttr(flexible?[r[0],r[1]].filter(Boolean).join(" "):pieces?pieces[2]:r[0])}" placeholder="${flexible?"Paste a coordinate or Maps link…":prefixed?"Easting":escAttr(cols[0])}">`+
+          `<input class="cell a" aria-label="${flexible?"Coordinate":cols[0]}" value="${escAttr(flexible?[r[0],r[1]].filter(Boolean).join(" "):pieces?pieces[2]:r[0])}" placeholder="${flexible?"Paste here":prefixed?"Easting":escAttr(cols[0])}">`+
           `<input class="cell b" ${flexible?"hidden":""} aria-label="${cols[1]}" value="${escAttr(flexible?"":r[1])}" placeholder="${escAttr(cols[1])}">`+
           `<input class="cell nm" aria-label="Point name" value="${escAttr(r[2])}" placeholder="Name (optional)">`+
           `<button class="del" aria-label="${canDelete?"Delete":"Clear"} row" title="${canDelete?"Delete":"Clear"} row">×</button>`;
@@ -828,7 +849,7 @@
     }
     function boundaryMessage(points,id=state.to){
       const s=state.settings[id];
-      if(id==="wgs84"||!points.length)return "";
+      if(["wgs84","globalutm","mercator"].includes(id)||!points.length)return "";
       let keys;
       if(id==="mgrs"){
         keys=points.map(p=>{const prefix=GlobalGrid.parts(p.lat,p.lon,0).prefix;return /^\d{1,2}[C-HJ-NP-X]$/.test(s.ao||"")?prefix.match(/^\d{1,2}[C-HJ-NP-X]/)[0]:prefix;});
@@ -867,7 +888,7 @@
         if(short){const g=splitGrid(line);return {cells:[g.e,g.n]};}
         if(projected[k])return projected[k].target&&projected[k].target!==target?{error:"Paste one coordinate format at a time."}:projected[k];
         if(projected.some(Boolean))return {error:"Paste one coordinate format at a time."};
-        if(/^[-+]?\d{6,}(?:\.\d+)?[\s,;]+[-+]?\d+(?:\.\d+)?$/.test(line))return {error:"These look like projected metres. If the source says EPSG:3857, select Web Mercator above and convert. UTM needs its zone prefix."};
+        if(/^[-+]?\d{6,}(?:\.\d+)?[\s,;]+[-+]?\d+(?:\.\d+)?$/.test(line))return {error:"These look like projected metres. If the source says EPSG:3857, choose Global coordinates → Web Mercator. UTM needs its zone prefix."};
         const p=parseLatLon(line,state.settings.wgs84.order);
         return p.error?p:{cells:llCells(p.lat,p.lon),point:p};
       });
@@ -876,7 +897,7 @@
       }
       if(!parsed.length)return;
       e.preventDefault();
-      if(target!==state.from&&state.rows.some((r,k)=>k!==i&&(r[0].trim()||r[1].trim()))){
+      if(target!==state.from&&state.rows.some((r,k)=>(k<i||k>=i+parsed.length)&&(r[0].trim()||r[1].trim()))){
         setBottomError("These rows use a different input system. Clear them before pasting this format.");return;
       }
       state.from=target;$("#fromSys").value=target;
@@ -959,8 +980,8 @@
       setBottomError("");
       readRows();
       if(state.from==="auto"||$("#fromRows").closest(".side").classList.contains("flexible-input")){
-        const i=state.rows.findIndex(r=>r[0].trim()||r[1].trim());
-        if(i>=0){const r=state.rows[i];onPaste({clipboardData:{getData:()=>r[0]+" "+r[1]},preventDefault(){}},i);}
+        const rows=state.rows.filter(r=>r[0].trim()||r[1].trim());
+        if(rows.length){state.rows=rows;renderFrom();onPaste({clipboardData:{getData:()=>rows.map(r=>r[0]+" "+r[1]).join("\n")},preventDefault(){}},0);}
         else detect("Paste a coordinate to get started.");
         return;
       }
@@ -1007,8 +1028,9 @@
     }
 
     function renderTo(){
+      syncFormat("to");
       const cols=colsFor(state.to,state.settings);
-      $("#toRows").closest(".side").classList.toggle("global-grid",state.to==="mgrs");
+      $("#toRows").closest(".side").classList.toggle("global-grid",GLOBAL_FORMATS.includes(state.to));
       $("#toName").textContent=PRESETS[state.to].name;
       $("#toHead").innerHTML=`<span>#</span><span>${cols[0]}</span><span>${cols[1]}</span><span>Name</span><span></span>`;
       const rowsEl=$("#toRows"); rowsEl.innerHTML="";
@@ -1042,7 +1064,7 @@
 
     /* ---- swap ---- */
     $("#swapBtn").addEventListener("click",()=>{
-      const nf=state.to, nt=PRESET_ORDER.includes(state.from)?state.from:"wgs84";
+      const nf=state.to, nt=state.from==="auto"?"wgs84":state.from;
       // move converted results into FROM (as new-from = old-to system)
       const pts=state.points||[];
       state.from=nf; state.to=nt;
@@ -1078,6 +1100,20 @@
       if(PRESETS[state.from].large&&state.from!=="mgrs"&&!state.settings[state.from].square&&!state.settings[state.from].ao)openSquareBrowser(state.from);
     });
     $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value;state.explicitOutput=true;updatePairState();if(rowsHaveContent())convert();else renderTo();save(); });
+    $("#fromFormat").addEventListener("change",()=>{
+      readRows();const pts=state.points||[],id=$("#fromFormat").value;
+      if(pts.length){
+        try{state.rows=pts.map(p=>[...formatPoint(p.lat,p.lon,id,state.settings,p.digits),p.name||""]);}
+        catch(error){syncFormat("from");setBottomError(error.message);return;}
+      }
+      state.from=id;state.explicitInput=true;delete state.pendingGrid;
+      state.points=[];renderFrom();renderTo();updatePairState();save();
+      if(rowsHaveContent())convert();
+    });
+    $("#toFormat").addEventListener("change",()=>{
+      state.to=$("#toFormat").value;state.explicitOutput=true;updatePairState();
+      if(rowsHaveContent())convert();else renderTo();save();
+    });
     $("#addRow").addEventListener("click",()=>{ readRows(); state.rows.push(["","",""]); renderFrom(); save(); });
     $("#convertBtn").addEventListener("click",convert);
 

@@ -23,6 +23,10 @@
       const raw=id==="mgrs";
       try{
         result.prefix=raw?GlobalGrid.parts(lat,lon,0).prefix:"E"+result.e+" N"+result.n;
+        if(!raw){
+          const p=presets[id],bb=p.bbox,regions=p.regions||[p.outline||[[bb[2],bb[0]],[bb[3],bb[0]],[bb[3],bb[1]],[bb[2],bb[1]]]];
+          if(!regions.some(region=>GlobalGrid.intersects(poly,region)))return null;
+        }
         const inputs=picks();
         if(inputs.length){
           for(const [i,g] of inputs.entries()){
@@ -31,13 +35,10 @@
             else{
               const step=10**(5-g.e.length),ll=root.proj4(proj,"WGS84",[e+Number(g.e)*step,n+Number(g.n)*step]);
               point={lat:ll[1],lon:ll[0]};
-              if(!contains(id,point.lat,point.lon))return null;
+              if(!contains(id,point.lat,point.lon))result.invalid=true;
             }
             if(i===0){result.point=point;result.lat=point.lat;result.lon=point.lon;}
           }
-        }else if(!raw){
-          const p=presets[id],bb=p.bbox,regions=p.regions||[p.outline||[[bb[2],bb[0]],[bb[3],bb[0]],[bb[3],bb[1]],[bb[2],bb[1]]]];
-          if(!regions.some(region=>GlobalGrid.intersects(poly,region)))return null;
         }
         return result;
       }catch(_){return null;}
@@ -48,6 +49,10 @@
       if(chosen.point)L.circleMarker([chosen.point.lat,chosen.point.lon],{radius:7,color:"#fff",weight:2,fillColor:"#7c3aed",fillOpacity:1}).addTo(pointLayer);
       $("aoSelection").textContent=presets[chosen.id].name+" · "+chosen.prefix;
       $("aoApply").disabled=false;
+      if(chosen.invalid){
+        $("aoWarning").textContent="This reference falls outside "+presets[chosen.id].name.replace(" MGR","")+" in this square. Check the digits or choose another AO.";
+        $("aoWarning").hidden=false;$("aoApply").disabled=true;
+      }
       if(chosen.scope==="zone"&&picks().length){
         $("aoWarning").textContent="Include the 100 km square letters with your reference.";
         $("aoWarning").hidden=false;

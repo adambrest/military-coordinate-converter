@@ -28,6 +28,11 @@
 .trow.out .cell{font-size:13px}
 .side.global-grid .thead,.side.global-grid .trow{grid-template-columns:22px minmax(0,1.65fr) minmax(0,.8fr) minmax(0,.8fr) 30px}
 .side.flexible-input .thead{display:none}
+.pastehint ul{margin:6px 0 0;padding-left:19px}
+.pastehint li{margin:3px 0}
+.format-choice{display:flex;align-items:center;gap:8px;margin:0 2px 10px;font-size:13px;color:var(--muted)}
+.format-choice[hidden]{display:none}
+.format-choice select{flex:1;min-width:0;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--text);font:inherit}
 .side.flexible-input .trow{grid-template-columns:22px minmax(0,1fr) 30px;padding:12px 8px;gap:8px}
 .side.flexible-input .b[hidden]{display:none}
 .side.flexible-input .nm{grid-column:2;grid-row:2}

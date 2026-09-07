@@ -8,7 +8,7 @@ Convert latitude/longitude, global WGS 84 MGRS, and military grids for Singapore
 
 Start with Auto-detect: paste coordinates, a Maps link, UTM (`48N 366000 149000`) or MGRS (`51R TH 1234 5678`), and optionally name the point. For an ambiguous grid, choose its country; select an AO only when needed. Raw WGS 84 uses the world map. References crossing AOs keep their full prefixes.
 
-UTM/Garmin input assumes WGS 84. Ambiguous `S` needs `UTM 51S` (southern hemisphere) or `51S band` (latitude band). Web Mercator metres need an `EPSG:3857` label or the Web Mercator input selection.
+Global coordinates (WGS 84) offers MGRS, UTM and Web Mercator formats. UTM/Garmin input assumes WGS 84; ambiguous `S` needs `UTM 51S` (southern hemisphere) or `51S band` (latitude band). Web Mercator metres need an `EPSG:3857` label or its format selection.
 
 Conversion and AO grids work offline after caching; street maps need internet. Check the datum in Settings against your issued map.
 
