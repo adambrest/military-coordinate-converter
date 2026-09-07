@@ -4,16 +4,19 @@
 .ao-heading p{margin:0;color:var(--muted);font-size:14px}
 #aoClose{border:0;background:var(--panel2);border-radius:8px;font-size:26px;width:38px;height:38px;cursor:pointer;flex-shrink:0}
 .ao-toolbar{display:flex;gap:12px;padding:0 20px 14px;border-bottom:1px solid var(--line)}
-.ao-toolbar label{flex:1;font-size:12px;font-weight:700;color:var(--muted)}
-.ao-toolbar select{display:block;width:100%;margin-top:4px;padding:9px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text);font-size:14px;min-width:0}
+.ao-toolbar{align-items:center}.ao-toolbar span{font-size:13px;color:var(--muted)}
+.location-intro{font-size:15px;color:var(--muted);line-height:1.5}
+.location-options{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:20px 0}
+.location-options button,.raw-grid{min-height:52px;padding:12px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);color:var(--text);font-size:14px;font-weight:700;cursor:pointer}
+.location-options button:hover,.raw-grid:hover{border-color:var(--accent);color:var(--accent)}
+.raw-grid{width:100%;background:#fff;text-align:left;margin-bottom:12px}
+.raw-grid span{display:block;color:var(--muted);font-size:12px;font-weight:500;margin-top:4px}
 .ao-map-wrap{flex:1;min-height:180px;position:relative;background:#dceef5}
 #aoMap{height:100%;width:100%;background:#dceef5;font-family:inherit}
 .ao-map-hint{position:absolute;bottom:25px;left:50%;transform:translateX(-50%);z-index:500;background:rgba(255,255,255,.95);padding:6px 12px;border:1px solid var(--line);border-radius:999px;font-size:12px;white-space:nowrap;pointer-events:none}
 .ao-footer{padding:12px 20px 14px;border-top:1px solid var(--line)}
 #aoSelection{font-size:15px;font-weight:700;line-height:1.5}
 .ao-warning{color:var(--danger);font-size:13px;line-height:1.45;margin:7px 0}
-#aoConfirmLabel{margin:8px 0;font-size:13px}
-[hidden]#aoConfirmLabel{display:none}
 .ao-footer .ao-actions{justify-content:flex-end;margin-top:8px}
 .ao-footer .note{margin-bottom:0}
 .grid-label{background:rgba(255,255,255,.85);border:0;box-shadow:none;color:#1d4ed8;font:700 11px ui-monospace,monospace;padding:1px 4px;pointer-events:none}

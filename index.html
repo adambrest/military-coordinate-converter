@@ -240,18 +240,21 @@
     </div>
   </div>
 
+  <div class="overlay" id="locationOverlay" role="dialog" aria-modal="true" aria-labelledby="locationTitle">
+    <div class="modal location-modal"><h3 id="locationTitle">Where is this grid reference?</h3><p class="location-intro">You entered a short MGR without its area. Choose the grid it belongs to.</p>
+      <div class="location-options"><button data-location="sg">Singapore MGR</button><button data-location="thailand">Thailand MGR</button><button data-location="brunei">Brunei MGR</button><button data-location="australia">Australia MGR</button><button data-location="taiwan">Taiwan MGR</button></div>
+      <button class="raw-grid" data-location="mgrs">Raw WGS 84 MGRS <span>Select an area on the world map</span></button>
+      <div class="m-actions"><button id="locationClose">Close</button></div>
+    </div>
+  </div>
   <div class="overlay" id="aoOverlay" role="dialog" aria-modal="true" aria-labelledby="aoTitle">
     <div class="modal ao-modal">
       <div class="ao-heading"><div><h3 id="aoTitle">Select your area</h3><p id="aoInstruction">Zoom in, then click your area to select its grid square.</p></div><button id="aoClose" aria-label="Close map">×</button></div>
-      <div class="ao-toolbar">
-        <label>Go to<select id="aoJump"><option value="">World / landmarks</option></select></label>
-        <label>Grid system<select id="aoSystem"><option value="auto">Automatic · country preset</option><option value="mgrs">Global WGS 84</option></select></label>
-      </div>
+      <div class="ao-toolbar"><button id="aoBack" class="setting-action">Change location</button><span id="aoSystemLabel"></span></div>
       <div class="ao-map-wrap"><div id="aoMap" aria-label="AO map. Arrow keys pan, plus and minus zoom. Use Select map centre to choose an area." tabindex="0"></div><div class="ao-map-hint" id="aoScale">Zoom in to see 100 km squares</div></div>
       <div class="ao-footer">
         <div id="aoSelection" aria-live="polite">No area selected</div>
         <div id="aoWarning" class="ao-warning" role="alert" hidden></div>
-        <label id="aoConfirmLabel" class="chk" hidden><input type="checkbox" id="aoDatumConfirm"> I intend to use WGS 84, not the local datum.</label>
         <div class="ao-actions"><button class="setting-action" id="aoCentre">Select map centre</button><button class="setting-action primary" id="aoApply" disabled>Use this area</button></div>
         <p class="note" id="aoNetwork">Map context is approximate. Street tiles require internet; grids and landmarks work offline.</p>
       </div>
@@ -372,7 +375,7 @@
     }
     if(p.kind==="grid"||p.shortGrid){
       const {E,N}=toProjFromWGS(lat,lon,projectionFor(presetId,S)), lead=[Math.floor(E/100000),Math.floor(N/100000)];
-      const selected=s.square||p.lead;
+      const selected=p.lead||s.square;
       const canOmit = selected && selected[0]===lead[0] && selected[1]===lead[1];
       // Full UTM references retain meter units, matching the full-reference parser.
       if(p.large && (!canOmit || s.sgOmit===false)) return [String(Math.floor(E+0.05)),String(Math.floor(N+0.05))];
@@ -573,8 +576,10 @@
     if(p.kind==="grid"){
       if(!a && !b) return {error:"empty",empty:true};
       if(!/^\d+$/.test(a)||!/^\d+$/.test(b)) return {error:"digits only",badA:!/^\d+$/.test(a),badB:!/^\d+$/.test(b)};
-      if(s.sgOmit!==false&&a.length!==b.length) return {error:"unequal length",badA:true,badB:true};
-      return {...sgToWGS(a,b,s,s.square||p.lead,projectionFor(presetId,S)),digits:s.sgOmit===false?(s.sgDigits||4):a.length};
+      const short=a.length===b.length&&a.length<=(s.sgDigits||4);
+      const inputSettings=short?{...s,sgOmit:true}:s;
+      if(inputSettings.sgOmit!==false&&a.length!==b.length) return {error:"unequal length",badA:true,badB:true};
+      return {...sgToWGS(a,b,inputSettings,p.lead,projectionFor(presetId,S)),digits:inputSettings.sgOmit===false?(s.sgDigits||4):a.length};
     }
     // utm: full easting/northing in meters, OR a truncated grid that needs a picked 100 km square
     if(!a && !b) return {error:"empty",empty:true};
@@ -749,12 +754,13 @@
     function openCountryChooser(text,i){
       state.points=[];stale=false;renderTo();
       const preset=COUNTRY_PRESETS.includes(state.from)?state.from:null;
-      state.pendingGrid={text,i};state.aoConfirmed=false;
+      const system=state.pendingGrid?.system||(state.from==="mgrs"&&!state.pendingGrid?"mgrs":state.explicitInput&&preset?preset:undefined);
+      state.pendingGrid={text,i,system};state.aoConfirmed=false;
       text.trim().split(/\r?\n/).forEach((line,k)=>{const g=splitGrid(line);if(g.error)return;while(state.rows.length<=i+k)state.rows.push(["","",""]);state.rows[i+k]=[g.e,g.n,state.rows[i+k][2]||""];});
       if(state.from==="wgs84"){state.from="mgrs";$("#fromSys").value="mgrs";}
       renderFrom();save();
       const g=splitGrid(text.trim().split(/\r?\n/)[0]);
-      picker.open({pending:{text,i},pick:g.error?null:g,point:state.lastLocation,preset});
+      picker.open({pending:{text,i},pick:g.error?null:g,point:state.lastLocation,preset,system});
     }
     function openSquareBrowser(id,afterPick){
       const point=state.points?.[0]||state.lastLocation;
@@ -763,7 +769,7 @@
       picker.open({system:id,preset:id,point,pick:g&&!g.error?g:null,side:state.from===id?"from":"to",afterPick});
     }
     function showSquarePicker(id,pick){
-      picker.open({system:id==="mgrs"?"mgrs":"auto",preset:id,pick,point:state.lastLocation,side:"from",afterPick:convert});
+      picker.open({system:id,preset:id,pick,point:state.lastLocation,side:"from",afterPick:convert});
     }
     function zoneCodeLabel(p,e,n){return (p.zoneCode||p.name.replace(" MGR",""))+" · E"+e+" N"+n;}
     function assignSquare(id,e,n){state.settings[id].square=[+e,+n];}
@@ -807,7 +813,7 @@
       }else{
         keys=points.map(p=>{const q=toProjFromWGS(p.lat,p.lon,projectionFor(id,state.settings));return Math.floor(q.E/100000)+"/"+Math.floor(q.N/100000);});
       }
-      const ao=id==="mgrs"?s.ao:(s.square||PRESETS[id].lead)?.join("/");
+      const ao=id==="mgrs"?s.ao:(PRESETS[id].lead||s.square)?.join("/");
       if(new Set(keys).size>1||(ao&&keys.some(k=>k!==ao))){
         s.sgOmit=false;
         return "Coordinates cross an AO boundary. Full prefixes are required and have been kept.";
@@ -826,6 +832,7 @@
       const full=lines.length&&lines.every(fullMGR);
       if(short){
         e.preventDefault();
+        if(PRESETS[state.from].lead)state.aoConfirmed=true;
         if(!state.aoConfirmed||state.from==="wgs84"||(state.from==="mgrs"&&!state.settings.mgrs.ao)){
           openCountryChooser(text,i);return;
         }
@@ -868,7 +875,7 @@
         }
         const g=splitGrid(v);
         if(!g.error&&g.d>=3){
-          if(!state.aoConfirmed||state.from==="wgs84"){openCountryChooser(v,i);return;}
+          if(!state.aoConfirmed&&!PRESETS[state.from].lead||state.from==="wgs84"){openCountryChooser(v,i);return;}
           A.value=g.e;B.value=g.n;readRows();
         }else if(PRESETS[state.from].kind==="latlong"){
           const p=parseLatLon(v,state.settings.wgs84.order);
@@ -878,7 +885,7 @@
       readRows();
       if(state.rows.some(r=>r[0].trim()&&r[1].trim())){
         const short=splitGrid(A.value+" "+B.value);
-        if(!short.error&&short.d>=3&&!state.aoConfirmed){openCountryChooser(A.value+" "+B.value,i);return;}
+        if(!short.error&&short.d>=3&&!state.aoConfirmed&&!PRESETS[state.from].lead){openCountryChooser(A.value+" "+B.value,i);return;}
         convert();
       }
     }
@@ -897,7 +904,7 @@
     function renderRegionChip(chipId,presetId){
       const chip=$(chipId); if(!chip) return;
       const label=regionChipLabel(presetId);
-      chip.hidden=presetId==="wgs84";
+      chip.hidden=presetId==="wgs84"||!!PRESETS[presetId].lead;
       chip.textContent=label?`AO: ${label} · Change`:"Select AO on map";
       chip.setAttribute("role","button");chip.tabIndex=0;
       chip.onclick=()=>openSquareBrowser(presetId);
@@ -927,7 +934,7 @@
         if(r){openCountryChooser(r[0]+" "+r[1],i);return;}
         delete state.pendingGrid;
       }
-      if(!state.aoConfirmed&&state.from!=="wgs84"){
+      if(!state.aoConfirmed&&state.from!=="wgs84"&&!PRESETS[state.from].lead){
         const unresolved=state.rows.findIndex(r=>{const g=splitGrid(r[0]+" "+r[1]);return !g.error&&g.d>=3;});
         if(unresolved>=0){openCountryChooser(state.rows[unresolved][0]+" "+state.rows[unresolved][1],unresolved);return;}
       }
@@ -1025,6 +1032,7 @@
       readRows();
       const hasInput=state.rows.some(r=>r.some(v=>String(v).trim()));
       state.from=$("#fromSys").value;
+      state.explicitInput=true;
       delete state.pendingGrid;
       state.aoConfirmed=false;
       if(state.from==="mgrs")state.confirmedGlobalPresets=[];
@@ -1099,7 +1107,7 @@
           const la=fmtLat(1.352083,s),lo=fmtLon(103.819836,s);
           h+=`<div class="example">Example&nbsp; <b>${s.order==="lonlat"?lo+"&nbsp;&nbsp;&nbsp;"+la:la+"&nbsp;&nbsp;&nbsp;"+lo}</b></div>`;
         } else if(p.kind==="grid"||p.shortGrid){
-          if(p.large||p.kind==="grid"){
+          if(p.large){
             const label=regionChipLabel(id);
             h+=`<section class="settings-section ao-panel${label?"":" needs-ao"}"><h4 class="settings-subhead">${label?"Area of operations (AO)":"Choose your AO"}</h4>`;
             if(label){

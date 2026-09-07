@@ -53,10 +53,22 @@ test('Google place URL uses final pin, not related place or camera',()=>{
   const r=vm.runInContext('extractMapCoordinate("https://www.google.com/maps/place/Test/@-22.5957012,149.235423,291833m/data=!3d-32.2978819!4d115.7029661!3d-22.7105094!4d150.4091992")',c);
   assert.equal(r.lat,-22.7105094);assert.equal(r.lon,150.4091992);
 });
-test('arbitrary 4+4 input opens map immediately and selecting Singapore defaults local',()=>{
-  const a=app();a.paste('3000 3000');assert.ok(a.w.mapOptions.pending);assert.equal(a.$('#copyBtn').disabled,true);
-  a.w.pickerHooks.onSelect({id:'sg',e:6,n:1,lat:1.35,lon:103.82},a.w.mapOptions);
-  assert.equal(a.$('#fromSys').value,'sg');assert.equal(a.$('#toSys').value,'wgs84');a.dom.window.close();
+test('Singapore default accepts a short grid without asking for an area',()=>{
+  const a=app();a.paste('3000 3000');assert.equal(a.w.mapOptions,undefined);assert.equal(a.$('#copyBtn').disabled,false);assert.equal(a.state().settings.sg.sgDigits,4);a.dom.window.close();
+});
+test('Singapore latitude/longitude defaults to local 4+4 without any location prompt',()=>{
+  const a=app(undefined,true);a.paste('1.352083,103.819836');
+  assert.equal(a.$('#toSys').value,'sg');assert.match(a.$('#toRows .a').value,/^\d{4}$/);
+  assert.equal(a.$('#locationOverlay').classList.contains('open'),false);assert.equal(a.$('#aoOverlay').classList.contains('open'),false);a.dom.window.close();
+});
+test('explicit Raw WGS 84 input skips the quick selector',()=>{
+  const a=app(undefined,true);a.change('#fromSys','mgrs');a.paste('1234 5678');
+  assert.equal(a.$('#locationOverlay').classList.contains('open'),false);assert.ok(a.$('#aoOverlay').classList.contains('open'));a.dom.window.close();
+});
+test('Brunei can be resolved by one country choice without a map',()=>{
+  const c=core(),cells=vm.runInContext('formatPoint(4.9,114.9,"brunei",defaultSettings())',c);
+  const a=app(undefined,true);a.change('#fromSys','wgs84');a.paste(cells.join(' '));a.$('[data-location="brunei"]').click();
+  assert.equal(a.$('#fromSys').value,'brunei');assert.equal(a.$('#copyBtn').disabled,false);assert.equal(a.$('#aoOverlay').classList.contains('open'),false);a.dom.window.close();
 });
 test('paste outside presets selects global MGRS with letters and auto AO',()=>{
   const a=app();a.paste('48.8582, 2.2945');assert.equal(a.$('#toSys').value,'mgrs');
@@ -88,28 +100,29 @@ test('Australia settings migrate to single combined approximation',()=>{
   const a=app(saved);a.paste('-22.7105094,150.4091992');assert.equal(a.state().settings.australia.datum,undefined);assert.equal(a.$('#copyBtn').disabled,false);
   a.$('#tab-set').click();assert.match(a.$('#view-set').textContent,/WGS 84 \/ GDA2020/);assert.doesNotMatch(a.$('#view-set').innerHTML,/data-v="gda2020"/);a.dom.window.close();
 });
-test('real picker renders grids, selects preset and explicitly confirms WGS 84',()=>{
-  const a=app(undefined,true);a.paste('3000 3000');
-  assert.ok(a.$('#aoOverlay').classList.contains('open'));
-  assert.ok(a.$('#aoMap canvas'));
-  const singapore=[...a.$('#aoJump').options].find(o=>o.textContent==='Singapore');
-  a.change('#aoJump',singapore.value);a.$('#aoCentre').click();
-  assert.match(a.$('#aoSelection').textContent,/Singapore MGR/);assert.equal(a.$('#aoApply').disabled,false);
-  a.change('#aoSystem','mgrs');assert.equal(a.$('#aoApply').disabled,true);assert.equal(a.$('#aoConfirmLabel').hidden,false);
-  a.$('#aoDatumConfirm').click();assert.equal(a.$('#aoApply').disabled,false);
-  a.$('#aoApply').click();assert.equal(a.$('#fromSys').value,'mgrs');assert.equal(a.$('#copyBtn').disabled,false);
-  a.dom.window.close();
+test('ambiguous input introduces the quick chooser; Singapore is one click',()=>{
+  const a=app(undefined,true);a.change('#fromSys','wgs84');a.paste('3000 3000');
+  assert.ok(a.$('#locationOverlay').classList.contains('open'));assert.equal(a.$('#aoMap canvas'),null);
+  a.$('[data-location="sg"]').click();assert.equal(a.$('#fromSys').value,'sg');assert.equal(a.$('#copyBtn').disabled,false);assert.equal(a.$('#aoOverlay').classList.contains('open'),false);a.dom.window.close();
 });
-test('map picker includes all existing landmark jumps and works without a street map',()=>{
-  const a=app(undefined,true);a.paste('1234 5678');
-  const jumps=a.$('#aoJump').textContent;
-  for(const landmark of ['Sai Yok','Camp Tilpal','Camp Growl','Hukou','Heng Chun'])assert.ok(jumps.includes(landmark),landmark);
-  a.$('#aoClose').click();assert.equal(a.$('#aoOverlay').classList.contains('open'),false);assert.equal(a.$('#copyBtn').disabled,true);a.dom.window.close();
+test('country selection opens a focused map with named camps and only AO grids',()=>{
+  for(const [id,names] of [['thailand',['Sai Yok']],['australia',['Camp Tilpal','Camp Growl']],['taiwan',['Hukou','Heng Chun']]]){
+    const a=app(undefined,true);a.change('#fromSys','wgs84');a.paste('1234 5678');a.$('[data-location="'+id+'"]').click();
+    assert.ok(a.$('#aoOverlay').classList.contains('open'));assert.equal(a.$('#aoJump'),null);
+    const labels=[...a.w.document.querySelectorAll('.camp-label')].map(e=>e.textContent).join(' ');
+    for(const name of names)assert.ok(labels.includes(name),name);
+    assert.equal(a.$('#aoScale').textContent,'100 km AO boundaries');a.dom.window.close();
+  }
 });
-test('dismissed map preserves unresolved input and Convert asks again',()=>{
-  const a=app(undefined,true);a.change('#fromSys','wgs84');a.paste('1234 5678');a.$('#aoClose').click();
+test('Raw WGS 84 starts with an uncluttered world map and no extra confirmation',()=>{
+  const a=app(undefined,true);a.change('#fromSys','wgs84');a.paste('1234 5678');a.$('[data-location="mgrs"]').click();
+  assert.match(a.$('#aoTitle').textContent,/Raw WGS 84/);assert.equal(a.$('#aoDatumConfirm'),null);
+  assert.equal(a.w.document.querySelectorAll('.grid-label').length,0);assert.match(a.$('#aoScale').textContent,/Zoom in/);a.dom.window.close();
+});
+test('dismissed chooser preserves input and Convert asks again',()=>{
+  const a=app(undefined,true);a.change('#fromSys','wgs84');a.paste('1234 5678');a.$('#locationClose').click();
   assert.equal(a.$('#fromRows .a').value,'1234');assert.equal(a.$('#fromRows .b').value,'5678');
-  a.$('#convertBtn').click();assert.ok(a.$('#aoOverlay').classList.contains('open'));assert.equal(a.$('#copyBtn').disabled,true);a.dom.window.close();
+  a.$('#convertBtn').click();assert.ok(a.$('#locationOverlay').classList.contains('open'));assert.equal(a.$('#copyBtn').disabled,true);a.dom.window.close();
 });
 test('complete global inputs across AOs warn even with latitude/longitude output',()=>{
   const a=app();a.paste('31UDQ 4825 1193\n30UXC 9931 1016');

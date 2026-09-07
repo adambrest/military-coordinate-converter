@@ -6,7 +6,7 @@ Convert latitude/longitude, global WGS 84 MGRS, and military grids for Singapore
 
 ## Use
 
-Paste a coordinate or Maps link. For a short grid reference, select its AO on the map. References crossing AOs keep their full prefixes.
+Paste a coordinate or Maps link. For an ambiguous grid, choose its country; select an AO only when needed. Raw WGS 84 uses the world map. References crossing AOs keep their full prefixes.
 
 Conversion and AO grids work offline after caching; street maps need internet. Check the datum in Settings against your issued map.
 
