@@ -10,7 +10,7 @@ const html=read('index.html');
 const inline=html.match(/<script>\s*([\s\S]*?)<\/script>/)[1];
 function core(){
   const ctx=vm.createContext({console,URL});
-  for(const f of ['proj4.js','vendor/mgrs.js','grid-core.js','australia-map.js'])vm.runInContext(read(f),ctx);
+  for(const f of ['proj4.js','vendor/mgrs.js','grid-core.js','map-context.js'])vm.runInContext(read(f),ctx);
   vm.runInContext(inline.split('  /* ============================ UI / state')[0],ctx);
   return ctx;
 }
@@ -18,7 +18,7 @@ function app(saved,realMap=false){
   const dom=new JSDOM(html.replace(/<script[\s\S]*?<\/script>/g,''),{url:'https://example.test/',runScripts:'outside-only',pretendToBeVisual:true});
   const w=dom.window;
   if(saved)w.localStorage.setItem('mgrconv-v1',JSON.stringify(saved));
-  for(const f of ['version.js','proj4.js','vendor/mgrs.js','grid-core.js','australia-map.js'])w.eval(read(f));
+  for(const f of ['version.js','proj4.js','vendor/mgrs.js','grid-core.js','map-context.js'])w.eval(read(f));
   if(realMap){
     const ctx=new Proxy({measureText:s=>({width:String(s).length*6})},{get:(obj,key)=>key in obj?obj[key]:()=>{}});
     w.HTMLCanvasElement.prototype.getContext=()=>ctx;

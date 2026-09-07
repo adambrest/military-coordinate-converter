@@ -96,6 +96,7 @@
       const land=L.geoJSON(null,{pane:"offlineLand",style:{color:"#a8bcc2",weight:.6,fillColor:"#f3f3eb",fillOpacity:1},interactive:false}).addTo(map);
       fetch("vendor/land.geojson").then(r=>{if(!r.ok)throw Error();return r.json();}).then(data=>land.addData(data)).catch(()=>{});
       map.attributionControl.addAttribution('<a href="https://www.naturalearthdata.com/">Natural Earth</a>');
+      map.attributionControl.addAttribution('Road context © <a href="https://spatial-gis.information.qld.gov.au/arcgis/rest/services/Basemaps/FoundationData/MapServer/23">State of Queensland</a>');
       const tiles=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,noWrap:true,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
       tiles.on("tileerror",()=>{$("aoNetwork").textContent="Street map unavailable. Offline land, grids and landmarks remain available.";});
       tiles.on("load",()=>{if(navigator.onLine)$("aoNetwork").textContent="Map context is approximate. Street tiles require internet; grids and landmarks work offline.";});
@@ -108,9 +109,10 @@
         addJump(p.name.replace(" MGR",""),p.anchor?.[0]??(bb[0]+bb[1])/2,p.anchor?.[1]??(bb[2]+bb[3])/2,id==="sg"?11:8);
         const outlines=p.regions||[p.outline||[[bb[2],bb[0]],[bb[3],bb[0]],[bb[3],bb[1]],[bb[2],bb[1]]]];
         for(const poly of outlines)polygon(poly,{color:"#0f766e",weight:1.5,dashArray:"5 5",fillOpacity:.025},land);
-        for(const poly of p.mapLand||[])polygon(poly,{pane:"offlineLand",color:"#a8bcc2",weight:.6,fillColor:"#f3f3eb",fillOpacity:1},land);
-        for(const line of p.roads||(p.road?[p.road]:[]))L.polyline(line.map(p=>[p[1],p[0]]),{color:"#ce8a22",weight:2,interactive:false}).addTo(land);
-        for(const lm of p.landmarks||[]){
+        const context=p.context||{};
+        for(const poly of context.land||[])polygon(poly,{pane:"offlineLand",color:"#a8bcc2",weight:.6,fillColor:"#f3f3eb",fillOpacity:1},land);
+        for(const line of context.roads||[])L.polyline(line.map(p=>[p[1],p[0]]),{color:"#ce8a22",weight:2,interactive:false}).addTo(land);
+        for(const lm of context.landmarks||[]){
           addJump(lm.name,lm.lat,lm.lon,12);
           landmarks.push(L.circleMarker([lm.lat,lm.lon],{radius:5,color:"#fff",weight:1.5,fillColor:"#be123c",fillOpacity:1}).addTo(map).bindTooltip(lm.name,{direction:"top",className:"camp-label"}).on("click",e=>{L.DomEvent.stopPropagation(e);select(lm.lat,lm.lon);}));
         }

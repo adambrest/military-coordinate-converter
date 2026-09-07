@@ -79,25 +79,6 @@
   /* region chip + square picker */
   .regionchip{display:inline-flex;align-items:center;align-self:flex-start;font-size:11px;font-weight:600;color:var(--accent);background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:5px 10px;margin-bottom:8px}
   .regionchip[hidden]{display:none}
-  .sqmodal{max-width:340px}
-  .sqmap{margin:12px 0;display:flex;flex-direction:column;align-items:center}
-  .sqsvg{width:100%;max-width:260px;height:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
-  .sqland{fill:rgba(37,99,235,.06);stroke:var(--line);stroke-width:1}
-  .sqroad{fill:none;stroke:var(--warn);stroke-width:1.5;stroke-dasharray:3 2;opacity:.8}
-  .sqwater{fill:#dceef5;pointer-events:none}
-  .sqcoast{fill:#f6f5ee;stroke:#80a8b1;stroke-width:1;stroke-linejoin:round;pointer-events:none}
-  .sqhighway{fill:none;stroke:#ce8a22;stroke-width:2;stroke-linejoin:round;pointer-events:none}
-  .sqcontext text,.sqmark text,.sqcand text{paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round}
-  .sqcontext text{fill:#805617;font-size:9px;font-weight:700}
-  .sqmark line{stroke:var(--muted);stroke-width:.7;pointer-events:none}
-  .sqsource{display:block;text-align:right;font-size:10px;color:var(--muted);margin-top:4px}
-  .sqgrid{stroke:var(--accent);stroke-width:.5;opacity:.3;pointer-events:none}
-  .sqbox{fill:rgba(37,99,235,.10);stroke:var(--accent);stroke-width:1.25;cursor:pointer}
-  .sqbox:hover{fill:rgba(124,58,237,.18);stroke:var(--to)}
-  .sqcand{cursor:pointer}
-  .sqcand text{fill:var(--text);font-size:9px;font-weight:700;pointer-events:none}
-  .sqmark circle{fill:var(--danger);stroke:#fff;stroke-width:1}
-  .sqmark text{fill:var(--muted);font-size:8px;font-weight:700;pointer-events:none}
   .exportbar{display:flex;gap:8px;margin-top:12px}
   .exportbar button{flex:1 1 0;min-height:42px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--text);font-size:13px;font-weight:700;cursor:pointer}
   .exportbar button.maps{background:var(--ok);color:#fff;border-color:var(--ok)}
@@ -286,13 +267,13 @@
   <script src="vendor/leaflet.js"></script>
   <script src="grid-core.js"></script>
   <script src="map-picker.js"></script>
-  <script src="australia-map.js"></script>
+  <script src="map-context.js"></script>
   <script>
   "use strict";
   /* ============================ projections ============================ */
   proj4.defs("EPSG:3168","+proj=omerc +no_uoff +lat_0=4 +lonc=102.25 +alpha=323.0257905 +gamma=323.130102361111 +k=0.99984 +x_0=804670.24 +y_0=0 +ellps=evrst69 +towgs84=-11,851,5,0,0,0,0 +units=m +no_defs");
   proj4.defs("UTM51N","+proj=utm +zone=51 +datum=WGS84 +units=m +no_defs");
-  proj4.defs("AU_WGS84","+proj=utm +zone=56 +south +datum=WGS84 +units=m +no_defs");
+  proj4.defs("UTM56S","+proj=utm +zone=56 +south +datum=WGS84 +units=m +no_defs");
   proj4.defs("UTM47N","+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs");
   proj4.defs("BRUNEI","+proj=tmerc +lat_0=0 +lon_0=110 +k=0.997 +x_0=3901134 +y_0=898522 +ellps=evrstSS +towgs84=-678,670,-48,0,0,0,0 +units=m +no_defs");
   const LEAD_E=6, LEAD_N=1; // Singapore
@@ -315,37 +296,21 @@
     taiwan:{ id:"taiwan", name:"Taiwan MGR", kind:"utm", epsg:"UTM51N", zoneCode:"51N", large:true, shortGrid:true, exampleLead:[3,27],
       bbox:[21.85,25.35,119.9,122.1],
       outline:[[120.10,23.00],[120.05,23.60],[120.15,24.30],[120.55,24.90],[121.00,25.15],[121.60,25.30],[121.90,24.85],[121.55,24.00],[121.30,23.20],[120.90,22.50],[120.70,22.00],[120.45,22.35],[120.22,22.60],[120.10,23.00]],
-      landmarks:[
-        { name:"Taipei", lat:25.0478, lon:121.5171 },
-        { name:"Hukou", lat:24.900, lon:121.050 },
-        { name:"Yunlin", lat:23.7092, lon:120.5386 },
-        { name:"Heng Chun (Pao Li)", lat:22.065843, lon:120.794543 },
-      ],
       basis:"WGS 84 / UTM 51N.",
       specs:[["Map datum","WGS 84"],["Map spheroid","WGS 84"],["Grid zone","UTM 51N"]],
       proj:"+proj=utm +zone=51 +datum=WGS84 +units=m" },
     thailand:{ id:"thailand", name:"Thailand MGR", kind:"utm", epsg:"UTM47N", zoneCode:"47N", large:true, shortGrid:true, exampleLead:[5,15], anchor:[14.00287,99.24459], anchorRadiusKm:55,
       bbox:[5.5,20.6,97.3,105.7],
       outline:[[100.0,20.4],[101.2,20.3],[102.4,18.0],[104.8,17.9],[105.6,15.3],[104.5,14.4],[105.5,14.2],[102.4,13.6],[100.9,13.4],[100.0,12.6],[99.6,10.4],[100.3,7.4],[101.4,6.5],[99.9,6.7],[98.6,9.8],[98.9,12.6],[97.5,16.5],[98.9,19.8],[100.0,20.4]],
-      // Highway/Route 323 (Kanchanaburi - Sai Yok - Thong Pha Phum), simplified from OpenStreetMap way data (ref=323)
-      road:[[99.9366,13.79],[99.8943,13.81],[99.8753,13.83],[99.8546,13.85],[99.8205,13.87],[99.7996,13.89],[99.774,13.91],[99.7616,13.93],[99.7575,13.95],[99.7195,13.97],[99.5668,13.99],[99.5393,14.01],[99.5274,14.03],[99.4739,14.05],[99.399,14.07],[99.312,14.09],[99.2048,14.11],[99.1645,14.13],[99.1441,14.15],[99.1322,14.17],[99.1186,14.19],[99.0893,14.21],[99.0642,14.23],[99.0467,14.25],[99.025,14.27],[99.0069,14.29],[98.9943,14.31],[98.9792,14.33],[98.9628,14.35],[98.9375,14.38],[98.9166,14.4],[98.8877,14.42],[98.8698,14.44],[98.86,14.46],[98.8495,14.48],[98.8363,14.5],[98.8249,14.52],[98.7968,14.54],[98.7618,14.56],[98.7518,14.58],[98.7414,14.6],[98.7254,14.62],[98.6924,14.64],[98.6714,14.66],[98.6711,14.68],[98.6671,14.7],[98.6642,14.72],[98.6421,14.74],[98.6548,14.76],[98.6684,14.78],[98.6677,14.8]],
-      landmarks:[
-        { name:"Sai Yok", lat:14.00287, lon:99.24459 },
-      ],
-      roadLabel:{name:"Route 323",lat:14.4,lon:98.9166,dx:10,dy:0},
       basis:"WGS 84 / UTM 47N.",
       specs:[["Map datum","WGS 84"],["Map spheroid","WGS 84"],["Grid zone","UTM 47N"]],
       proj:"+proj=utm +zone=47 +datum=WGS84 +units=m" },
-    australia:{ id:"australia", name:"Australia MGR", kind:"utm", epsg:"AU_WGS84", zoneCode:"56S", large:true, shortGrid:true, exampleLead:[2,74],
+    australia:{ id:"australia", name:"Australia MGR", kind:"utm", epsg:"UTM56S", zoneCode:"56S", large:true, shortGrid:true, exampleLead:[2,74],
       bbox:[-23.2,-22.0,149.5,151.0], anchor:[-22.65,150.35], anchorRadiusKm:65,
-      mapLand:globalThis.AUSTRALIA_MAP.land, roads:globalThis.AUSTRALIA_MAP.roads,
-      roadLabel:{name:"A1 · Bruce Highway",lat:-23.17948,lon:150.45961,dx:-10,dy:0,align:"end"},
-      landmarks:[
-        { name:"Camp Tilpal", lat:-22.81253, lon:150.13259, dx:-10,dy:22,align:"end" },
-        { name:"Camp Growl", lat:-22.80307, lon:150.33732, dx:10,dy:-16,align:"start" },
-      ],
       basis:"WGS 84 / GDA2020 · MGA / UTM Zone 56S (approximate).",
       specs:[["Map datums","WGS 84 / GDA2020"],["Map spheroids","WGS 84 / GRS80"],["Grid zone","MGA / UTM 56S"]],
+      note:"WGS 84 / GDA2020 are approximated here without epoch-dependent shifts. Check the issued-map datum.",
+      feedback:"https://github.com/adambrest/military-coordinate-converter/issues/new?title=Australia%20datum%20feedback",
       proj:"+proj=utm +zone=56 +south +datum=WGS84 +units=m" },
     brunei:{ id:"brunei", name:"Brunei MGR", kind:"grid", epsg:"BRUNEI", lead:[44,14], omitDefault:true,
       bbox:[4.00,5.46,113.99,115.46],
@@ -365,10 +330,10 @@
       ],
       proj:"+proj=tmerc +lat_0=0 +lon_0=110 +k=0.997 +x_0=3901134 +y_0=898522 +ellps=evrstSS +towgs84=-678,670,-48,0,0,0,0 +units=m" },
   };
+  for(const [id,context] of Object.entries(globalThis.MAP_CONTEXT)) PRESETS[id].context=context;
   const PRESET_ORDER = ["wgs84","mgrs","sg","taiwan","thailand","australia","brunei"];
   const COUNTRY_PRESETS = ["sg","taiwan","thailand","australia","brunei"];
-  function australiaDatum(){ return {grid:"MGA / UTM 56S"}; }
-  function projectionFor(presetId,S){ return presetId==="australia"?"AU_WGS84":PRESETS[presetId].epsg; }
+  function projectionFor(presetId){ return PRESETS[presetId].epsg; }
 
   /* ============================ formatting ============================ */
   function fmtDecWGS(v,isLat,dec){ const h=isLat?(v>=0?"N":"S"):(v>=0?"E":"W"); return `${Math.abs(v).toFixed(dec)}° ${h}`; }
@@ -800,7 +765,7 @@
     function showSquarePicker(id,pick){
       picker.open({system:id==="mgrs"?"mgrs":"auto",preset:id,pick,point:state.lastLocation,side:"from",afterPick:convert});
     }
-    function zoneCodeLabel(p,e,n){return (p.id==="australia"?"MGA / UTM 56S":p.zoneCode||p.name.replace(" MGR",""))+" · E"+e+" N"+n;}
+    function zoneCodeLabel(p,e,n){return (p.zoneCode||p.name.replace(" MGR",""))+" · E"+e+" N"+n;}
     function assignSquare(id,e,n){state.settings[id].square=[+e,+n];}
     function autoArea(points){
       if(!points.length)return;
@@ -1174,15 +1139,13 @@
       let html="";
       PRESET_ORDER.forEach(id=>{
         const p=PRESETS[id], open=(openPreset===id);
-        const au=id==="australia"?australiaDatum(S):null;
-        const basis=au?"WGS 84 / GDA2020 · Zone 56S (approximate equivalence).":p.basis;
-        const specs=au?[["Map datums","WGS 84 / GDA2020"],["Map spheroids","WGS 84 / GRS80"],["Grid",au.grid]]:p.specs;
+        const {basis,specs}=p;
         html+=`<div class="preset${open?" open":""}" data-id="${id}">`;
         html+=`<button class="preset-head" data-head="${id}"><span class="pname">${p.name}${p.unverified?' <span class="tagu">unverified</span>':''}</span><span class="chev">${open?"▾":"▸"}</span></button>`;
         html+=`<div class="preset-body">`;
         html+=`<div class="basis">${basis}</div>`;
         if(specs) html+=`<dl class="specs">${specs.map(x=>`<dt>${x[0]}</dt><dd>${x[1]}</dd>`).join("")}</dl>`;
-        if(id==="australia") html+=`<div class="datum-warning">WGS 84 and GDA2020 share one approximate conversion here; epoch-dependent shifts are not modelled. The issued-map datum is unconfirmed; <a href="https://github.com/adambrest/military-coordinate-converter/issues/new?title=Australia%20datum%20feedback" target="_blank" rel="noopener noreferrer">submit feedback</a> if you can confirm it.</div>`;
+        if(p.note)html+=`<div class="datum-warning">${p.note} ${p.feedback?`<a href="${p.feedback}" target="_blank" rel="noopener noreferrer">Submit feedback</a>.`:""}</div>`;
         html+=controls(id);
         html+=`<button class="reset" data-reset="${id}" ${settingsAtDefaults(id)?"disabled":""}>Reset all ${p.name} settings</button>`;
         html+=`</div></div>`;
