@@ -146,7 +146,7 @@ test('explicit WGS 84 remains global when moving from Singapore to Brunei',()=>{
   a.paste('4.9,114.9');assert.equal(a.$('#toSys').value,'mgrs');assert.equal(a.$('#copyBtn').disabled,false);a.dom.window.close();
 });
 test('every visible country square is selectable and selection uses exactly its displayed polygon',()=>{
-  for(const [id,lat,lon] of [['taiwan',24.9,121.05],['australia',-22.80307,150.33732],['thailand',14.00287,99.24459]]){
+  for(const [id,lat,lon] of [['taiwan',24.9,121.05],['taiwan',22.065843,120.794543],['australia',-22.80307,150.33732],['thailand',14.00287,99.24459]]){
     const c=core(),en=vm.runInContext('toProjFromWGS('+lat+','+lon+',projectionFor("'+id+'"))',c);
     const input=[en.E,en.N].map(v=>String(Math.floor(v%100000/10)).padStart(4,'0')).join(' ');
     const a=app(undefined,true);a.change('#fromSys','wgs84');a.paste(input);a.$('[data-location="'+id+'"]').click();
@@ -182,4 +182,7 @@ test('coarse global output supports 100 km references and never becomes blank',(
 test('requested Cloudflare analytics is present once with the supplied token',()=>{
   const doc=new JSDOM(html).window.document,scripts=doc.querySelectorAll('script[data-cf-beacon]');assert.equal(scripts.length,1);
   assert.equal(scripts[0].src,'https://static.cloudflareinsights.com/beacon.min.js');assert.equal(JSON.parse(scripts[0].dataset.cfBeacon).token,'21282bd8a3994bb8a1e41ced9b4a604d');
+});
+test('every labelled camp and city lies in its own preset boundary',()=>{
+  const c=core();assert.equal(vm.runInContext('Object.values(PRESETS).every(p=>(p.context?.landmarks||[]).every(l=>presetContains(p.id,l.lat,l.lon)))',c),true);
 });

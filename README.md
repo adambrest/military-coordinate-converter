@@ -17,7 +17,7 @@ Raw WGS 84 can use a 100 km square or a larger grid zone; larger zones require s
 Map context is approximate.
 
 - Streets and Route 323: [OpenStreetMap](https://www.openstreetmap.org/copyright)
-- Offline land and coastline: [Natural Earth](https://www.naturalearthdata.com/)
+- Offline land, coastline and Taiwan boundary: [Natural Earth](https://www.naturalearthdata.com/)
 - Bruce Highway: [Queensland Government](https://spatial-gis.information.qld.gov.au/arcgis/rest/services/Basemaps/FoundationData/MapServer/23)
 - Camp references: [Tilpal](https://mapcarta.com/W1436392763), [Growl](https://en-gb.topographic-map.com/map-lvgsb3/Camp-Growl/)
 
