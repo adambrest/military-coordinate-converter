@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
 <title>Military Coordinate Converter</title>
+<meta name="description" content="Convert WGS 84 coordinates and military grids offline.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
@@ -168,6 +169,8 @@
   .preset-body{display:none;padding:12px 14px}
   .preset.open .preset-body{display:block}
   .basis{font-size:12px;color:var(--text);margin-bottom:6px;line-height:1.5}
+  .datum-warning{font-size:11px;line-height:1.45;color:var(--warn);border:1px solid currentColor;border-radius:8px;padding:9px;margin:10px 0}
+  .datum-warning a{color:inherit;font-weight:800}
   .specs{display:grid;grid-template-columns:max-content 1fr;gap:4px 10px;margin:10px 0 12px;padding:10px;background:var(--panel2);border-radius:8px;font-size:11px;line-height:1.45}
   .specs dt{color:var(--muted);font-weight:700}.specs dd{margin:0;color:var(--text)}
   .hint{font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0}
@@ -258,7 +261,7 @@
   <div class="overlay" id="countryOverlay">
     <div class="modal">
       <h3>Which country is this MGR from?</h3>
-      <div class="note">A shortened grid reference can point to different places. Choose the country before selecting an AO.</div>
+      <div class="note">Choose a country to locate the short reference.</div>
       <div class="country-options">
         <button type="button" data-country="sg">Singapore</button>
         <button type="button" data-country="taiwan">Taiwan</button>
@@ -266,7 +269,7 @@
         <button type="button" data-country="australia">Australia</button>
         <button type="button" data-country="brunei">Brunei</button>
       </div>
-      <div class="note">Not sure? Cancel and paste a nearby WGS 84 coordinate first, or choose the grid and AO later in Settings.</div>
+      <div class="note">Not sure? Paste a nearby WGS 84 coordinate first.</div>
       <div class="m-actions"><button id="countryCancel">Cancel</button></div>
     </div>
   </div>
@@ -275,7 +278,7 @@
   <div class="overlay" id="sqOverlay">
     <div class="modal sqmodal">
       <h3 id="sqTitle">Confirm your AO</h3>
-      <div class="note" id="sqNote">This short grid falls in more than one 100 km square. Tap your AO on the map — it's remembered for future entries.</div>
+      <div class="note" id="sqNote">Select the correct 100 km square.</div>
       <div id="sqMap" class="sqmap"></div>
       <div class="m-actions"><button id="sqCancel">Cancel</button></div>
     </div>
@@ -291,7 +294,7 @@
   /* ============================ projections ============================ */
   proj4.defs("EPSG:3168","+proj=omerc +no_uoff +lat_0=4 +lonc=102.25 +alpha=323.0257905 +gamma=323.130102361111 +k=0.99984 +x_0=804670.24 +y_0=0 +ellps=evrst69 +towgs84=-11,851,5,0,0,0,0 +units=m +no_defs");
   proj4.defs("UTM51N","+proj=utm +zone=51 +datum=WGS84 +units=m +no_defs");
-  proj4.defs("UTM56S","+proj=utm +zone=56 +south +datum=WGS84 +units=m +no_defs");
+  proj4.defs("MGA56","+proj=utm +zone=56 +south +ellps=GRS80 +units=m +no_defs");
   proj4.defs("UTM47N","+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs");
   proj4.defs("BRUNEI","+proj=tmerc +lat_0=0 +lon_0=110 +k=0.997 +x_0=3901134 +y_0=898522 +ellps=evrstSS +towgs84=-678,670,-48,0,0,0,0 +units=m +no_defs");
   const LEAD_E=6, LEAD_N=1; // Singapore
@@ -300,12 +303,12 @@
   // Each preset: parse(fields,settings)->{lat,lon}|{error}; format(lat,lon,settings)->[a,b]; cols; kind
   const PRESETS = {
     wgs84:{ id:"wgs84", name:"Global Lat/Long (WGS 84)", kind:"latlong",
-      basis:"WGS 84 geographic coordinates (EPSG:4326).",
+      basis:"WGS 84 latitude/longitude.",
       specs:[["Map datum","WGS 84"],["Map spheroid","WGS 84"]],
       proj:"EPSG:4326 · +proj=longlat +datum=WGS84 +no_defs" },
     sg:{ id:"sg", name:"Singapore MGR", kind:"grid", epsg:"EPSG:3168", lead:[LEAD_E,LEAD_N], omitDefault:true,
       bbox:[1.13,1.48,103.59,104.09],
-      basis:"Kertau 1948 / RSO Malaya (EPSG:3168).",
+      basis:"Kertau 1948 / RSO Malaya.",
       specs:[["Map datum","Kertau 1948"],["Map spheroid","Everest 1830 (1967 Definition)"]],
       proj:"+proj=omerc +lat_0=4 +lonc=102.25 +alpha=323.0257905 +gamma=323.130102361111 +k=0.99984 +x_0=804670.24 +y_0=0 +ellps=evrst69 +towgs84=-11,851,5,0,0,0,0 +units=m" },
     taiwan:{ id:"taiwan", name:"Taiwan MGR", kind:"utm", epsg:"UTM51N", zoneCode:"51N", large:true, shortGrid:true, exampleLead:[3,27],
@@ -317,7 +320,7 @@
         { name:"Yunlin", lat:23.7092, lon:120.5386 },
         { name:"Heng Chun (Pao Li)", lat:22.065843, lon:120.794543 },
       ],
-      basis:"WGS 84 / UTM Zone 51N.",
+      basis:"WGS 84 / UTM 51N.",
       specs:[["Map datum","WGS 84"],["Map spheroid","WGS 84"],["Grid zone","UTM 51N"]],
       proj:"+proj=utm +zone=51 +datum=WGS84 +units=m" },
     thailand:{ id:"thailand", name:"Thailand MGR", kind:"utm", epsg:"UTM47N", zoneCode:"47N", large:true, shortGrid:true, exampleLead:[5,15], anchor:[14.00287,99.24459], anchorRadiusKm:55,
@@ -329,10 +332,10 @@
         { name:"Sai Yok", lat:14.00287, lon:99.24459 },
       ],
       roadLabel:{name:"Route 323",lat:14.4,lon:98.9166,dx:10,dy:0},
-      basis:"WGS 84 / UTM Zone 47N.",
+      basis:"WGS 84 / UTM 47N.",
       specs:[["Map datum","WGS 84"],["Map spheroid","WGS 84"],["Grid zone","UTM 47N"]],
       proj:"+proj=utm +zone=47 +datum=WGS84 +units=m" },
-    australia:{ id:"australia", name:"Australia MGR", kind:"utm", epsg:"UTM56S", zoneCode:"56S", large:true, shortGrid:true, exampleLead:[2,74],
+    australia:{ id:"australia", name:"Australia MGR", kind:"utm", epsg:"MGA56", zoneCode:"56S", large:true, shortGrid:true, exampleLead:[2,74],
       bbox:[-23.2,-22.0,149.5,151.0], anchor:[-22.65,150.35], anchorRadiusKm:65,
       mapLand:globalThis.AUSTRALIA_MAP.land, roads:globalThis.AUSTRALIA_MAP.roads,
       roadLabel:{name:"A1 · Bruce Highway",lat:-23.17948,lon:150.45961,dx:-10,dy:0,align:"end"},
@@ -340,16 +343,16 @@
         { name:"Camp Tilpal", lat:-22.81253, lon:150.13259, dx:-10,dy:22,align:"end" },
         { name:"Camp Growl", lat:-22.80307, lon:150.33732, dx:10,dy:-16,align:"start" },
       ],
-      basis:"WGS 84 / UTM Zone 56S.",
-      specs:[["Map datum","WGS 84"],["Map spheroid","WGS 84"],["Grid zone","UTM 56S"]],
-      proj:"+proj=utm +zone=56 +south +datum=WGS84 +units=m" },
+      basis:"GDA2020 / MGA Zone 56.",
+      specs:[["Map datum","GDA2020 (provisional)"],["Map spheroid","GRS80"],["Grid zone","MGA 56"]],
+      proj:"+proj=utm +zone=56 +south +ellps=GRS80 +units=m" },
     brunei:{ id:"brunei", name:"Brunei MGR", kind:"grid", epsg:"BRUNEI", lead:[44,14], omitDefault:true,
       bbox:[4.00,5.46,113.99,115.46],
       regions:[
         [[115.146,4.909],[115.170,4.870],[115.207,4.826],[115.273,4.637],[115.267,4.556],[115.273,4.475],[115.309,4.405],[115.361,4.330],[115.324,4.315],[115.275,4.340],[115.221,4.360],[115.113,4.382],[115.092,4.405],[115.068,4.543],[115.027,4.660],[115.023,4.741],[115.030,4.821],[115.086,4.836],[115.131,4.852],[115.116,4.896],[115.146,4.909]],
         [[114.982,4.889],[114.955,4.851],[114.948,4.819],[114.896,4.812],[114.838,4.795],[114.788,4.754],[114.741,4.729],[114.768,4.657],[114.782,4.498],[114.806,4.433],[114.848,4.424],[114.836,4.357],[114.782,4.285],[114.818,4.260],[114.787,4.207],[114.767,4.132],[114.675,4.044],[114.628,4.017],[114.587,4.021],[114.569,4.064],[114.477,4.145],[114.433,4.247],[114.401,4.261],[114.317,4.263],[114.278,4.274],[114.290,4.361],[114.263,4.449],[114.238,4.484],[114.209,4.508],[114.140,4.551],[114.064,4.570],[113.999,4.601],[114.252,4.593],[114.327,4.607],[114.494,4.681],[114.566,4.743],[114.723,4.876],[114.928,5.001],[115.058,5.054],[115.103,5.037],[115.049,4.999],[115.023,4.934],[114.982,4.889]]
       ],
-      basis:"Transverse Mercator grid.",
+      basis:"Timbalai 1948 / Transverse Mercator.",
       specs:[
         ["Map datum","Timbalai 1948"],
         ["Map spheroid","Everest 1830 (1967)"],
@@ -678,9 +681,9 @@
     function rowsHaveContent(){ return state.rows.some(r=>r.some(v=>String(v).trim())); }
     function updatePasteHint(){
       const hint=$("#pasteHint");
-      if(!rowsHaveContent()) hint.textContent="Paste coordinates/MGR or a Google/Apple Maps link to autofill.";
-      else if(PRESETS[state.from].kind==="latlong") hint.textContent="Coordinates: paste latitude and longitude together. Google/Apple Maps links also work.";
-      else hint.textContent="MGR: paste easting then northing, spaced or joined.";
+      if(!rowsHaveContent()) hint.textContent="Paste coordinates, MGR or a Maps link.";
+      else if(PRESETS[state.from].kind==="latlong") hint.textContent="Paste latitude and longitude together.";
+      else hint.textContent="Paste easting then northing.";
     }
     /* ---- render FROM table ---- */
     function renderFrom(){
@@ -757,7 +760,7 @@
     let pendingCountryPaste=null;
     function closeCountryChooser(withGuidance){
       $("#countryOverlay").classList.remove("open"); pendingCountryPaste=null;
-      if(withGuidance) detect("MGR not added. Paste a nearby WGS 84 coordinate first, or choose the grid and AO in Settings.","");
+      if(withGuidance) detect("Paste nearby WGS 84 coordinates or choose an AO.","");
     }
     function openCountryChooser(text,i){ pendingCountryPaste={text,i}; $("#countryOverlay").classList.add("open"); }
     function applyCountryPaste(presetId){
@@ -911,7 +914,7 @@
       // whatever square is actually known — subdivide the candidate boxes finer to show that visually
       const gridN=Math.max(1, 6-pick.e.length);
       buildSquareMap(presetId, boxItems(p,cands), convert, gridN);
-      setSqHeader(`${short}: where is ${pick.e} ${pick.n}?`,"This short grid falls in more than one 100 km square. Tap your AO on the map — it's remembered for future entries.");
+      setSqHeader(`${short}: where is ${pick.e} ${pick.n}?`,"Select the correct 100 km square.");
       squareCancelGuidance=true; $("#sqOverlay").classList.add("open");
     }
     // manual entry point (from Settings): browse and pick a region with no pending ambiguous input
@@ -924,7 +927,7 @@
       const cands = p.anchor ? all.filter(c=>distKm(c.lat,c.lon,p.anchor[0],p.anchor[1])<=(p.anchorRadiusKm||55)*1.6) : all;
       const gridN=Math.max(1, 6-(s.sgDigits||4)); // no live input here — use the preset's current output precision
       buildSquareMap(presetId, boxItems(p, cands.length?cands:all), afterPick||(()=>renderSettings()), gridN);
-      setSqHeader(`${short}: confirm your AO`,"Tap your AO on the map — it's remembered until you clear it.");
+      setSqHeader(`${short}: confirm your AO`,"Select the correct area.");
       squareCancelGuidance=guideOnCancel; $("#sqOverlay").classList.add("open");
     }
     function buildSquareMap(presetId, items, afterPick, gridN){
@@ -1003,7 +1006,7 @@
     function updateRegionChips(){ renderRegionChip("#regionChip", state.from); renderRegionChip("#regionChipTo", state.to); }
     function closeSquarePicker(){
       $("#sqOverlay").classList.remove("open");
-      if(squareCancelGuidance) detect("AO not selected. Paste a nearby WGS 84 coordinate first, or choose it later in Settings.","");
+      if(squareCancelGuidance) detect("AO not selected.","");
       squareCancelGuidance=false;
     }
     $("#sqCancel").addEventListener("click",closeSquarePicker);
@@ -1120,7 +1123,7 @@
     function updateGpxNote(){
       const n=(state.points||[]).length;
       const ok=$("#gpxName").value.trim().length>0 && n>0;
-      $("#gpxNote").textContent = `${n} waypoint${n!==1?"s":""} • Garmin can build a route from these points`;
+      $("#gpxNote").textContent = `${n} waypoint${n!==1?"s":""}`;
       $("#gpxDownload").disabled=!ok;
     }
     $("#gpxBtn").addEventListener("click",openGpx);
@@ -1177,9 +1180,9 @@
               setTimeout(()=>{ const b=document.getElementById(clId); if(b) b.addEventListener("click",()=>{ delete state.settings[id].square; updateRegionChips(); changed(); }); const m=document.getElementById(mapId); if(m) m.addEventListener("click",()=>openSquareBrowser(id)); },0);
             } else {
               const mapId="mapbtn_"+id;
-              h+=`<div class="note">Choose your AO now to use shortened MGR coordinates. Until then, the full unambiguous grid is shown.</div>`;
+              h+=`<div class="note">Choose an AO to use short references.</div>`;
               h+=`<div class="ao-actions"><button class="setting-action primary" id="${mapId}" type="button">Choose AO on map</button></div>`;
-              h+=`<div class="note">Not sure? Paste a nearby WGS 84 coordinate in the Converter and we'll select the matching AO automatically.</div>`;
+              h+=`<div class="note">Or paste a nearby WGS 84 coordinate.</div>`;
               setTimeout(()=>{ const b=document.getElementById(mapId); if(b) b.addEventListener("click",()=>openSquareBrowser(id)); },0);
             }
             h+=`</section>`;
@@ -1192,16 +1195,16 @@
           const canOmit = !p.large || !!s.square;
           const omId="om_"+id;
           h+=`<label class="chk"><input type="checkbox" id="${omId}" ${canOmit&&s.sgOmit!==false?"checked":""} ${canOmit?"":"disabled"}> Omit 100 km square prefix</label>`;
-          if(!canOmit) h+=`<div class="note">Confirm your AO above first.</div>`;
+          if(!canOmit) h+=`<div class="note">Confirm the AO first.</div>`;
           setTimeout(()=>{ const c=document.getElementById(omId); if(c) c.addEventListener("change",e=>{ s.sgOmit=e.target.checked; changed(); }); },0);
           const lead=p.lead||p.exampleLead, fullE=lead[0]*100000+99999, fullN=lead[1]*100000+99999;
           const [ea,nb]=p.large&&(!canOmit||s.sgOmit===false)?[String(fullE),String(fullN)]:sgHalvesEN(fullE,fullN,s,lead,canOmit);
           h+=`<div class="example grid-example"><span>${fullE} ${fullN}</span><span class="arrow" aria-hidden="true">→</span><b>${ea} ${nb}</b></div>`;
-          h+=`<div class="note">Complete reference → displayed reference</div>`;
+          h+=`<div class="note">Full → displayed</div>`;
           h+=`</section>`;
         } else { // utm / projected
           h+=`<div class="srow"><span class="k">Precision (meters)</span>${seg([[0,"1 m"],[1,"10 cm"],[2,"1 cm"],[3,"1 mm"]],s.decimals,v=>{s.decimals=+v;changed();})}</div>`;
-          h+=`<div class="note">Full projected easting / northing in meters, no zone code.</div>`;
+          h+=`<div class="note">Easting / northing in metres.</div>`;
         }
         return h;
       };
@@ -1213,6 +1216,7 @@
         html+=`<div class="preset-body">`;
         html+=`<div class="basis">${p.basis}</div>`;
         if(p.specs) html+=`<dl class="specs">${p.specs.map(x=>`<dt>${x[0]}</dt><dd>${x[1]}</dd>`).join("")}</dl>`;
+        if(id==="australia") html+=`<div class="datum-warning">Datum unconfirmed. The issued map may use WGS 84, GDA2020 or AGD66. Check the map and <a href="https://github.com/adambrest/military-coordinate-converter/issues/new?title=Australia%20datum%20feedback&amp;body=Please%20share%20the%20datum%20printed%20on%20the%20issued%20map%3A%0A" target="_blank" rel="noopener noreferrer">submit feedback</a>.</div>`;
         html+=controls(id);
         html+=`<button class="reset" data-reset="${id}" ${settingsAtDefaults(id)?"disabled":""}>Reset all ${p.name} settings</button>`;
         html+=`</div></div>`;

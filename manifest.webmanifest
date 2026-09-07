@@ -1,7 +1,7 @@
 {
   "name": "Military Coordinate Converter",
   "short_name": "MilCoord",
-  "description": "Convert military grids and WGS 84 coordinates, with map links and GPX export. Works offline.",
+  "description": "Convert WGS 84 coordinates and military grids offline.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
