@@ -25,7 +25,7 @@ function app(saved,realMap=false){
     Object.defineProperty(w.HTMLElement.prototype,'clientWidth',{get(){return 800;}});
     Object.defineProperty(w.HTMLElement.prototype,'clientHeight',{get(){return this.id==='aoMap'?480:40;}});
     w.fetch=async()=>({ok:true,json:async()=>JSON.parse(read('vendor/land.geojson'))});
-    w.eval(read('vendor/leaflet.js'));w.eval(read('map-picker.js'));
+    w.eval(read('vendor/leaflet.js'));const createMap=w.L.map;w.L.map=(...args)=>w.testMap=createMap(...args);w.eval(read('map-picker.js'));
   }else w.createAOPicker=opts=>{w.pickerHooks=opts;return {open:o=>{w.mapOptions=o;w.document.getElementById('aoOverlay').classList.add('open');}};};
   w.eval(inline);
   const $=s=>w.document.querySelector(s);
@@ -78,9 +78,9 @@ test('country change revalidates immediately, clears output and exports',()=>{
   const a=app();a.paste('1.352083,103.819836');assert.equal(a.$('#toSys').value,'sg');assert.equal(a.$('#copyBtn').disabled,false);
   a.change('#toSys','taiwan');assert.match(a.$('#badPair').textContent,/Singapore, not Taiwan/);assert.equal(a.$('#copyBtn').disabled,true);assert.equal(a.$('#toRows .a'),null);a.dom.window.close();
 });
-test('explicit global output in Singapore requires check and is not auto-switched on later paste',()=>{
-  const a=app();a.paste('1.352083,103.819836');a.change('#toSys','mgrs');assert.ok(a.$('#datumOverlay').classList.contains('open'));assert.equal(a.$('#copyBtn').disabled,true);
-  a.$('#datumGlobal').click();assert.match(a.$('#toRows .a').value,/^48N/);a.paste('1.36,103.83');assert.equal(a.$('#toSys').value,'mgrs');a.dom.window.close();
+test('explicit global output assumes WGS 84 without confirmation or auto-switching',()=>{
+  const a=app();a.paste('1.352083,103.819836');a.change('#toSys','mgrs');assert.equal(a.$('#datumOverlay'),null);assert.equal(a.$('#copyBtn').disabled,false);
+  assert.match(a.$('#toRows .a').value,/^48N/);a.paste('1.36,103.83');assert.equal(a.$('#toSys').value,'mgrs');a.dom.window.close();
 });
 test('cross-AO batch forces prefixes and red warning even after format toggles',()=>{
   const a=app();a.paste('48.8582,2.2945');
@@ -111,7 +111,7 @@ test('country selection opens a focused map with named camps and only AO grids',
     assert.ok(a.$('#aoOverlay').classList.contains('open'));assert.equal(a.$('#aoJump'),null);
     const labels=[...a.w.document.querySelectorAll('.camp-label')].map(e=>e.textContent).join(' ');
     for(const name of names)assert.ok(labels.includes(name),name);
-    assert.equal(a.$('#aoScale').textContent,'100 km AO boundaries');a.dom.window.close();
+    assert.match(a.$('#aoScale').textContent,/100 km AO squares|No matching AO/);a.dom.window.close();
   }
 });
 test('Raw WGS 84 starts with an uncluttered world map and no extra confirmation',()=>{
@@ -141,7 +141,45 @@ test('boundary guard cannot be bypassed by the output-prefix checkbox',async()=>
   await new Promise(resolve=>setTimeout(resolve,10));
   a.$('#om_mgrs').click();assert.equal(a.$('#om_mgrs').checked,false);assert.match(a.$('#badPair').textContent,/AO boundary/);a.dom.window.close();
 });
-test('each different local datum receives its own WGS 84 confirmation',()=>{
-  const a=app();a.paste('1.352083,103.819836');a.change('#toSys','mgrs');a.$('#datumGlobal').click();
-  a.paste('4.9,114.9');assert.ok(a.$('#datumOverlay').classList.contains('open'));assert.match(a.$('#datumMessage').textContent,/Brunei/);assert.equal(a.$('#copyBtn').disabled,true);a.dom.window.close();
+test('explicit WGS 84 remains global when moving from Singapore to Brunei',()=>{
+  const a=app();a.paste('1.352083,103.819836');a.change('#toSys','mgrs');
+  a.paste('4.9,114.9');assert.equal(a.$('#toSys').value,'mgrs');assert.equal(a.$('#copyBtn').disabled,false);a.dom.window.close();
+});
+test('every visible country square is selectable and selection uses exactly its displayed polygon',()=>{
+  for(const [id,lat,lon] of [['taiwan',24.9,121.05],['australia',-22.80307,150.33732],['thailand',14.00287,99.24459]]){
+    const c=core(),en=vm.runInContext('toProjFromWGS('+lat+','+lon+',projectionFor("'+id+'"))',c);
+    const input=[en.E,en.N].map(v=>String(Math.floor(v%100000/10)).padStart(4,'0')).join(' ');
+    const a=app(undefined,true);a.change('#fromSys','wgs84');a.paste(input);a.$('[data-location="'+id+'"]').click();
+    const layers=[];a.w.testMap.eachLayer(l=>{if(l.options?.aoCandidate)layers.push(l);});assert.ok(layers.length>0,id);
+    for(const layer of layers){
+      layer.fire('click',{originalEvent:new a.w.MouseEvent('click')});
+      assert.equal(a.$('#aoApply').disabled,false);assert.equal(a.$('#aoWarning').hidden,true);
+      const highlighted=[];a.w.testMap.eachLayer(l=>{if(l.options?.color==='#7c3aed'&&l.getLatLngs)highlighted.push(l);});
+      assert.equal(highlighted.length,1);assert.equal(JSON.stringify(highlighted[0].getLatLngs()),JSON.stringify(layer.getLatLngs()));
+      const r=layer.options.aoCandidate;
+      assert.equal(vm.runInContext('presetContains("'+id+'",'+r.point.lat+','+r.point.lon+')',c),true);
+      const xy=r.polygon.map(p=>a.w.proj4('WGS84',r.proj,p));
+      assert.ok(Math.abs(Math.max(...xy.map(p=>p[0]))-Math.min(...xy.map(p=>p[0]))-100000)<.01);
+    }
+    a.$('#aoApply').click();assert.equal(a.$('#copyBtn').disabled,false,id);a.dom.window.close();
+  }
+});
+test('larger Raw WGS 84 zones retain square letters and cannot invent missing ones',()=>{
+  const c=core();assert.match(c.GlobalGrid.parse('1234 5678','31U').error,/square letters/);
+  assert.equal(c.GlobalGrid.parse('DQ 4825 1193','31U').prefix,'31UDQ');
+  const settings=vm.runInContext('defaultSettings()',c);settings.mgrs.ao='31U';settings.mgrs.sgOmit=true;c.settings=settings;
+  assert.match(vm.runInContext('formatPoint(48.8582,2.2945,"mgrs",settings)[0]',c),/^DQ /);
+  const a=app(undefined,true);a.change('#fromSys','mgrs');a.paste('1234 5678');a.change('#aoSize','zone');
+  a.w.testMap.setView([48,2],5,{animate:false});a.change('#aoSize','zone');
+  const cells=[];a.w.testMap.eachLayer(l=>{if(l.options?.aoCandidate)cells.push(l);});assert.ok(cells.length);
+  const cell=cells.find(l=>l.options.aoCandidate.prefix==='31U');assert.ok(cell);cell.fire('click',{originalEvent:new a.w.MouseEvent('click')});
+  a.$('#aoApply').click();assert.equal(a.state().settings.mgrs.ao,'31U');assert.equal(a.$('#copyBtn').disabled,true);assert.match(a.$('#badPair').textContent,/square letters/);
+  a.paste('DQ 4825 1193');assert.equal(a.$('#copyBtn').disabled,false);a.dom.window.close();
+});
+test('coarse global output supports 100 km references and never becomes blank',()=>{
+  const c=core();assert.equal(vm.runInContext('(()=>{const s=defaultSettings();s.mgrs={sgDigits:0,sgOmit:true,ao:"31UDQ"};return formatPoint(48.8582,2.2945,"mgrs",s)[0]})()',c),'31UDQ');
+});
+test('requested Cloudflare analytics is present once with the supplied token',()=>{
+  const doc=new JSDOM(html).window.document,scripts=doc.querySelectorAll('script[data-cf-beacon]');assert.equal(scripts.length,1);
+  assert.equal(scripts[0].src,'https://static.cloudflareinsights.com/beacon.min.js');assert.equal(JSON.parse(scripts[0].dataset.cfBeacon).token,'21282bd8a3994bb8a1e41ced9b4a604d');
 });

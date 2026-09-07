@@ -250,17 +250,16 @@
   <div class="overlay" id="aoOverlay" role="dialog" aria-modal="true" aria-labelledby="aoTitle">
     <div class="modal ao-modal">
       <div class="ao-heading"><div><h3 id="aoTitle">Select your area</h3><p id="aoInstruction">Zoom in, then click your area to select its grid square.</p></div><button id="aoClose" aria-label="Close map">×</button></div>
-      <div class="ao-toolbar"><button id="aoBack" class="setting-action">Change location</button><span id="aoSystemLabel"></span></div>
+      <div class="ao-toolbar"><button id="aoBack" class="setting-action">Change location</button><span id="aoSystemLabel"></span><label id="aoSizeLabel" hidden>Area <select id="aoSize"><option value="square">100 km square</option><option value="zone">Grid zone · keep square letters</option></select></label></div>
       <div class="ao-map-wrap"><div id="aoMap" aria-label="AO map. Arrow keys pan, plus and minus zoom. Use Select map centre to choose an area." tabindex="0"></div><div class="ao-map-hint" id="aoScale">Zoom in to see 100 km squares</div></div>
       <div class="ao-footer">
         <div id="aoSelection" aria-live="polite">No area selected</div>
         <div id="aoWarning" class="ao-warning" role="alert" hidden></div>
         <div class="ao-actions"><button class="setting-action" id="aoCentre">Select map centre</button><button class="setting-action primary" id="aoApply" disabled>Use this area</button></div>
-        <p class="note" id="aoNetwork">Map context is approximate. Street tiles require internet; grids and landmarks work offline.</p>
+        <p class="note" id="aoNetwork" hidden>Street map unavailable.</p>
       </div>
     </div>
   </div>
-  <div class="overlay" id="datumOverlay" role="dialog" aria-modal="true" aria-labelledby="datumTitle"><div class="modal"><h3 id="datumTitle">Check the datum</h3><p id="datumMessage"></p><div class="m-actions"><button id="datumLocal">Use local preset</button><button id="datumGlobal" class="primary">Keep WGS 84</button></div></div></div>
 
   <div class="toast" id="toast"></div>
 
@@ -367,7 +366,8 @@
     if(p.kind==="mgrs"){
       const digits=Math.min(s.sgDigits??4,inputDigits??5);
       const q=GlobalGrid.parts(lat,lon,digits);
-      return [s.sgOmit&&s.ao===q.prefix?q.e:`${q.prefix} ${q.e}`,q.n];
+      const prefix=digits>0&&s.sgOmit&&s.ao&&q.prefix.startsWith(s.ao)?q.prefix.slice(s.ao.length):q.prefix;
+      return [(prefix+" "+q.e).trim(),q.n];
     }
     if(p.kind==="latlong"){
       const la=fmtLat(lat,s), lo=fmtLon(lon,s);
@@ -733,10 +733,6 @@
         if(id==="mgrs")s.ao=chosen.prefix;else s.square=[chosen.e,chosen.n];
         state.lastLocation={lat:chosen.lat,lon:chosen.lon};
         state.aoConfirmed=true;
-        if(id==="mgrs"){
-          const local=suggestedGrid([chosen]);
-          state.confirmedGlobalPresets=[...(state.confirmedGlobalPresets||[]),local].filter(Boolean);
-        }
         if(opts.pending){
           delete state.pendingGrid;
           if(id!=="mgrs")s.sgOmit=true;
@@ -766,7 +762,7 @@
       const point=state.points?.[0]||state.lastLocation;
       const first=state.from===id?state.rows.find(r=>r[0]||r[1]):null;
       const g=first?splitGrid(first[0]+" "+first[1]):null;
-      picker.open({system:id,preset:id,point,pick:g&&!g.error?g:null,side:state.from===id?"from":"to",afterPick});
+      picker.open({system:id,preset:id,point,pick:g&&!g.error?g:null,scope:id==="mgrs"&&/^\d{1,2}[C-HJ-NP-X]$/.test(state.settings.mgrs.ao||"")?"zone":"square",side:state.from===id?"from":"to",afterPick});
     }
     function showSquarePicker(id,pick){
       picker.open({system:id,preset:id,pick,point:state.lastLocation,side:"from",afterPick:convert});
@@ -784,31 +780,12 @@
         if(square&&!state.settings[id].square)assignSquare(id,...square);
       }
     }
-    let pendingDatum=null;
-    function checkGlobal(points,side="to"){
-      if(state[side]!=="mgrs")return false;
-      const local=COUNTRY_PRESETS.find(id=>(id==="sg"||id==="brunei")&&!(state.confirmedGlobalPresets||[]).includes(id)&&points.some(p=>presetContains(id,p.lat,p.lon)));
-      if(!local)return false;
-      pendingDatum={local,side};
-      $("#datumMessage").textContent="This area is in "+PRESETS[local].name.replace(" MGR","")+". The local preset uses "+PRESETS[local].basis+" Keep WGS 84 only if that is the grid you intend.";
-      $("#datumOverlay").classList.add("open");$("#datumLocal").focus();return true;
-    }
-    $("#datumGlobal").addEventListener("click",()=>{if(pendingDatum)state.confirmedGlobalPresets=[...(state.confirmedGlobalPresets||[]),pendingDatum.local];pendingDatum=null;$("#datumOverlay").classList.remove("open");convert();});
-    $("#datumLocal").addEventListener("click",()=>{
-      if(!pendingDatum)return;
-      const {side,local}=pendingDatum;pendingDatum=null;$("#datumOverlay").classList.remove("open");
-      // A complete global reference already identifies a location: preserve it when changing the source.
-      if(side==="from"){
-        state.rows=state.rows.map(r=>{const p=parseCells("mgrs",r[0],r[1],state.settings);return p.error?r:[...formatPoint(p.lat,p.lon,local,state.settings),r[2]];});
-      }
-      state[side]=local;$("#"+side+"Sys").value=local;renderFrom();convert();save();
-    });
     function boundaryMessage(points,id=state.to){
       const s=state.settings[id];
       if(id==="wgs84"||!points.length)return "";
       let keys;
       if(id==="mgrs"){
-        keys=points.map(p=>GlobalGrid.parts(p.lat,p.lon,0).prefix);
+        keys=points.map(p=>{const prefix=GlobalGrid.parts(p.lat,p.lon,0).prefix;return /^\d{1,2}[C-HJ-NP-X]$/.test(s.ao||"")?prefix.match(/^\d{1,2}[C-HJ-NP-X]/)[0]:prefix;});
         if(!s.ao)s.ao=keys[0];
       }else{
         keys=points.map(p=>{const q=toProjFromWGS(p.lat,p.lon,projectionFor(id,state.settings));return Math.floor(q.E/100000)+"/"+Math.floor(q.N/100000);});
@@ -829,7 +806,7 @@
       readRows();
       const lines=text.trim().split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
       const short=lines.length&&lines.every(line=>{const g=splitGrid(line);return !g.error&&g.d>=3;});
-      const full=lines.length&&lines.every(fullMGR);
+      const full=lines.length&&lines.every(line=>fullMGR(line)||(state.from==="mgrs"&&/^\s*[A-HJ-NP-Z]{2}\s*\d/i.test(line)));
       if(short){
         e.preventDefault();
         if(PRESETS[state.from].lead)state.aoConfirmed=true;
@@ -839,7 +816,7 @@
       }
       let target=full?"mgrs":short?state.from:"wgs84";
       const parsed=lines.map(line=>{
-        if(full){try{const r=GlobalGrid.parse(line);const q=GlobalGrid.parts(r.lat,r.lon,r.digits);return {cells:[q.prefix+" "+q.e,q.n],point:r};}catch(error){return {error:error.message};}}
+        if(full){try{const r=GlobalGrid.parse(line,state.settings.mgrs.ao);if(r.error)return r;const q=GlobalGrid.parts(r.lat,r.lon,r.digits);return {cells:[q.prefix+" "+q.e,q.n],point:r};}catch(error){return {error:error.message};}}
         if(short){const g=splitGrid(line);return {cells:[g.e,g.n]};}
         const p=parseLatLon(line,state.settings.wgs84.order);
         return p.error?p:{cells:llCells(p.lat,p.lon),point:p};
@@ -959,7 +936,6 @@
         state.points=[]; stale=false; renderTo(); detect(""); setBottomError(countryError); save(); return;
       }
       autoArea(pts);
-      if(checkGlobal(pts,"from")||checkGlobal(pts,"to"))return;
       const detectedOrder=detectedOrders.size===1?[...detectedOrders][0]:null;
       const orderUpdated=detectedOrder&&state.settings.wgs84.order!==detectedOrder;
       if(orderUpdated){ state.settings.wgs84.order=detectedOrder; renderFrom(); }
@@ -1035,14 +1011,14 @@
       state.explicitInput=true;
       delete state.pendingGrid;
       state.aoConfirmed=false;
-      if(state.from==="mgrs")state.confirmedGlobalPresets=[];
       if(PRESETS[state.from].kind!=="latlong"){ lastGridFrom=state.from; state.lastGridFrom=state.from; }
       state.points=[]; stale=false;
       renderFrom(); renderTo(); updatePairState();
       detect(hasInput?"Input kept — review it for the selected coordinate system.":"",hasInput?"warn":"");
       save();
+      if(PRESETS[state.from].large&&!state.settings[state.from].square&&!state.settings[state.from].ao)openSquareBrowser(state.from);
     });
-    $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value;state.explicitOutput=true;if(state.to==="mgrs")state.confirmedGlobalPresets=[];updatePairState();if(rowsHaveContent())convert();else renderTo();save(); });
+    $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value;state.explicitOutput=true;updatePairState();if(rowsHaveContent())convert();else renderTo();save(); });
     $("#addRow").addEventListener("click",()=>{ readRows(); state.rows.push(["","",""]); renderFrom(); save(); });
     $("#convertBtn").addEventListener("click",convert);
 
@@ -1124,13 +1100,13 @@
             h+=`</section>`;
           }
 
-          const digits=s.sgDigits||4, precision=digits===5?"1 meter":digits===4?"10 meters":"100 meters";
+          const digits=s.sgDigits??4, metres=10**(5-digits), precision=metres>=1000?metres/1000+" km":metres+" meters";
           h+=`<section class="settings-section"><h4 class="settings-subhead">Output format</h4>`;
-          h+=`<div class="srow"><span class="k">Precision</span>${seg([[5,"5"],[4,"4"],[3,"3"]],digits,v=>{s.sgDigits=+v;changed();})}</div>`;
+          h+=`<div class="srow"><span class="k">Precision</span>${seg(id==="mgrs"?[[5,"1 m"],[4,"10 m"],[3,"100 m"],[2,"1 km"],[1,"10 km"],[0,"100 km"]]:[[5,"5"],[4,"4"],[3,"3"]],digits,v=>{s.sgDigits=+v;changed();})}</div>`;
           h+=`<div class="note precision-note">${digits} digits per axis · ${precision}</div>`;
           const canOmit = id==="mgrs"?!!s.ao:!p.large || !!s.square;
           const omId="om_"+id;
-          h+=`<label class="chk"><input type="checkbox" id="${omId}" ${canOmit&&s.sgOmit!==false?"checked":""} ${canOmit?"":"disabled"}> Omit 100 km square prefix</label>`;
+          h+=`<label class="chk"><input type="checkbox" id="${omId}" ${canOmit&&s.sgOmit!==false?"checked":""} ${canOmit?"":"disabled"}> ${id==="mgrs"?"Omit selected AO prefix":"Omit 100 km square prefix"}</label>`;
           if(!canOmit) h+=`<div class="note">Confirm the AO first.</div>`;
           setTimeout(()=>{ const c=document.getElementById(omId); if(c) c.addEventListener("change",e=>{ s.sgOmit=e.target.checked; changed(); }); },0);
           const lead=p.lead||p.exampleLead||[3,54], fullE=lead[0]*100000+99999, fullN=lead[1]*100000+99999;
@@ -1209,5 +1185,8 @@
     renderFrom(); updatePairState(); renderTo();
   })();
   </script>
+<!-- Cloudflare Web Analytics -->
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"21282bd8a3994bb8a1e41ced9b4a604d"}'></script>
+<!-- End Cloudflare Web Analytics -->
 </body>
 </html>

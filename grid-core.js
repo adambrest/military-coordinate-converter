@@ -21,6 +21,10 @@
     const full=clean.match(/^([1-9]|[1-5]\d|60)([C-HJ-NP-X])([A-HJ-NP-Z]{2})(\d{0,10})$/);
     let reference=clean;
     if(!full){
+      if(ao&&/^\d{1,2}[C-HJ-NP-X]$/.test(ao)){
+        if(!/^[A-HJ-NP-Z]{2}(?:\d{2}){0,5}$/.test(clean))return {error:"Include the 100 km square letters when using a larger AO, e.g. DQ 1234 5678."};
+        return parse(ao+clean);
+      }
       if(!/^\d{2,10}$/.test(clean)||clean.length%2) throw new Error("Enter a complete MGRS reference or equal numeric groups.");
       if(!ao) return {error:"pick-square"};
       reference=ao+clean;
@@ -91,5 +95,22 @@
     const e=Math.floor(en[0]/100000),n=Math.floor(en[1]/100000);
     return {prefix,zone,band,proj,e,n,polygon:square(proj,e*100000,n*100000,100000,zoneBounds(zone,band))};
   }
-  root.GlobalGrid={parts,parse,projection,zoneBounds,zones,square,at,clip};
+  function inside(lon,lat,poly){
+    let hit=false;
+    for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+      const a=poly[i],b=poly[j];
+      if((a[1]>lat)!==(b[1]>lat)&&lon<(b[0]-a[0])*(lat-a[1])/(b[1]-a[1])+a[0])hit=!hit;
+    }
+    return hit;
+  }
+  function intersects(a,b){
+    if(a.some(p=>inside(p[0],p[1],b))||b.some(p=>inside(p[0],p[1],a)))return true;
+    const cross=(p,q,r)=>(q[0]-p[0])*(r[1]-p[1])-(q[1]-p[1])*(r[0]-p[0]);
+    for(let i=0;i<a.length;i++)for(let j=0;j<b.length;j++){
+      const p=a[i],q=a[(i+1)%a.length],r=b[j],s=b[(j+1)%b.length];
+      if(cross(p,q,r)*cross(p,q,s)<0&&cross(r,s,p)*cross(r,s,q)<0)return true;
+    }
+    return false;
+  }
+  root.GlobalGrid={parts,parse,projection,zoneBounds,zones,square,at,clip,inside,intersects};
 })(globalThis);

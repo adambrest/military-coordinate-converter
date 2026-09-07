@@ -10,6 +10,8 @@ Paste a coordinate or Maps link. For an ambiguous grid, choose its country; sele
 
 Conversion and AO grids work offline after caching; street maps need internet. Check the datum in Settings against your issued map.
 
+Raw WGS 84 can use a 100 km square or a larger grid zone; larger zones require square letters. Output precision is configurable in Settings.
+
 ## Map sources
 
 Map context is approximate.
@@ -20,3 +22,5 @@ Map context is approximate.
 - Camp references: [Tilpal](https://mapcarta.com/W1436392763), [Growl](https://en-gb.topographic-map.com/map-lvgsb3/Camp-Growl/)
 
 Map: [Leaflet](https://leafletjs.com/). Global grids: [mgrs](https://github.com/proj4js/mgrs). Bundled licences are in `vendor/`.
+
+Usage analytics: [Cloudflare Web Analytics](https://www.cloudflare.com/web-analytics/).

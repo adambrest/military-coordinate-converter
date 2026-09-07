@@ -7,94 +7,115 @@
     const landmarks=[];
     const ids=["sg","taiwan","thailand","australia","brunei"];
     function gridId(){return options.system||options.preset||"mgrs";}
-    function localSquare(id,lat,lon){
-      const proj=projection(id),en=root.proj4("WGS84",proj,[lon,lat]),e=Math.floor(en[0]/100000),n=Math.floor(en[1]/100000);
-      return {id,proj,e,n,prefix:`E${e} N${n}`,polygon:GlobalGrid.square(proj,e*100000,n*100000)};
-    }
+    let candidates=[];
     function polygon(coords,style,target=grid){
       return L.polygon(coords.map(p=>[p[1],p[0]]),{weight:1,color:"#2563eb",fillOpacity:0,interactive:false,...style}).addTo(target);
     }
-    function select(lat,lon){
-      lon=Math.max(-180,Math.min(180,lon));selectionLayer.clearLayers();pointLayer.clearLayers();
-      $("aoWarning").hidden=true;
+    function picks(){
+      if(options.pending)return options.pending.text.trim().split(/\r?\n/).map(line=>{
+        const digits=line.replace(/\D/g,""),d=digits.length/2;return {e:digits.slice(0,d),n:digits.slice(d)};
+      });
+      return options.pick?[options.pick]:[];
+    }
+    function candidate(id,proj,e,n,poly){
+      let lon=poly.reduce((sum,p)=>sum+p[0],0)/poly.length,lat=poly.reduce((sum,p)=>sum+p[1],0)/poly.length;
+      const result={id,proj,e:e/100000,n:n/100000,polygon:poly,lat,lon};
+      const raw=id==="mgrs";
       try{
-        const id=gridId(lat,lon);
-        if(id!=="mgrs"&&!contains(id,lat,lon))throw new Error(`Select an area within ${presets[id].name.replace(" MGR","")}, or change the grid system.`);
-        selection=id==="mgrs"?{...GlobalGrid.at(lat,lon),id}:localSquare(id,lat,lon);
-        selection.lat=lat;selection.lon=lon;
-        polygon(selection.polygon,{weight:3,color:"#7c3aed",fillColor:"#7c3aed",fillOpacity:.12},selectionLayer);
-        let detail="";
-        if(options.pick){
-          const {e,n}=options.pick;
-          let pt;
-          if(id==="mgrs")pt=GlobalGrid.parse(`${e} ${n}`,selection.prefix);
-          else {
-            const step=10**(5-e.length),p=root.proj4(selection.proj,"WGS84",[selection.e*100000+Number(e)*step,selection.n*100000+Number(n)*step]);
-            pt={lon:p[0],lat:p[1]};
-            if(!contains(id,pt.lat,pt.lon))throw new Error("That reference falls outside this preset area. Select a different square or grid system.");
+        result.prefix=raw?GlobalGrid.parts(lat,lon,0).prefix:"E"+result.e+" N"+result.n;
+        const inputs=picks();
+        if(inputs.length){
+          for(const [i,g] of inputs.entries()){
+            let point;
+            if(raw){point=GlobalGrid.parse(g.e+" "+g.n,result.prefix);if(point.error)return null;}
+            else{
+              const step=10**(5-g.e.length),ll=root.proj4(proj,"WGS84",[e+Number(g.e)*step,n+Number(g.n)*step]);
+              point={lat:ll[1],lon:ll[0]};
+              if(!contains(id,point.lat,point.lon))return null;
+            }
+            if(i===0){result.point=point;result.lat=point.lat;result.lon=point.lon;}
           }
-          L.circleMarker([pt.lat,pt.lon],{radius:7,color:"#fff",weight:2,fillColor:"#7c3aed",fillOpacity:1}).addTo(pointLayer).bindTooltip(`Your reference: ${e} ${n}`,{permanent:true,direction:"top"});
-          detail=` · ${e} ${n}`;
+        }else if(!raw){
+          const p=presets[id],bb=p.bbox,regions=p.regions||[p.outline||[[bb[2],bb[0]],[bb[3],bb[0]],[bb[3],bb[1]],[bb[2],bb[1]]]];
+          if(!regions.some(region=>GlobalGrid.intersects(poly,region)))return null;
         }
-        $("aoSelection").textContent=`${presets[id].name} · ${selection.prefix}${detail}`;
-        $("aoApply").disabled=false;
-        draw();
-      }catch(error){selection=null;$("aoSelection").textContent="Choose another area";$("aoWarning").textContent=error.message;$("aoWarning").hidden=false;$("aoApply").disabled=true;}
+        return result;
+      }catch(_){return null;}
+    }
+    function selectCandidate(chosen){
+      selection=chosen;selectionLayer.clearLayers();pointLayer.clearLayers();$("aoWarning").hidden=true;
+      polygon(chosen.polygon,{weight:3,color:"#7c3aed",fillColor:"#7c3aed",fillOpacity:.12},selectionLayer);
+      if(chosen.point)L.circleMarker([chosen.point.lat,chosen.point.lon],{radius:7,color:"#fff",weight:2,fillColor:"#7c3aed",fillOpacity:1}).addTo(pointLayer);
+      $("aoSelection").textContent=presets[chosen.id].name+" · "+chosen.prefix;
+      $("aoApply").disabled=false;
+      if(chosen.scope==="zone"&&picks().length){
+        $("aoWarning").textContent="Include the 100 km square letters with your reference.";
+        $("aoWarning").hidden=false;
+      }
+    }
+    function addCandidate(chosen){
+      candidates.push(chosen);
+      const layer=polygon(chosen.polygon,{interactive:true,bubblingMouseEvents:false,fillOpacity:.05,weight:1.5});
+      layer.options.aoCandidate=chosen;
+      layer.on("click",e=>{L.DomEvent.stopPropagation(e);selectCandidate(chosen);});
+      layer.on("mouseover",()=>layer.setStyle({fillOpacity:.15}));
+      layer.on("mouseout",()=>layer.setStyle({fillOpacity:.05}));
+      if(map.getZoom()>=7||chosen.scope==="zone")layer.bindTooltip(chosen.prefix,{permanent:true,direction:"center",className:"grid-label"});
+    }
+    function select(lat,lon){
+      const selected=candidates.find(c=>GlobalGrid.inside(lon,lat,c.polygon));
+      if(selected)selectCandidate(selected);
     }
     function bounds(){const b=map.getBounds();return {west:Math.max(-180,b.getWest()),east:Math.min(180,b.getEast()),south:Math.max(-80,b.getSouth()),north:Math.min(84,b.getNorth())};}
-    function projectedGrid(proj,b,clipBounds,size,labelFor){
-      // Sample the perimeter: UTM edges are curved, not axis-aligned lat/long boxes.
-      const samples=[];
+    function projectedGrid(proj,b,clipBounds,id){
+      const size=100000,samples=[];
       for(let i=0;i<=8;i++){const t=i/8;for(const p of [[b.west+(b.east-b.west)*t,b.south],[b.west+(b.east-b.west)*t,b.north],[b.west,b.south+(b.north-b.south)*t],[b.east,b.south+(b.north-b.south)*t]])samples.push(root.proj4("WGS84",proj,p));}
       const es=samples.map(p=>p[0]),ns=samples.map(p=>p[1]);
       const e0=Math.floor(Math.min(...es)/size)*size,e1=Math.ceil(Math.max(...es)/size)*size,n0=Math.floor(Math.min(...ns)/size)*size,n1=Math.ceil(Math.max(...ns)/size)*size;
       if((e1-e0)*(n1-n0)/(size*size)>120)return;
       for(let e=e0;e<e1;e+=size)for(let n=n0;n<n1;n+=size){
+        // Only MGRS zone edges clip a square. Country view bounds never change its geometry.
         const poly=GlobalGrid.square(proj,e,n,size,clipBounds);if(poly.length<3)continue;
-        const layer=polygon(poly,{weight:size===100000?1.5:.7,opacity:size===100000?.7:.4});
-        if(size===100000&&map.getZoom()>=7){
-          const lon=poly.reduce((a,p)=>a+p[0],0)/poly.length,lat=poly.reduce((a,p)=>a+p[1],0)/poly.length;
-          try{layer.bindTooltip(labelFor(lat,lon,e,n),{permanent:true,direction:"center",className:"grid-label"});}catch(_){}
-        }
+        const chosen=candidate(id,proj,e,n,poly);if(chosen)addCandidate(chosen);
       }
     }
     function draw(){
       if(!map||!$("aoOverlay").classList.contains("open"))return;
-      grid.clearLayers();const b=bounds(),zoom=map.getZoom(),c=map.getCenter();
-      const id=gridId(c.lat,c.lng);
+      grid.clearLayers();candidates=[];const b=bounds(),zoom=map.getZoom(),id=gridId();
       for(const {id:country,marker} of landmarks){
         const visible=id===country||(id==="mgrs"&&zoom>=8);
         if(visible){if(!map.hasLayer(marker))marker.addTo(map);marker.openTooltip();}else if(map.hasLayer(marker))map.removeLayer(marker);
       }
-      $("aoScale").textContent=zoom<6?"Zoom in to see AO boundaries":"100 km AO boundaries";
-      if(zoom<6)return;
-      if(id!=="mgrs"&&zoom>=5){
-        const bb=presets[id].bbox,clip={west:bb[2],east:bb[3],south:bb[0],north:bb[1]};
-        const view={west:Math.max(b.west,clip.west),east:Math.min(b.east,clip.east),south:Math.max(b.south,clip.south),north:Math.min(b.north,clip.north)};
-        if(view.west>=view.east||view.south>=view.north)return;
-        projectedGrid(projection(id),view,clip,100000,(lat,lon,e,n)=>`E${Math.floor(e/100000)} N${Math.floor(n/100000)}`);
-        return;
-      }
-      for(const z of GlobalGrid.zones(b)){
-        const box=[[z.west,z.south],[z.east,z.south],[z.east,z.north],[z.west,z.north]];
-        polygon(box,{color:"#334155",weight:1.5,opacity:.5});
+      const broad=id==="mgrs"&&$("aoSize").value==="zone",threshold=broad?3:6;
+      $("aoScale").textContent=zoom<threshold?"Zoom in to select an area":broad?"Grid-zone areas":"100 km AO squares";
+      if(zoom<threshold)return;
+      if(id!=="mgrs"){
+        const bb=presets[id].bbox;
+        const view={west:Math.max(b.west,bb[2]),east:Math.min(b.east,bb[3]),south:Math.max(b.south,bb[0]),north:Math.min(b.north,bb[1])};
+        if(view.west<view.east&&view.south<view.north)projectedGrid(projection(id),view,null,id);
+      }else for(const z of GlobalGrid.zones(b)){
+        if(broad){
+          addCandidate({id:"mgrs",scope:"zone",prefix:z.zone+z.band,lat:(z.south+z.north)/2,lon:(z.west+z.east)/2,polygon:[[z.west,z.south],[z.east,z.south],[z.east,z.north],[z.west,z.north]]});
+          continue;
+        }
         const view={west:Math.max(b.west,z.west),east:Math.min(b.east,z.east),south:Math.max(b.south,z.south),north:Math.min(b.north,z.north)};
-        const proj=GlobalGrid.projection(z.zone,z.south<0);
-        projectedGrid(proj,view,z,100000,(lat,lon)=>GlobalGrid.parts(lat,lon,0).prefix);
+        projectedGrid(GlobalGrid.projection(z.zone,z.south<0),view,z,"mgrs");
       }
+      if(!candidates.length)$("aoScale").textContent=picks().length?"No matching AO squares here":"No AO squares in view";
     }
     function init(){
       map=L.map("aoMap",{minZoom:2,maxZoom:17,maxBounds:[[-85,-180],[85,180]],maxBoundsViscosity:1,preferCanvas:true,zoomControl:true});
       map.setView([12,95],3);
+      map.attributionControl.setPrefix(false);
       L.control.scale({imperial:false}).addTo(map);
       map.createPane("offlineLand").style.zIndex="150";
       const land=L.geoJSON(null,{pane:"offlineLand",style:{color:"#a8bcc2",weight:.6,fillColor:"#f3f3eb",fillOpacity:1},interactive:false}).addTo(map);
       fetch("vendor/land.geojson").then(r=>{if(!r.ok)throw Error();return r.json();}).then(data=>land.addData(data)).catch(()=>{});
       map.attributionControl.addAttribution('<a href="https://www.naturalearthdata.com/">Natural Earth</a>');
-      map.attributionControl.addAttribution('Road context © <a href="https://spatial-gis.information.qld.gov.au/arcgis/rest/services/Basemaps/FoundationData/MapServer/23">State of Queensland</a>');
+      map.attributionControl.addAttribution('© <a href="https://spatial-gis.information.qld.gov.au/arcgis/rest/services/Basemaps/FoundationData/MapServer/23">Queensland</a>');
       const tiles=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,noWrap:true,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
-      tiles.on("tileerror",()=>{$("aoNetwork").textContent="Street map unavailable. Offline land, grids and landmarks remain available.";});
-      tiles.on("load",()=>{if(navigator.onLine)$("aoNetwork").textContent="Map context is approximate. Street tiles require internet; grids and landmarks work offline.";});
+      tiles.on("tileerror",()=>{$("aoNetwork").hidden=false;});
+      tiles.on("load",()=>{if(navigator.onLine)$("aoNetwork").hidden=true;});
       grid=L.layerGroup().addTo(map);selectionLayer=L.layerGroup().addTo(map);pointLayer=L.layerGroup().addTo(map);
       for(const id of ids){
         const p=presets[id],bb=p.bbox;
@@ -105,9 +126,10 @@
           landmarks.push({id,marker:L.circleMarker([lm.lat,lm.lon],{radius:5,color:"#fff",weight:1.5,fillColor:"#be123c",fillOpacity:1}).bindTooltip(lm.name,{permanent:true,direction:index%2?"right":"left",className:"camp-label"}).on("click",e=>{L.DomEvent.stopPropagation(e);select(lm.lat,lm.lon);})});
         }
       }
-      map.on("click",e=>{if(map.getZoom()<6){map.setView(e.latlng,7);return;}select(e.latlng.lat,e.latlng.lng);});
+      map.on("click",e=>{const threshold=gridId()==="mgrs"&&$("aoSize").value==="zone"?3:6;if(map.getZoom()<threshold){map.setView(e.latlng,threshold+1);return;}select(e.latlng.lat,e.latlng.lng);});
       map.on("moveend zoomend",()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(draw);});
-      $("aoCentre").addEventListener("click",()=>{const c=map.getCenter();if(map.getZoom()<6){map.setZoom(7);return;}select(c.lat,c.lng);});
+      $("aoCentre").addEventListener("click",()=>{const c=map.getCenter();const threshold=gridId()==="mgrs"&&$("aoSize").value==="zone"?3:6;if(map.getZoom()<threshold){map.setZoom(threshold+1);return;}select(c.lat,c.lng);});
+      $("aoSize").addEventListener("change",()=>{selection=null;selectionLayer.clearLayers();pointLayer.clearLayers();$("aoApply").disabled=true;$("aoSelection").textContent="No area selected";$("aoWarning").hidden=true;draw();});
     }
     function close(){ $("aoOverlay").classList.remove("open");returnFocus?.focus(); }
     $("aoClose").addEventListener("click",close);
@@ -146,10 +168,11 @@
       $("aoOverlay").classList.add("open");if(!map)init();
       $("aoApply").disabled=true;$("aoSelection").textContent="No area selected";$("aoWarning").hidden=true;
       const id=gridId(),raw=id==="mgrs";
+      $("aoSizeLabel").hidden=!raw;$("aoSize").value=opts.scope||"square";
       $("aoTitle").textContent=raw?"Raw WGS 84 · select your AO":presets[id].name+" · select your AO";
-      $("aoSystemLabel").textContent=raw?"WGS 84 datum":presets[id].basis;
+      $("aoSystemLabel").textContent=raw?"WGS 84":presets[id].zoneCode?"Zone "+presets[id].zoneCode:"";
       $("aoBack").hidden=!opts.pending;
-      $("aoInstruction").textContent=opts.pick?"Which 100 km square contains "+opts.pick.e+" "+opts.pick.n+"?":"Select a 100 km AO square.";
+      $("aoInstruction").textContent=raw?"Choose your area.":"Select a highlighted AO square.";
       selectionLayer.clearLayers();pointLayer.clearLayers();map.invalidateSize();map.setMaxBounds([[-85,-180],[85,180]]);map.setMinZoom(2);
       if(raw){
         if(opts.point)map.setView([opts.point.lat,opts.point.lon],9);else map.setView([15,30],2);
