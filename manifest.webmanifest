@@ -1,7 +1,7 @@
 {
   "name": "Military Coordinate Converter",
   "short_name": "MilCoord",
-  "description": "Convert WGS 84 coordinates and military grids offline.",
+  "description": "Convert latitude/longitude, global WGS 84 MGRS and country military grids.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

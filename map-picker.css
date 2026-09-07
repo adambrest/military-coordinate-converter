@@ -1,0 +1,25 @@
+.ao-modal{max-width:1000px;height:min(860px,94dvh);display:flex;flex-direction:column;padding:0;overflow:hidden}
+.ao-heading{display:flex;justify-content:space-between;align-items:start;padding:18px 20px 12px;gap:16px}
+.ao-heading h3{margin:0 0 4px;font-size:20px}
+.ao-heading p{margin:0;color:var(--muted);font-size:14px}
+#aoClose{border:0;background:var(--panel2);border-radius:8px;font-size:26px;width:38px;height:38px;cursor:pointer;flex-shrink:0}
+.ao-toolbar{display:flex;gap:12px;padding:0 20px 14px;border-bottom:1px solid var(--line)}
+.ao-toolbar label{flex:1;font-size:12px;font-weight:700;color:var(--muted)}
+.ao-toolbar select{display:block;width:100%;margin-top:4px;padding:9px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text);font-size:14px;min-width:0}
+.ao-map-wrap{flex:1;min-height:180px;position:relative;background:#dceef5}
+#aoMap{height:100%;width:100%;background:#dceef5;font-family:inherit}
+.ao-map-hint{position:absolute;bottom:25px;left:50%;transform:translateX(-50%);z-index:500;background:rgba(255,255,255,.95);padding:6px 12px;border:1px solid var(--line);border-radius:999px;font-size:12px;white-space:nowrap;pointer-events:none}
+.ao-footer{padding:12px 20px 14px;border-top:1px solid var(--line)}
+#aoSelection{font-size:15px;font-weight:700;line-height:1.5}
+.ao-warning{color:var(--danger);font-size:13px;line-height:1.45;margin:7px 0}
+#aoConfirmLabel{margin:8px 0;font-size:13px}
+[hidden]#aoConfirmLabel{display:none}
+.ao-footer .ao-actions{justify-content:flex-end;margin-top:8px}
+.ao-footer .note{margin-bottom:0}
+.grid-label{background:rgba(255,255,255,.85);border:0;box-shadow:none;color:#1d4ed8;font:700 11px ui-monospace,monospace;padding:1px 4px;pointer-events:none}
+.grid-label:before{display:none}
+.camp-label{font:600 12px -apple-system,BlinkMacSystemFont,sans-serif}
+.regionchip{cursor:pointer}
+.trow.out .cell{font-size:13px}
+.side.global-grid .thead,.side.global-grid .trow{grid-template-columns:22px minmax(0,1.65fr) minmax(0,.8fr) minmax(0,.8fr) 30px}
+@media(max-width:600px){#aoOverlay{padding:0}.ao-modal{height:100dvh;max-height:100dvh;border-radius:0}.ao-heading{padding:12px}.ao-toolbar{padding:0 12px 10px;gap:8px}.ao-toolbar label{min-width:0}.ao-footer{padding:10px 12px;padding-bottom:max(12px,env(safe-area-inset-bottom))}.ao-footer .ao-actions button{flex:1}.ao-map-hint{font-size:11px}.ao-footer .note{font-size:10px}}

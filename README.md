@@ -2,21 +2,25 @@
 
 [Open the app](https://adambrest.github.io/military-coordinate-converter/)
 
-An offline converter for WGS 84 coordinates and military grids used in Singapore, Taiwan, Thailand, Brunei and Australia.
+Convert latitude/longitude, global WGS 84 MGRS, and military grids for Singapore, Taiwan, Thailand, Brunei and Australia.
 
 ## Use
 
-Choose **From** and **To**, enter coordinates, then select **Convert**. Confirm the area of operations when prompted.
+Paste a coordinate or Maps link. For a shortened grid reference, select its AO on the map. Global references include letter prefixes; crossing an AO boundary forces full prefixes.
+
+Conversion, grid overlays and landmark context work offline after the app is cached. Street maps need internet. Singapore and Brunei presets use different datums from global WGS 84.
 
 ## Australia datum
 
-The correct Australia datum is unconfirmed. Choose GDA2020 / GRS80 or WGS 84 / WGS 84 in Settings to match the issued map. GDA2020 is the default because the [government training-area map](https://www.agriculture.gov.au/sites/default/files/documents/e2022-0197-map-shoalwater-bay.pdf) uses MGA Zone 56.
+WGS 84 / GDA2020 use one approximate Zone 56S conversion (spheroids: WGS 84 / GRS80); epoch-dependent shifts are not modelled. The issued-map datum remains unconfirmed. The [government training-area map](https://www.agriculture.gov.au/sites/default/files/documents/e2022-0197-map-shoalwater-bay.pdf) uses GDA2020 / MGA 56.
 
 ## Map sources
 
 Map context is approximate.
 
-- Australia land: [Natural Earth](https://www.naturalearthdata.com/downloads/10m-physical-vectors/10m-land/)
+- Basemap: [OpenStreetMap](https://www.openstreetmap.org/copyright); offline land: [Natural Earth](https://www.naturalearthdata.com/)
 - Bruce Highway: [Queensland Government](https://spatial-gis.information.qld.gov.au/arcgis/rest/services/Basemaps/FoundationData/MapServer/23)
 - Thailand Route 323: [OpenStreetMap](https://www.openstreetmap.org/copyright)
 - Camp landmarks: [Tilpal](https://mapcarta.com/W1436392763) and [Growl](https://en-gb.topographic-map.com/map-lvgsb3/Camp-Growl/)
+
+Map: [Leaflet](https://leafletjs.com/). Global grids: [mgrs](https://github.com/proj4js/mgrs). Bundled licences are in `vendor/`.
