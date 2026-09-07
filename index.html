@@ -296,7 +296,6 @@
   proj4.defs("UTM51N","+proj=utm +zone=51 +datum=WGS84 +units=m +no_defs");
   proj4.defs("AU_WGS84","+proj=utm +zone=56 +south +datum=WGS84 +units=m +no_defs");
   proj4.defs("AU_GDA2020","+proj=utm +zone=56 +south +ellps=GRS80 +towgs84=0,0,0 +units=m +no_defs");
-  proj4.defs("AU_AGD66","+proj=utm +zone=56 +south +ellps=aust_SA +towgs84=-133,-48,148 +units=m +no_defs");
   proj4.defs("UTM47N","+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs");
   proj4.defs("BRUNEI","+proj=tmerc +lat_0=0 +lon_0=110 +k=0.997 +x_0=3901134 +y_0=898522 +ellps=evrstSS +towgs84=-678,670,-48,0,0,0,0 +units=m +no_defs");
   const LEAD_E=6, LEAD_N=1; // Singapore
@@ -371,7 +370,6 @@
   const AUSTRALIA_DATUMS = {
     gda2020:{ label:"GDA2020", projection:"AU_GDA2020", basis:"GDA2020 / MGA Zone 56.", spheroid:"GRS80", grid:"MGA 56" },
     wgs84:{ label:"WGS 84", projection:"AU_WGS84", basis:"WGS 84 / UTM Zone 56S.", spheroid:"WGS 84", grid:"UTM 56S" },
-    agd66:{ label:"AGD66", projection:"AU_AGD66", basis:"AGD66 / AMG Zone 56.", spheroid:"Australian National Spheroid", grid:"AMG 56" },
   };
 
   function australiaDatum(S){ return AUSTRALIA_DATUMS[S?.australia?.datum]||AUSTRALIA_DATUMS.gda2020; }
@@ -445,6 +443,16 @@
       if(points.length&&points.every(p=>presetContains(id,p.lat,p.lon))) return id;
     }
     return null;
+  }
+  function countryMismatchMessage(presetId,points){
+    if(!presetId||presetId==="wgs84"||!points.length) return "";
+    const outside=points.filter(pt=>!presetContains(presetId,pt.lat,pt.lon));
+    if(!outside.length) return "";
+    const apparent=COUNTRY_PRESETS.find(id=>id!==presetId&&outside.every(pt=>presetContains(id,pt.lat,pt.lon)));
+    const target=PRESETS[presetId].name.replace(" MGR","");
+    return apparent
+      ? `This seems like ${PRESETS[apparent].name.replace(" MGR","")}, not ${target}.`
+      : `${outside.length===points.length?"This":"Some coordinates"} ${outside.length===points.length?"does":"do"} not seem to be in ${target}.`;
   }
   function suggestedSquare(presetId,points,S){
     const p=PRESETS[presetId];
@@ -671,6 +679,10 @@
         const j=JSON.parse(localStorage.getItem(STORAGE));
         if(j&&j.settings){
           j.settings={...defaultSettings(),...j.settings};
+          if(!AUSTRALIA_DATUMS[j.settings.australia?.datum]){
+            j.settings.australia={...j.settings.australia,datum:"gda2020"};
+            delete j.settings.australia.square;
+          }
           // One-time cleanup for AOs saved by the former Thailand auto-selection behavior.
           if(j.aoSelectionVersion!==2){
             if(j.settings.taiwan) delete j.settings.taiwan.square;
@@ -787,7 +799,7 @@
       const res=parseBlock(pending.text);
       if(!res.rows.length){ detect("Enter matching easting and northing, such as 1234 5678.","err"); return; }
       res.rows.forEach((cells,k)=>{ const idx=pending.i+k; if(idx>=state.rows.length) state.rows.push(["","",""]); state.rows[idx]=[cells[0],cells[1],state.rows[idx][2]||""]; });
-      renderFrom(); renderTo(); updatePairState(); flashRows(pending.i,res.rows.length); save();
+      renderFrom(); updatePairState(); renderTo(); flashRows(pending.i,res.rows.length); save();
       const p=PRESETS[presetId], n=res.rows.length;
       detect(`${n>1?`${n} grid references`:res.label||"Grid reference"} · ${p.name} selected${p.large&&!state.settings[presetId].square?" · choose your AO":""}`,res.bad?"warn":"");
       if(p.large&&!state.settings[presetId].square) openSquareBrowser(presetId,()=>detect(`${p.name} AO selected. Press Convert when ready.`,""),true);
@@ -848,7 +860,7 @@
         const name=state.rows[idx][2]||"";
         state.rows[idx]=[cells[0],cells[1],name];
       });
-      renderFrom(); if(switched||outputChanged){ renderTo(); updatePairState(); } flashRows(i,res.rows.length);
+      renderFrom(); if(switched||outputChanged){ updatePairState(); renderTo(); } flashRows(i,res.rows.length);
       const n=res.rows.length;
       const msg = (n>1 ? `Detected ${n} points${res.bad?` · ${res.bad} line(s) skipped`:""}` : `Detected: ${res.label||"coordinate"}${res.warn?" — "+res.warn:""}`)+(autoAO?` · AO ${autoAO} selected`:"");
       detect(msg, (res.warn||res.bad)?"warn":"");
@@ -1065,16 +1077,9 @@
       if(bad){ detect("Some rows could not be read — fix the highlighted fields.","err"); return; }
       if(!pts.length){ detect("Enter at least one coordinate.","err"); return; }
       const countryPreset=state.to!=="wgs84"?state.to:(state.from!=="wgs84"?state.from:null);
-      if(countryPreset){
-        const outside=pts.filter(pt=>!presetContains(countryPreset,pt.lat,pt.lon));
-        if(outside.length){
-          const apparent=COUNTRY_PRESETS.find(id=>id!==countryPreset&&outside.every(pt=>presetContains(id,pt.lat,pt.lon)));
-          const target=PRESETS[countryPreset].name.replace(" MGR","");
-          const msg=apparent
-            ? `This seems like ${PRESETS[apparent].name.replace(" MGR","")}, not ${target}.`
-            : `${outside.length===pts.length?"This":"Some coordinates"} ${outside.length===pts.length?"does":"do"} not seem to be in ${target}.`;
-          state.points=[]; stale=false; renderTo(); detect(""); setBottomError(msg); save(); return;
-        }
+      const countryError=countryMismatchMessage(countryPreset,pts);
+      if(countryError){
+        state.points=[]; stale=false; renderTo(); detect(""); setBottomError(countryError); save(); return;
       }
       const detectedOrder=detectedOrders.size===1?[...detectedOrders][0]:null;
       const orderUpdated=detectedOrder&&state.settings.wgs84.order!==detectedOrder;
@@ -1091,7 +1096,9 @@
       $("#toName").textContent=PRESETS[state.to].name;
       $("#toHead").innerHTML=`<span>#</span><span>${cols[0]}</span><span>${cols[1]}</span><span>Name</span><span></span>`;
       const rowsEl=$("#toRows"); rowsEl.innerHTML="";
-      const pts=state.points||[];
+      let pts=state.points||[];
+      const countryError=state.to!=="wgs84"?countryMismatchMessage(state.to,pts):"";
+      if(countryError){ state.points=[]; pts=[]; stale=false; setBottomError(countryError); }
       if(!pts.length){
         const ph=document.createElement("div"); ph.className="trow out placeholder";
         ph.innerHTML=`<span class="n"></span><span class="ghost">—</span><span class="ghost">—</span><span class="ghost"></span><span></span>`;
@@ -1129,7 +1136,13 @@
     // button is blocked when the pair is meaningless: two DIFFERENT grids. Same system passes through.
     function isGrid(id){ return PRESETS[id].kind!=="latlong"; }
     function pairInvalid(){ return isGrid(state.from) && isGrid(state.to) && state.from!==state.to; }
-    function updatePairState(){ const bad=pairInvalid(); $("#convertBtn").disabled=bad; setBottomError(bad?"Two different grids can't be converted — set one side to Global Lat/Long.":""); return bad; }
+    function updatePairState(){
+      const bad=pairInvalid(); $("#convertBtn").disabled=bad;
+      const countryError=!bad&&state.to!=="wgs84"?countryMismatchMessage(state.to,state.points||[]):"";
+      if(countryError){ state.points=[]; stale=false; }
+      setBottomError(bad?"Two different grids can't be converted — set one side to Global Lat/Long.":countryError);
+      return bad||!!countryError;
+    }
     $("#fromSys").addEventListener("change",()=>{
       readRows();
       const hasInput=state.rows.some(r=>r.some(v=>String(v).trim()));
@@ -1140,7 +1153,7 @@
       detect(hasInput?"Input kept — review it for the selected coordinate system.":"",hasInput?"warn":"");
       save();
     });
-    $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value; renderTo(); updatePairState(); detect(""); save(); });
+    $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value; updatePairState(); renderTo(); detect(""); save(); });
     $("#addRow").addEventListener("click",()=>{ readRows(); state.rows.push(["","",""]); renderFrom(); save(); });
     $("#convertBtn").addEventListener("click",convert);
 
@@ -1197,7 +1210,7 @@
         const p=PRESETS[id], s=S[id]; let h="";
         const changed=(sourceLayout=false)=>{ save(); if(sourceLayout&&state.from===id){ readRows(); renderFrom(); } if(state.to===id) renderTo(); renderSettings(); };
         if(id==="australia"){
-          h+=`<div class="srow"><span class="k">Datum</span>${seg([["gda2020","GDA2020"],["wgs84","WGS 84"],["agd66","AGD66"]],s.datum||"gda2020",v=>{ s.datum=v; delete s.square; state.points=[]; stale=false; setBottomError(""); changed(true); renderTo(); updatePairState(); })}</div>`;
+          h+=`<div class="srow"><span class="k">Datum</span>${seg([["gda2020","GDA2020"],["wgs84","WGS 84"]],AUSTRALIA_DATUMS[s.datum]?s.datum:"gda2020",v=>{ s.datum=v; delete s.square; state.points=[]; stale=false; setBottomError(""); changed(true); renderTo(); updatePairState(); })}</div>`;
         }
         if(p.kind==="latlong"){
           h+=`<div class="srow"><span class="k">Axis order (flip)</span>${seg([["latlon","Lat, Long"],["lonlat","Long, Lat"]],s.order,v=>{s.order=v;changed(true);})}</div>`;
@@ -1250,14 +1263,14 @@
       PRESET_ORDER.forEach(id=>{
         const p=PRESETS[id], open=(openPreset===id);
         const au=id==="australia"?australiaDatum(S):null;
-        const basis=au?au.basis:p.basis;
-        const specs=au?[["Map datum",au.label],["Map spheroid",au.spheroid],["Grid zone",au.grid]]:p.specs;
+        const basis=au?"GDA2020 or WGS 84 · Zone 56.":p.basis;
+        const specs=au?[["Map datums","GDA2020 / WGS 84"],["Map spheroids","GRS80 / WGS 84"],["Selected grid",au.grid]]:p.specs;
         html+=`<div class="preset${open?" open":""}" data-id="${id}">`;
         html+=`<button class="preset-head" data-head="${id}"><span class="pname">${p.name}${p.unverified?' <span class="tagu">unverified</span>':''}</span><span class="chev">${open?"▾":"▸"}</span></button>`;
         html+=`<div class="preset-body">`;
         html+=`<div class="basis">${basis}</div>`;
         if(specs) html+=`<dl class="specs">${specs.map(x=>`<dt>${x[0]}</dt><dd>${x[1]}</dd>`).join("")}</dl>`;
-        if(id==="australia") html+=`<div class="datum-warning">Datum unconfirmed. The issued map may use WGS 84, GDA2020 or AGD66. Check the map and <a href="https://github.com/adambrest/military-coordinate-converter/issues/new?title=Australia%20datum%20feedback&amp;body=Please%20share%20the%20datum%20printed%20on%20the%20issued%20map%3A%0A" target="_blank" rel="noopener noreferrer">submit feedback</a>.</div>`;
+        if(id==="australia") html+=`<div class="datum-warning">Datum unconfirmed. Choose GDA2020 or WGS 84 to match the issued map, then <a href="https://github.com/adambrest/military-coordinate-converter/issues/new?title=Australia%20datum%20feedback&amp;body=Please%20share%20the%20datum%20printed%20on%20the%20issued%20map%3A%0A" target="_blank" rel="noopener noreferrer">submit feedback</a>.</div>`;
         html+=controls(id);
         html+=`<button class="reset" data-reset="${id}" ${settingsAtDefaults(id)?"disabled":""}>Reset all ${p.name} settings</button>`;
         html+=`</div></div>`;
@@ -1310,7 +1323,7 @@
     }
 
     // initial render
-    renderFrom(); renderTo(); updatePairState();
+    renderFrom(); updatePairState(); renderTo();
   })();
   </script>
 </body>
