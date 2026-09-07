@@ -10,7 +10,7 @@ Choose **From** and **To**, enter coordinates, then select **Convert**. Confirm 
 
 ## Australia datum
 
-Australia currently uses [GDA2020 / MGA Zone 56](https://www.agriculture.gov.au/sites/default/files/documents/e2022-0197-map-shoalwater-bay.pdf) on the GRS80 spheroid. This is provisional: the issued map may instead use WGS 84 or legacy AGD66. Check its datum before use.
+The correct Australia datum is unconfirmed. Choose GDA2020, WGS 84 or AGD66 in Settings to match the issued map. GDA2020 is the default because the [government training-area map](https://www.agriculture.gov.au/sites/default/files/documents/e2022-0197-map-shoalwater-bay.pdf) uses MGA Zone 56.
 
 ## Map sources
 
