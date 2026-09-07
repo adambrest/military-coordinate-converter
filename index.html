@@ -253,11 +253,11 @@
     <div class="modal ao-modal">
       <div class="ao-heading"><div><h3 id="aoTitle">Select your area</h3><p id="aoInstruction">Zoom in, then click your area to select its grid square.</p></div><button id="aoClose" aria-label="Close map">×</button></div>
       <div class="ao-toolbar"><button id="aoBack" class="setting-action">Change location</button><span id="aoSystemLabel"></span><label id="aoSizeLabel" hidden>Area <select id="aoSize"><option value="square">100 km square</option><option value="zone">Grid zone · keep square letters</option></select></label></div>
-      <div class="ao-map-wrap"><div id="aoMap" aria-label="AO map. Arrow keys pan, plus and minus zoom. Use Select map centre to choose an area." tabindex="0"></div><div class="ao-map-hint" id="aoScale">Zoom in to see 100 km squares</div></div>
+      <div class="ao-map-wrap"><div id="aoMap" aria-label="AO map. Arrow keys pan, plus and minus zoom. Click a grid square to select it." tabindex="0"></div><div class="ao-map-hint" id="aoScale">Zoom in to see 100 km squares</div></div>
       <div class="ao-footer">
         <div id="aoSelection" aria-live="polite">No area selected</div>
         <div id="aoWarning" class="ao-warning" role="alert" hidden></div>
-        <div class="ao-actions"><button class="setting-action" id="aoCentre">Select map centre</button><button class="setting-action primary" id="aoApply" disabled>Use this area</button></div>
+        <div class="ao-actions"><button class="setting-action primary" id="aoApply" disabled>Use this area</button></div>
         <p class="note" id="aoNetwork" hidden>Street map unavailable.</p>
       </div>
     </div>
@@ -292,8 +292,8 @@
       basis:"WGS 84 latitude/longitude.",
       specs:[["Map datum","WGS 84"],["Map spheroid","WGS 84"]],
       proj:"EPSG:4326 · +proj=longlat +datum=WGS84 +no_defs" },
-    mgrs:{id:"mgrs",name:"Global MGRS (WGS 84)",kind:"mgrs",large:true,shortGrid:true,
-      basis:"Worldwide grid references with zone, band and square letters.",
+    mgrs:{id:"mgrs",name:"Global coordinates (WGS 84)",kind:"mgrs",large:true,shortGrid:true,
+      basis:"MGRS, UTM and Web Mercator coordinates.",
       specs:[["Map datum","WGS 84"],["Map spheroid","WGS 84"]]},
     sg:{ id:"sg", name:"Singapore MGR", kind:"grid", epsg:"EPSG:3168", lead:[LEAD_E,LEAD_N], omitDefault:true,
       bbox:[1.13,1.48,103.59,104.09],
@@ -344,6 +344,8 @@
   const PRESET_ORDER = ["wgs84","mgrs","sg","taiwan","thailand","australia","brunei"];
   const COUNTRY_PRESETS = ["sg","taiwan","thailand","australia","brunei"];
   const GLOBAL_FORMATS = ["mgrs","globalutm","mercator"];
+  const EXAMPLE_POINT = {lat:1.2964704,lon:103.8210085};
+  function globalExample(id){return formatPoint(EXAMPLE_POINT.lat,EXAMPLE_POINT.lon,id,defaultSettings()).join(" ").replace(/^(\d{1,2}[C-HJ-NP-X])([A-HJ-NP-Z]{2})/,"$1 $2");}
   function projectionFor(presetId){ return PRESETS[presetId].epsg; }
 
   /* ============================ formatting ============================ */
@@ -375,7 +377,7 @@
     if(p.kind==="globalutm"){
       const zone=parseInt(GlobalGrid.parts(lat,lon,0).prefix),south=lat<0;
       const {E,N}=toProjFromWGS(lat,lon,GlobalGrid.projection(zone,south));
-      return [`UTM ${zone}${south?"S":"N"} ${E.toFixed(3)}`,N.toFixed(3)];
+      return [`${south?"UTM ":""}${zone}${south?"S":"N"} ${E.toFixed(3)}`,N.toFixed(3)];
     }
     if(p.kind==="mercator"){
       if(Math.abs(lat)>85.05112878)throw new Error("Web Mercator only supports latitudes between 85.0511° S and N.");
@@ -601,7 +603,7 @@
       }
       return {target:"globalutm",cells:[(band==="S"&&!latitudeBand?"UTM ":"")+zone+band+(latitudeBand?" band":"")+" "+m[3],m[4]],point};
     }
-    if(kind==="globalutm")return {error:"Enter UTM zone, hemisphere and metres, e.g. 48N 366000 149000. N/S mean north/south hemisphere."};
+    if(kind==="globalutm")return {error:"Enter UTM zone and metres, e.g. "+globalExample("globalutm")+". No UTM label is needed for northern coordinates."};
     return null;
   }
   function parseCells(presetId, a, b, S){
@@ -672,7 +674,7 @@
   function defaultSettings(){
     return {
       wgs84:{ order:"latlon", format:"dd", decimals:6 },
-      mgrs:{sgDigits:4,sgOmit:false},
+      mgrs:{sgDigits:4,sgOmit:false,format:"mgrs"},
       sg:{ sgDigits:4, sgOmit:true },
       australia:{ sgDigits:4, sgOmit:true },
       taiwan:{ sgDigits:4, sgOmit:true }, thailand:{ sgDigits:4, sgOmit:true }, brunei:{ sgDigits:4, sgOmit:true },
@@ -718,6 +720,9 @@
       $("#"+side+"Sys").value=global?"mgrs":id;
       $("#"+side+"FormatWrap").hidden=!global;
       if(global)$("#"+side+"Format").value=id;
+      let example=$("#"+side+"FormatExample");
+      if(!example){example=document.createElement("div");example.id=side+"FormatExample";example.className="pastehint";$("#"+side+"FormatWrap").after(example);}
+      example.hidden=!global;example.textContent=global?"Example: "+globalExample(id):"";
     }
     buildSel($("#fromSys")); buildSel($("#toSys"));
     $("#fromSys").value=state.from; $("#toSys").value=state.to;
@@ -726,11 +731,11 @@
     function setBottomError(msg){ const el=$("#badPair"); el.textContent=msg||""; el.hidden=!msg; }
     function toast(msg,warn){ const t=$("#toast"); t.textContent=msg; t.className="toast show"+(warn?" warn":""); clearTimeout(toast._t); toast._t=setTimeout(()=>t.className="toast",1600); }
 
-    let splitTimer=null, stale=false;
+    let stale=false;
     function rowsHaveContent(){ return state.rows.some(r=>r.some(v=>String(v).trim())); }
     function updatePasteHint(){
       const hint=$("#pasteHint");
-      if(state.from==="auto")hint.innerHTML="Start anywhere<ul><li>Military grid reference — e.g. 3000 3000</li><li>Google or Apple Maps link</li><li>Latitude / longitude — decimal, degrees or minutes</li><li>MGRS — e.g. 51R TH 1234 5678</li><li>UTM / Garmin — zone, easting, northing</li><li>Web Mercator — labelled EPSG:3857</li></ul>";
+      if(state.from==="auto")hint.innerHTML=`Type freely; leave the field, press Enter or Convert to detect. Pasting detects immediately.<ul><li>Military grid reference — ${formatPoint(EXAMPLE_POINT.lat,EXAMPLE_POINT.lon,"sg",defaultSettings()).join(" ")}</li><li>Google or Apple Maps link</li><li>Latitude / longitude — ${EXAMPLE_POINT.lat}, ${EXAMPLE_POINT.lon}</li><li>MGRS — ${globalExample("mgrs")}</li><li>UTM / Garmin — ${globalExample("globalutm")}</li><li>Web Mercator — EPSG:3857 ${globalExample("mercator")}</li></ul>`;
       else if(state.from==="globalutm")hint.textContent="WGS 84 UTM · N/S mean hemispheres; other letters mean latitude bands. Check your device datum.";
       else if(state.from==="mercator")hint.textContent="EPSG:3857 · X then Y, in metres.";
       else if(!rowsHaveContent()) hint.textContent="Paste coordinates, MGR or a Maps link.";
@@ -756,7 +761,7 @@
         const canDelete = state.rows.length>1;
         const pieces=prefixed?r[0].match(/^(.*?[A-Za-z])\s*(\d*(?:\.\d+)?)$/):null;
         div.innerHTML=`<span class="n">${i+1}</span>`+
-          (prefixed?`<input class="cell prefix" aria-label="${state.from==="mgrs"?"MGRS prefix":"UTM zone"}" placeholder="${state.from==="mgrs"?"51R TH":"51N"}" value="${escAttr(pieces?.[1]||"")}">`:"")+
+          (prefixed?`<input class="cell prefix" aria-label="${state.from==="mgrs"?"MGRS prefix":"UTM zone"}" placeholder="${state.from==="mgrs"?"48N UG":"48N"}" value="${escAttr((pieces?.[1]||"").toUpperCase().replace(/^(\d{1,2}[C-HJ-NP-X])\s*([A-HJ-NP-Z]{2})$/,"$1 $2"))}">`:"")+
           `<input class="cell a" aria-label="${flexible?"Coordinate":cols[0]}" value="${escAttr(flexible?[r[0],r[1]].filter(Boolean).join(" "):pieces?pieces[2]:r[0])}" placeholder="${flexible?"Paste here":prefixed?"Easting":escAttr(cols[0])}">`+
           `<input class="cell b" ${flexible?"hidden":""} aria-label="${cols[1]}" value="${escAttr(flexible?"":r[1])}" placeholder="${escAttr(cols[1])}">`+
           `<input class="cell nm" aria-label="Point name" value="${escAttr(r[2])}" placeholder="Name (optional)">`+
@@ -772,17 +777,32 @@
         });
         const A=div.querySelector(".a"),B=div.querySelector(".b"),NM=div.querySelector(".nm");
         const prefix=div.querySelector(".prefix");
-        if(prefix)prefix.addEventListener("input",()=>{readRows();state.points=[];renderTo();setBottomError("");save();clearTimeout(splitTimer);splitTimer=setTimeout(convert,700);});
+        if(prefix)prefix.addEventListener("input",()=>{readRows();state.points=[];renderTo();setBottomError("");save();});
         [A,B,NM].forEach(inp=>inp.addEventListener("input",()=>{ readRows(); updatePasteHint(); setBottomError(""); state.points=[];stale=false;renderTo();save(); }));
         [A,B].forEach(inp=>inp.addEventListener("blur",()=>{ inp.classList.remove("bad"); }));
+        if(flexible)A.addEventListener("blur",e=>{
+          const next=e.relatedTarget, row=next?.closest(".trow"),nextIndex=row?Number(row.dataset.i):null;
+          const nextField=next?.classList.contains("nm")?".nm":next?.classList.contains("b")?".b":next?.classList.contains("a")?".a":null;
+          // Let the click finish first; it may already convert or change the input system.
+          setTimeout(()=>{
+            if(!A.isConnected||!A.value.trim())return;
+            onPaste({clipboardData:{getData:()=>A.value},preventDefault(){}},i,A,B);
+            if(!state.pendingGrid&&nextField&&nextIndex!==null)$("#fromRows").children[nextIndex]?.querySelector(nextField)?.focus();
+          },0);
+        });
         // Enter starts a new row and focuses it
         [A,B,NM].forEach(inp=>inp.addEventListener("keydown",e=>{
-          if(e.key==="Enter"){ e.preventDefault(); readRows(); state.rows.splice(i+1,0,["","",""]); renderFrom(); const nx=$("#fromRows").children[i+1]; if(nx) nx.querySelector(".a").focus(); save(); }
+          if(e.key==="Enter"){
+            e.preventDefault();readRows();
+            if(flexible&&inp===A&&A.value.trim()){
+              onPaste({clipboardData:{getData:()=>A.value},preventDefault(){}},i,A,B);
+              if(state.pendingGrid||!$("#badPair").hidden)return;
+            }
+            state.rows.splice(i+1,0,["","",""]);renderFrom();const nx=$("#fromRows").children[i+1];if(nx)nx.querySelector(".a").focus();save();
+          }
         }));
         if(smart){
           [A,B].forEach(inp=>inp.addEventListener("paste",e=>onPaste(e,i,A,B)));
-          // after a pause, if a whole coordinate landed in the first box, split it out
-          [A,B].forEach(inp=>inp.addEventListener("input",()=>{ clearTimeout(splitTimer); splitTimer=setTimeout(()=>maybeSplit(i,A,B),700); }));
         }
       });
       updateRegionChips();
@@ -914,32 +934,6 @@
       }
       state.points=[];stale=false;renderFrom();updatePairState();renderTo();flashRows(i,parsed.length);convert();save();
     }
-    function maybeSplit(i,A,B){
-      const v=A.value.trim();
-      if(!B.value.trim()&&(A.closest(".flexible-input")||state.from==="auto"||parseProjected(v)||state.from==="mercator")){
-        if(v)onPaste({clipboardData:{getData:()=>v},preventDefault(){}},i,A,B);return;
-      }
-      if(!B.value.trim()){
-        if(fullMGR(v)){
-          const event={clipboardData:{getData:()=>v},preventDefault(){}};
-          onPaste(event,i,A,B);return;
-        }
-        const g=splitGrid(v);
-        if(!g.error&&g.d>=3){
-          if(!state.aoConfirmed&&!PRESETS[state.from].lead||state.from==="wgs84"){openCountryChooser(v,i);return;}
-          A.value=g.e;B.value=g.n;readRows();
-        }else if(PRESETS[state.from].kind==="latlong"){
-          const p=parseLatLon(v,state.settings.wgs84.order);
-          if(!p.error){const cells=llCells(p.lat,p.lon);A.value=cells[0];B.value=cells[1];readRows();}
-        }
-      }
-      readRows();
-      if(state.rows.some(r=>r[0].trim()&&r[1].trim())){
-        const short=splitGrid(A.value+" "+B.value);
-        if(!short.error&&short.d>=3&&!state.aoConfirmed&&!PRESETS[state.from].lead){openCountryChooser(A.value+" "+B.value,i);return;}
-        convert();
-      }
-    }
     function flashRows(start,count){
       const rows=$("#fromRows").children;
       for(let k=0;k<count;k++){ const el=rows[start+k]; if(!el) continue; const A=el.querySelector(".a"),B=el.querySelector(".b"); A&&A.classList.add("flash"); B&&B.classList.add("flash"); setTimeout(()=>{A&&A.classList.remove("flash");B&&B.classList.remove("flash");},800); }
@@ -956,6 +950,7 @@
       const chip=$(chipId); if(!chip) return;
       const label=regionChipLabel(presetId);
       chip.hidden=!PRESETS[presetId].large;
+      if(presetId==="mgrs")chip.hidden=chipId==="#regionChip"?state.rows.every(r=>!r[0].trim()||fullMGR(r[0])):!state.settings.mgrs.sgOmit;
       chip.textContent=label?`AO: ${label} · Change`:"Select AO on map";
       chip.setAttribute("role","button");chip.tabIndex=0;
       chip.onclick=()=>openSquareBrowser(presetId);
@@ -974,10 +969,10 @@
 
     /* ---- convert ---- */
     function convert(){
-      clearTimeout(splitTimer);
       state.points=[];stale=false;renderTo();
       if(pairInvalid()){ updatePairState(); return; }
       setBottomError("");
+      $("#fromRows").querySelectorAll(".prefix").forEach(input=>{input.value=input.value.toUpperCase().replace(/^(\d{1,2}[C-HJ-NP-X])\s*([A-HJ-NP-Z]{2})$/,"$1 $2");});
       readRows();
       if(state.from==="auto"||$("#fromRows").closest(".side").classList.contains("flexible-input")){
         const rows=state.rows.filter(r=>r[0].trim()||r[1].trim());
@@ -1089,6 +1084,7 @@
       readRows();
       const hasInput=state.rows.some(r=>r.some(v=>String(v).trim()));
       state.from=$("#fromSys").value;
+      if(state.from==="mgrs")state.from=state.settings.mgrs.format||"mgrs";
       state.explicitInput=true;
       delete state.pendingGrid;
       state.aoConfirmed=false;
@@ -1099,7 +1095,7 @@
       save();
       if(PRESETS[state.from].large&&state.from!=="mgrs"&&!state.settings[state.from].square&&!state.settings[state.from].ao)openSquareBrowser(state.from);
     });
-    $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value;state.explicitOutput=true;updatePairState();if(rowsHaveContent())convert();else renderTo();save(); });
+    $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value;if(state.to==="mgrs")state.to=state.settings.mgrs.format||"mgrs";state.explicitOutput=true;updatePairState();if(rowsHaveContent())convert();else renderTo();save(); });
     $("#fromFormat").addEventListener("change",()=>{
       readRows();const pts=state.points||[],id=$("#fromFormat").value;
       if(pts.length){
@@ -1107,11 +1103,13 @@
         catch(error){syncFormat("from");setBottomError(error.message);return;}
       }
       state.from=id;state.explicitInput=true;delete state.pendingGrid;
+      state.settings.mgrs.format=id;
       state.points=[];renderFrom();renderTo();updatePairState();save();
       if(rowsHaveContent())convert();
     });
     $("#toFormat").addEventListener("change",()=>{
       state.to=$("#toFormat").value;state.explicitOutput=true;updatePairState();
+      state.settings.mgrs.format=state.to;
       if(rowsHaveContent())convert();else renderTo();save();
     });
     $("#addRow").addEventListener("click",()=>{ readRows(); state.rows.push(["","",""]); renderFrom(); save(); });
@@ -1169,13 +1167,23 @@
       const controls=(id)=>{
         const p=PRESETS[id], s=S[id]; let h="";
         const changed=(sourceLayout=false)=>{ if(state.from===id){readRows();state.points=[];renderFrom();renderTo();} if(state.to===id)renderTo();save();renderSettings(); };
+        if(id==="mgrs"){
+          const format=s.format||"mgrs";
+          h+=`<div class="srow"><span class="k">Format</span>${seg([["mgrs","MGRS"],["globalutm","UTM"],["mercator","Web Mercator"]],format,v=>{
+            s.format=v;
+            if(GLOBAL_FORMATS.includes(state.from)){$("#fromFormat").value=v;$("#fromFormat").dispatchEvent(new Event("change"));}
+            if(GLOBAL_FORMATS.includes(state.to)){$("#toFormat").value=v;$("#toFormat").dispatchEvent(new Event("change"));}
+            save();renderSettings();
+          })}</div><div class="example">Example: <b>${globalExample(format)}</b></div>`;
+          if(format!=="mgrs")return h+`<div class="note">${format==="globalutm"?"Zone, easting and northing in metres. WGS 84 datum and spheroid.":"EPSG:3857 · X and Y in metres. WGS 84 datum; spherical Mercator projection."}</div>`;
+        }
         if(p.kind==="latlong"){
           h+=`<div class="srow"><span class="k">Axis order (flip)</span>${seg([["latlon","Lat, Long"],["lonlat","Long, Lat"]],s.order,v=>{s.order=v;changed(true);})}</div>`;
           h+=`<div class="srow"><span class="k">Format</span>${seg([["dd","Decimal"],["ddm","Deg + Min"],["dms","D M S"]],s.format,v=>{s.format=v;changed();})}</div>`;
           const decimals=s.decimals??6, precision=decimals===7?"about 1 centimeter":decimals===6?"about 10 centimeters":decimals===5?"about 1 meter":"about 10 meters";
           h+=`<div class="srow"><span class="k">Precision</span>${seg([[7,"7"],[6,"6"],[5,"5"],[4,"4"]],decimals,v=>{s.decimals=+v;changed();})}</div>`;
           h+=`<div class="note precision-note">${decimals} decimal places · ${precision}</div>`;
-          const la=fmtLat(1.352083,s),lo=fmtLon(103.819836,s);
+          const la=fmtLat(EXAMPLE_POINT.lat,s),lo=fmtLon(EXAMPLE_POINT.lon,s);
           h+=`<div class="example">Example&nbsp; <b>${s.order==="lonlat"?lo+"&nbsp;&nbsp;&nbsp;"+la:la+"&nbsp;&nbsp;&nbsp;"+lo}</b></div>`;
         } else if(p.kind==="grid"||p.shortGrid){
           if(p.large){
@@ -1204,10 +1212,8 @@
           h+=`<label class="chk"><input type="checkbox" id="${omId}" ${canOmit&&s.sgOmit!==false?"checked":""} ${canOmit?"":"disabled"}> ${id==="mgrs"?"Omit selected AO prefix":"Omit 100 km square prefix"}</label>`;
           if(!canOmit) h+=`<div class="note">Confirm the AO first.</div>`;
           setTimeout(()=>{ const c=document.getElementById(omId); if(c) c.addEventListener("change",e=>{ s.sgOmit=e.target.checked; changed(); }); },0);
-          const lead=p.lead||p.exampleLead||[3,54], fullE=lead[0]*100000+99999, fullN=lead[1]*100000+99999;
-          const [ea,nb]=p.large&&(!canOmit||s.sgOmit===false)?[String(fullE),String(fullN)]:sgHalvesEN(fullE,fullN,s,lead,canOmit);
           if(id==="mgrs")h+=`<div class="note">Full references include zone, band and square letters. Prefixes are mandatory across AO boundaries.</div>`;
-          else h+=`<div class="example grid-example"><span>${fullE} ${fullN}</span><span class="arrow" aria-hidden="true">→</span><b>${ea} ${nb}</b></div>`;
+          else if(id==="sg")h+=`<div class="example">Example: <b>${formatPoint(EXAMPLE_POINT.lat,EXAMPLE_POINT.lon,id,S).join(" ")}</b></div>`;
           h+=`</section>`;
         } else { // utm / projected
           h+=`<div class="srow"><span class="k">Precision (meters)</span>${seg([[0,"1 m"],[1,"10 cm"],[2,"1 cm"],[3,"1 mm"]],s.decimals,v=>{s.decimals=+v;changed();})}</div>`;
@@ -1220,7 +1226,7 @@
         const p=PRESETS[id], open=(openPreset===id);
         const {basis,specs}=p;
         html+=`<div class="preset${open?" open":""}" data-id="${id}">`;
-        html+=`<button class="preset-head" data-head="${id}"><span class="pname">${p.name}${p.unverified?' <span class="tagu">unverified</span>':''}</span><span class="chev">${open?"▾":"▸"}</span></button>`;
+        html+=`<button class="preset-head" data-head="${id}"><span class="pname">${id==="mgrs"?"Global coordinates (WGS 84)":p.name}${p.unverified?' <span class="tagu">unverified</span>':''}</span><span class="chev">${open?"▾":"▸"}</span></button>`;
         html+=`<div class="preset-body">`;
         html+=`<div class="basis">${basis}</div>`;
         if(specs) html+=`<dl class="specs">${specs.map(x=>`<dt>${x[0]}</dt><dd>${x[1]}</dd>`).join("")}</dl>`;

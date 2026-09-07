@@ -133,7 +133,6 @@
       }
       map.on("click",e=>{const threshold=gridId()==="mgrs"&&$("aoSize").value==="zone"?3:6;if(map.getZoom()<threshold){map.setView(e.latlng,threshold+1);return;}select(e.latlng.lat,e.latlng.lng);});
       map.on("moveend zoomend",()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(draw);});
-      $("aoCentre").addEventListener("click",()=>{const c=map.getCenter();const threshold=gridId()==="mgrs"&&$("aoSize").value==="zone"?3:6;if(map.getZoom()<threshold){map.setZoom(threshold+1);return;}select(c.lat,c.lng);});
       $("aoSize").addEventListener("change",()=>{selection=null;selectionLayer.clearLayers();pointLayer.clearLayers();$("aoApply").disabled=true;$("aoSelection").textContent="No area selected";$("aoWarning").hidden=true;draw();});
     }
     function close(){ $("aoOverlay").classList.remove("open");returnFocus?.focus(); }
@@ -185,6 +184,7 @@
         const p=presets[id],b=p.bbox;let area=[[b[0],b[2]],[b[1],b[3]]];
         if(p.anchor){const [lat,lon]=p.anchor,dy=(p.anchorRadiusKm||65)*1.6/111,dx=dy/Math.cos(lat*Math.PI/180);area=[[lat-dy,lon-dx],[lat+dy,lon+dx]];}
         const focus=L.latLngBounds(area);map.fitBounds(focus,{padding:[28,28],maxZoom:9,animate:false});map.setMaxBounds(focus.pad(.5));map.setMinZoom(Math.max(6,map.getZoom()-1));
+        if(id==="australia")map.setZoom(map.getZoom()+1,{animate:false});
       }
       draw();$("aoClose").focus();
     }

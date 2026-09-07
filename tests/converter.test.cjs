@@ -78,7 +78,7 @@ test('blank MGRS also auto-detects UTM; spaced MGRS gets a dedicated prefix fiel
   assert.equal(a.$('#fromFormat').value,'globalutm');assert.equal(a.$('#copyBtn').disabled,false);
   a.paste('51R TH 1234 5678');assert.equal(a.$('#fromSys').value,'mgrs');
   assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
-  assert.match(a.$('#fromRows .prefix').value,/51RTH/);assert.equal(a.$('#fromRows .a').value,'1234');
+  assert.match(a.$('#fromRows .prefix').value,/51R TH/);assert.equal(a.$('#fromRows .a').value,'1234');
   a.dom.window.close();
 });
 test('unlabelled projected metres require CRS choice; EPSG:3857 is detected explicitly',()=>{
@@ -101,10 +101,42 @@ test('UTM rejects bad zones, invalid bands and ambiguous S instead of guessing',
 test('typed input snaps from blank MGRS and edits revalidate without losing names',async()=>{
   const a=app();a.change('#fromSys','mgrs');a.$('#fromRows .nm').value='Typed point';
   a.$('#fromRows .a').value='48N 366000 149000';a.$('#fromRows .a').dispatchEvent(new a.w.Event('input',{bubbles:true}));
-  await new Promise(r=>setTimeout(r,760));assert.equal(a.$('#fromFormat').value,'globalutm');assert.equal(a.state().points[0].name,'Typed point');
+  await new Promise(r=>setTimeout(r,760));a.$('#convertBtn').click();assert.equal(a.$('#fromFormat').value,'globalutm');assert.equal(a.state().points[0].name,'Typed point');
   a.$('#fromRows .prefix').value='61N';a.$('#fromRows .prefix').dispatchEvent(new a.w.Event('input',{bubbles:true}));
   assert.equal(a.$('#copyBtn').disabled,true);a.$('#convertBtn').click();assert.match(a.$('#badPair').textContent,/out of range/);
   a.dom.window.close();
+});
+test('slow typing never replaces or blurs the input; complete MGRS needs no AO',async()=>{
+  const a=app();const input=a.$('#fromRows .a');input.focus();
+  for(const value of ['51r','51r th','51r th 93619','51r th 93619 48618']){
+    input.value=value;input.dispatchEvent(new a.w.Event('input',{bubbles:true}));await new Promise(r=>setTimeout(r,750));
+    assert.equal(a.$('#fromRows .a'),input);assert.equal(a.w.document.activeElement,input);assert.equal(a.w.mapOptions,undefined);
+  }
+  a.$('#convertBtn').click();assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);assert.equal(a.$('#regionChip').hidden,true);assert.equal(a.w.mapOptions,undefined);
+  a.paste('48nug 6883 4332');assert.equal(a.$('#fromRows .prefix').value,'48N UG');assert.equal(a.$('#copyBtn').disabled,false);
+  a.$('#fromRows .prefix').value='48nug';a.$('#convertBtn').click();assert.equal(a.$('#fromRows .prefix').value,'48N UG');assert.equal(a.$('#copyBtn').disabled,false);
+  a.dom.window.close();
+});
+test('global Settings format matches converter and examples use Mount Echo Park',async()=>{
+  const a=app();a.paste('1.2964704,103.8210085');a.change('#toSys','mgrs');
+  assert.match(a.$('#toFormatExample').textContent,/48N UG 6883 4332/);
+  a.$('#tab-set').click();a.$('[data-head="mgrs"]').click();await new Promise(r=>setTimeout(r,20));
+  assert.match(a.$('[data-head="mgrs"]').textContent,/Global coordinates/);
+  a.$('[data-id="mgrs"] [data-v="globalutm"]').click();await new Promise(r=>setTimeout(r,20));
+  assert.equal(a.state().to,'globalutm');assert.match(a.$('#toFormatExample').textContent,/48N 368831.814 143329.716/);
+  assert.match(a.$('[data-id="mgrs"] .example').textContent,/368831.814/);assert.equal(a.$('#aoCentre'),null);
+  a.dom.window.close();
+});
+test('leaving Auto-detect snaps and keeps focus in the Name field',async()=>{
+  const a=app();const input=a.$('#fromRows .a');input.focus();input.value='48nug 6883 4332';input.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+  a.$('#fromRows .nm').focus();await new Promise(r=>setTimeout(r,20));
+  assert.equal(a.$('#fromRows .prefix').value,'48N UG');assert.equal(a.w.document.activeElement,a.$('#fromRows .nm'));assert.equal(a.$('#copyBtn').disabled,false);a.dom.window.close();
+});
+test('Enter detects the coordinate and focuses a new row',async()=>{
+  const a=app();const input=a.$('#fromRows .a');input.focus();input.value='51r th 93619 48618';input.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+  input.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await new Promise(r=>setTimeout(r,20));
+  assert.equal(a.$('#fromRows').children.length,2);assert.equal(a.$('#fromRows .prefix').value,'51R TH');
+  assert.equal(a.w.document.activeElement,a.$('#fromRows').children[1].querySelector('.a'));assert.equal(a.w.mapOptions,undefined);a.dom.window.close();
 });
 test('new projected formats still enforce country output and never need an AO',()=>{
   const a=app();a.change('#toSys','taiwan');a.paste('48N 366000 149000');
@@ -135,7 +167,7 @@ test('global formats are grouped on both sides and preserve the point when chang
   assert.ok(a.$('#fromRows .prefix').value.includes('48N'));assert.match(a.$('#fromRows .a').value,/^\d+\.\d{3}$/);
   for(const format of ['mercator','mgrs','globalutm']){
     a.change('#fromFormat',format);assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
-    assert.ok(Math.abs(a.state().points[0].lat-1.352083)<.0001);assert.equal(a.$('#regionChip').hidden,format!=='mgrs');
+    assert.ok(Math.abs(a.state().points[0].lat-1.352083)<.0001);assert.equal(a.$('#regionChip').hidden,true);
   }
   a.dom.window.close();
 });

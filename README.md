@@ -6,7 +6,7 @@ Convert latitude/longitude, global WGS 84 MGRS, and military grids for Singapore
 
 ## Use
 
-Start with Auto-detect: paste coordinates, a Maps link, UTM (`48N 366000 149000`) or MGRS (`51R TH 1234 5678`), and optionally name the point. For an ambiguous grid, choose its country; select an AO only when needed. Raw WGS 84 uses the world map. References crossing AOs keep their full prefixes.
+Start with Auto-detect: paste coordinates or a Maps link, or type and leave the field to detect. Enter detects and adds another row. Examples at Mount Echo Park: UTM `48N 368831.814 143329.716`, MGRS `48N UG 6883 4332`. For an ambiguous grid, choose its country; select an AO only when needed. Complete references need no AO selection. References crossing AOs keep their full prefixes.
 
 Global coordinates (WGS 84) offers MGRS, UTM and Web Mercator formats. UTM/Garmin input assumes WGS 84; ambiguous `S` needs `UTM 51S` (southern hemisphere) or `51S band` (latitude band). Web Mercator metres need an `EPSG:3857` label or its format selection.
 
