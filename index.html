@@ -283,6 +283,9 @@
   /* ============================ presets ============================ */
   // Each preset: parse(fields,settings)->{lat,lon}|{error}; format(lat,lon,settings)->[a,b]; cols; kind
   const PRESETS = {
+    auto:{id:"auto",name:"Auto-detect",kind:"auto"},
+    globalutm:{id:"globalutm",name:"UTM (WGS 84)",kind:"globalutm"},
+    mercator:{id:"mercator",name:"Web Mercator (EPSG:3857)",kind:"mercator"},
     wgs84:{ id:"wgs84", name:"Global Lat/Long (WGS 84)", kind:"latlong",
       basis:"WGS 84 latitude/longitude.",
       specs:[["Map datum","WGS 84"],["Map spheroid","WGS 84"]],
@@ -418,7 +421,7 @@
     return null;
   }
   function countryMismatchMessage(presetId,points){
-    if(!presetId||presetId==="wgs84"||presetId==="mgrs"||!points.length) return "";
+    if(!COUNTRY_PRESETS.includes(presetId)||!points.length) return "";
     const outside=points.filter(pt=>!presetContains(presetId,pt.lat,pt.lon));
     if(!outside.length) return "";
     const apparent=COUNTRY_PRESETS.find(id=>id!==presetId&&outside.every(pt=>presetContains(id,pt.lat,pt.lon)));
@@ -563,9 +566,37 @@
   }
 
   // parse two cells for a preset -> {lat,lon}|{error, badA,badB}
+  function parseProjected(text,kind){
+    const raw=text.trim().toUpperCase();
+    if(kind==="mercator"||/^(?:EPSG\s*:?\s*3857|WEB\s*MERCATOR)\b/.test(raw)){
+      const pair=raw.replace(/^(?:EPSG\s*:?\s*3857|WEB\s*MERCATOR)\s*[:;,]?\s*/,"").split(/[\s,;]+/);
+      if(pair.length!==2||pair.some(v=>!/^[-+]?\d+(?:\.\d+)?$/.test(v)||Math.abs(Number(v))>20037508.34278925))return {error:"Enter Web Mercator X and Y in metres (EPSG:3857)."};
+      return {target:"mercator",cells:pair,point:toWGSfromProj(+pair[0],+pair[1],"EPSG:3857")};
+    }
+    const m=raw.match(/^(?:UTM\s*)?(\d{1,2})\s*([C-HJ-NP-X])\s+(?:BAND\s+)?([\d]+(?:\.\d+)?)\s*(?:M?E)?[\s,;]+([\d]+(?:\.\d+)?)\s*(?:M?N)?$/);
+    if(m){
+      const zone=+m[1],band=m[2],E=+m[3],N=+m[4];
+      if(zone<1||zone>60||E<100000||E>=1000000||N<0||N>10000000)return {error:"UTM zone or easting/northing is out of range."};
+      const latitudeBand=/\bBAND\b/.test(raw);
+      if(band==="S"&&!latitudeBand&&!/^UTM/.test(raw))return {error:"S can mean southern hemisphere or latitude band S. Use ‘UTM 51S …’ for south, or ‘51S band …’ for the latitude band (replace 51 with your zone)."};
+      const south=band==="S"&&!latitudeBand||band<"N",point=toWGSfromProj(E,N,GlobalGrid.projection(zone,south));
+      if(!Number.isFinite(point.lat)||point.lat < -80||point.lat>84||Math.abs(point.lon)>180)return {error:"UTM coordinate is out of range."};
+      if(latitudeBand||!/[NS]/.test(band)){
+        const bounds=GlobalGrid.zoneBounds(zone,band);
+        if(!bounds||point.lat<bounds.south||point.lat>bounds.north)return {error:"UTM northing does not match its latitude band."};
+      }
+      return {target:"globalutm",cells:[(band==="S"&&!latitudeBand?"UTM ":"")+zone+band+(latitudeBand?" band":"")+" "+m[3],m[4]],point};
+    }
+    if(kind==="globalutm")return {error:"Enter UTM zone, hemisphere and metres, e.g. 48N 366000 149000. N/S mean north/south hemisphere."};
+    return null;
+  }
   function parseCells(presetId, a, b, S){
     const p=PRESETS[presetId], s=S[presetId]||{};
     a=(a||"").trim(); b=(b||"").trim();
+    if(p.kind==="globalutm"||p.kind==="mercator"){
+      if(!a&&!b)return {error:"empty",empty:true};
+      const r=parseProjected(a+" "+b,p.kind);return r.error?r:r.point;
+    }
     if(p.kind==="mgrs"){
       if(!a&&!b)return {error:"empty",empty:true};
       try{return GlobalGrid.parse(`${a} ${b}`,s.ao);}catch(e){return {error:e.message,badA:true,badB:true};}
@@ -652,6 +683,7 @@
           delete j.settings.australia.datum;
           // Never restore computed output across engine versions.
           j.points=[];
+          if(!j.rows?.some(r=>r[0]?.trim()||r[1]?.trim())){j.from="auto";j.explicitInput=false;}
           // One-time cleanup for AOs saved by the former Thailand auto-selection behavior.
           if(j.aoSelectionVersion!==2){
             if(j.settings.taiwan) delete j.settings.taiwan.square;
@@ -661,12 +693,12 @@
           return j;
         }
       }catch(_){}
-      return { from:"sg", to:"wgs84", rows:[["","",""]], out:null, points:[], settings:defaultSettings(), aoSelectionVersion:2 };
+      return { from:"auto", to:"wgs84", rows:[["","",""]], out:null, points:[], settings:defaultSettings(), aoSelectionVersion:2 };
     }
     function save(){ try{ localStorage.setItem(STORAGE, JSON.stringify(state)); }catch(_){} }
 
     // build system selects
-    function buildSel(sel){ sel.innerHTML=PRESET_ORDER.map(id=>`<option value="${id}">${PRESETS[id].name}</option>`).join(""); }
+    function buildSel(sel){ const ids=sel.id==="fromSys"?["auto",...PRESET_ORDER,"globalutm","mercator"]:PRESET_ORDER;sel.innerHTML=ids.map(id=>`<option value="${id}">${PRESETS[id].name}</option>`).join(""); }
     buildSel($("#fromSys")); buildSel($("#toSys"));
     $("#fromSys").value=state.from; $("#toSys").value=state.to;
 
@@ -678,37 +710,48 @@
     function rowsHaveContent(){ return state.rows.some(r=>r.some(v=>String(v).trim())); }
     function updatePasteHint(){
       const hint=$("#pasteHint");
-      if(!rowsHaveContent()) hint.textContent="Paste coordinates, MGR or a Maps link.";
+      if(state.from==="auto")hint.textContent="Start anywhere: paste coordinates, a grid reference or a Maps link.";
+      else if(state.from==="globalutm")hint.textContent="WGS 84 UTM · N/S mean hemispheres; other letters mean latitude bands. Check your device datum.";
+      else if(state.from==="mercator")hint.textContent="EPSG:3857 · X then Y, in metres.";
+      else if(!rowsHaveContent()) hint.textContent="Paste coordinates, MGR or a Maps link.";
       else if(PRESETS[state.from].kind==="latlong") hint.textContent="Paste latitude and longitude together.";
       else hint.textContent="Paste easting then northing.";
     }
     /* ---- render FROM table ---- */
     function renderFrom(){
       const cols=colsFor(state.from,state.settings);
+      const flexible=state.from==="auto"||(["mgrs","globalutm","mercator"].includes(state.from)&&!state.rows.some(r=>r[0].trim()||r[1].trim()));
+      const prefixed=!flexible&&["mgrs","globalutm"].includes(state.from);
+      $("#fromRows").closest(".side").classList.toggle("flexible-input",flexible);
+      $("#fromRows").closest(".side").classList.toggle("prefixed-input",prefixed);
       $("#fromRows").closest(".side").classList.toggle("global-grid",state.from==="mgrs");
       $("#fromName").textContent=PRESETS[state.from].name;
       updatePasteHint();
       $("#fromHead").innerHTML=`<span>#</span><span>${cols[0]}</span><span>${cols[1]}</span><span>Name</span><span></span>`;
-      const smart = PRESETS[state.from].kind==="grid" || PRESETS[state.from].shortGrid || PRESETS[state.from].kind==="latlong"; // smart paste + split on for short grids + latlong
+      const smart = true;
       const rowsEl=$("#fromRows"); rowsEl.innerHTML="";
       state.rows.forEach((r,i)=>{
         const div=document.createElement("div"); div.className="trow"; div.dataset.i=i;
         const canDelete = state.rows.length>1;
+        const pieces=prefixed?r[0].match(/^(.*?[A-Za-z])\s*(\d*)$/):null;
         div.innerHTML=`<span class="n">${i+1}</span>`+
-          `<input class="cell a" value="${escAttr(r[0])}" placeholder="${escAttr(cols[0])}">`+
-          `<input class="cell b" value="${escAttr(r[1])}" placeholder="${escAttr(cols[1])}">`+
-          `<input class="cell nm" value="${escAttr(r[2])}" placeholder="name">`+
+          (prefixed?`<input class="cell prefix" aria-label="${state.from==="mgrs"?"MGRS prefix":"UTM zone"}" placeholder="${state.from==="mgrs"?"51R TH":"51N"}" value="${escAttr(pieces?.[1]||"")}">`:"")+
+          `<input class="cell a" aria-label="${flexible?"Coordinate":cols[0]}" value="${escAttr(flexible?[r[0],r[1]].filter(Boolean).join(" "):pieces?pieces[2]:r[0])}" placeholder="${flexible?"Paste a coordinate or Maps link…":prefixed?"Easting":escAttr(cols[0])}">`+
+          `<input class="cell b" ${flexible?"hidden":""} aria-label="${cols[1]}" value="${escAttr(flexible?"":r[1])}" placeholder="${escAttr(cols[1])}">`+
+          `<input class="cell nm" aria-label="Point name" value="${escAttr(r[2])}" placeholder="Name (optional)">`+
           `<button class="del" aria-label="${canDelete?"Delete":"Clear"} row" title="${canDelete?"Delete":"Clear"} row">×</button>`;
         rowsEl.appendChild(div);
         const delEl=div.querySelector(".del");
         if(delEl) delEl.addEventListener("click",()=>{
           readRows();
-          if(state.rows.length===1) state.rows=[["","",""]];
+          if(state.rows.length===1){state.rows=[["","",""]];state.from="auto";$("#fromSys").value="auto";delete state.pendingGrid;state.explicitInput=false;}
           else state.rows.splice(i,1);
           state.points=[];
           renderFrom(); renderTo(); detect(""); save();
         });
         const A=div.querySelector(".a"),B=div.querySelector(".b"),NM=div.querySelector(".nm");
+        const prefix=div.querySelector(".prefix");
+        if(prefix)prefix.addEventListener("input",()=>{readRows();state.points=[];renderTo();setBottomError("");save();clearTimeout(splitTimer);splitTimer=setTimeout(convert,700);});
         [A,B,NM].forEach(inp=>inp.addEventListener("input",()=>{ readRows(); updatePasteHint(); setBottomError(""); state.points=[];stale=false;renderTo();save(); }));
         [A,B].forEach(inp=>inp.addEventListener("blur",()=>{ inp.classList.remove("bad"); }));
         // Enter starts a new row and focuses it
@@ -724,7 +767,7 @@
       updateRegionChips();
     }
     function escAttr(s){ return String(s==null?"":s).replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
-    function readRows(){ state.rows=[...$("#fromRows").children].map(d=>[d.querySelector(".a").value,d.querySelector(".b").value,d.querySelector(".nm").value]); }
+    function readRows(){ state.rows=[...$("#fromRows").children].map(d=>[(d.querySelector(".prefix")?.value?d.querySelector(".prefix").value+" ":"")+d.querySelector(".a").value,d.querySelector(".b").value,d.querySelector(".nm").value]); }
     function syncRows(){ readRows(); }
 
     /* ---- smart paste + auto-split ---- */
@@ -756,7 +799,7 @@
       const system=state.pendingGrid?.system||(state.from==="mgrs"&&!state.pendingGrid?"mgrs":state.explicitInput&&preset?preset:undefined);
       state.pendingGrid={text,i,system};state.aoConfirmed=false;
       text.trim().split(/\r?\n/).forEach((line,k)=>{const g=splitGrid(line);if(g.error)return;while(state.rows.length<=i+k)state.rows.push(["","",""]);state.rows[i+k]=[g.e,g.n,state.rows[i+k][2]||""];});
-      if(state.from==="wgs84"){state.from="mgrs";$("#fromSys").value="mgrs";}
+      if(["wgs84","auto"].includes(state.from)){state.from="mgrs";$("#fromSys").value="mgrs";}
       renderFrom();save();
       const g=splitGrid(text.trim().split(/\r?\n/)[0]);
       picker.open({pending:{text,i},pick:g.error?null:g,point:state.lastLocation,preset,system});
@@ -801,15 +844,16 @@
       return "";
     }
     function fullMGR(text){
-      return /^\s*\d{1,2}\s*[C-HJ-NP-X]\s*[A-HJ-NP-Z]{2}/i.test(text);
+      return /^\s*\d{1,2}\s*[C-HJ-NP-X]\s*[A-HJ-NP-Z]{2}/i.test(text)&&!parseProjected(text);
     }
     function onPaste(e,i,A,B){
       const text=(e.clipboardData||window.clipboardData).getData("text");
       if(!text)return;
       readRows();
       const lines=text.trim().split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-      const short=lines.length&&lines.every(line=>{const g=splitGrid(line);return !g.error&&g.d>=3;});
+      const short=state.from!=="mercator"&&lines.length&&lines.every(line=>{const g=splitGrid(line);return !g.error&&g.d>=3;});
       const full=lines.length&&lines.every(line=>fullMGR(line)||(state.from==="mgrs"&&/^\s*[A-HJ-NP-Z]{2}\s*\d/i.test(line)));
+      const projected=lines.map(line=>parseProjected(line,state.from==="mercator"?"mercator":undefined));
       if(short){
         e.preventDefault();
         if(PRESETS[state.from].lead)state.aoConfirmed=true;
@@ -817,15 +861,18 @@
           openCountryChooser(text,i);return;
         }
       }
-      let target=full?"mgrs":short?state.from:"wgs84";
-      const parsed=lines.map(line=>{
+      let target=full?"mgrs":short?state.from:projected[0]?.target||"wgs84";
+      const parsed=lines.map((line,k)=>{
         if(full){try{const r=GlobalGrid.parse(line,state.settings.mgrs.ao);if(r.error)return r;const q=GlobalGrid.parts(r.lat,r.lon,r.digits);return {cells:[q.prefix+" "+q.e,q.n],point:r};}catch(error){return {error:error.message};}}
         if(short){const g=splitGrid(line);return {cells:[g.e,g.n]};}
+        if(projected[k])return projected[k].target&&projected[k].target!==target?{error:"Paste one coordinate format at a time."}:projected[k];
+        if(projected.some(Boolean))return {error:"Paste one coordinate format at a time."};
+        if(/^[-+]?\d{6,}(?:\.\d+)?[\s,;]+[-+]?\d+(?:\.\d+)?$/.test(line))return {error:"These look like projected metres. If the source says EPSG:3857, select Web Mercator above and convert. UTM needs its zone prefix."};
         const p=parseLatLon(line,state.settings.wgs84.order);
         return p.error?p:{cells:llCells(p.lat,p.lon),point:p};
       });
       if(parsed.some(p=>p.error)){
-        e.preventDefault();state.points=[];renderTo();setBottomError(parsed.find(p=>p.error).error);return;
+        e.preventDefault();state.rows[i]=[text,"",state.rows[i]?.[2]||""];state.points=[];renderFrom();renderTo();setBottomError(parsed.find(p=>p.error).error);save();return;
       }
       if(!parsed.length)return;
       e.preventDefault();
@@ -848,6 +895,9 @@
     }
     function maybeSplit(i,A,B){
       const v=A.value.trim();
+      if(!B.value.trim()&&(A.closest(".flexible-input")||state.from==="auto"||parseProjected(v)||state.from==="mercator")){
+        if(v)onPaste({clipboardData:{getData:()=>v},preventDefault(){}},i,A,B);return;
+      }
       if(!B.value.trim()){
         if(fullMGR(v)){
           const event={clipboardData:{getData:()=>v},preventDefault(){}};
@@ -884,7 +934,7 @@
     function renderRegionChip(chipId,presetId){
       const chip=$(chipId); if(!chip) return;
       const label=regionChipLabel(presetId);
-      chip.hidden=presetId==="wgs84"||!!PRESETS[presetId].lead;
+      chip.hidden=!PRESETS[presetId].large;
       chip.textContent=label?`AO: ${label} · Change`:"Select AO on map";
       chip.setAttribute("role","button");chip.tabIndex=0;
       chip.onclick=()=>openSquareBrowser(presetId);
@@ -906,15 +956,21 @@
       clearTimeout(splitTimer);
       state.points=[];stale=false;renderTo();
       if(pairInvalid()){ updatePairState(); return; }
-      if(state.from===state.to){ detect(""); setBottomError("Not sure what you're trying to do here."); return; }
       setBottomError("");
       readRows();
+      if(state.from==="auto"||$("#fromRows").closest(".side").classList.contains("flexible-input")){
+        const i=state.rows.findIndex(r=>r[0].trim()||r[1].trim());
+        if(i>=0){const r=state.rows[i];onPaste({clipboardData:{getData:()=>r[0]+" "+r[1]},preventDefault(){}},i);}
+        else detect("Paste a coordinate to get started.");
+        return;
+      }
+      if(state.from===state.to){ detect(""); setBottomError("Not sure what you're trying to do here."); return; }
       if(state.pendingGrid){
         const i=state.pendingGrid.i,r=state.rows[i];
         if(r){openCountryChooser(r[0]+" "+r[1],i);return;}
         delete state.pendingGrid;
       }
-      if(!state.aoConfirmed&&state.from!=="wgs84"&&!PRESETS[state.from].lead){
+      if(!state.aoConfirmed&&PRESETS[state.from].large&&!PRESETS[state.from].lead){
         const unresolved=state.rows.findIndex(r=>{const g=splitGrid(r[0]+" "+r[1]);return !g.error&&g.d>=3;});
         if(unresolved>=0){openCountryChooser(state.rows[unresolved][0]+" "+state.rows[unresolved][1],unresolved);return;}
       }
@@ -986,7 +1042,7 @@
 
     /* ---- swap ---- */
     $("#swapBtn").addEventListener("click",()=>{
-      const nf=state.to, nt=state.from;
+      const nf=state.to, nt=PRESET_ORDER.includes(state.from)?state.from:"wgs84";
       // move converted results into FROM (as new-from = old-to system)
       const pts=state.points||[];
       state.from=nf; state.to=nt;
@@ -1019,7 +1075,7 @@
       renderFrom(); renderTo(); updatePairState();
       detect(hasInput?"Input kept — review it for the selected coordinate system.":"",hasInput?"warn":"");
       save();
-      if(PRESETS[state.from].large&&!state.settings[state.from].square&&!state.settings[state.from].ao)openSquareBrowser(state.from);
+      if(PRESETS[state.from].large&&state.from!=="mgrs"&&!state.settings[state.from].square&&!state.settings[state.from].ao)openSquareBrowser(state.from);
     });
     $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value;state.explicitOutput=true;updatePairState();if(rowsHaveContent())convert();else renderTo();save(); });
     $("#addRow").addEventListener("click",()=>{ readRows(); state.rows.push(["","",""]); renderFrom(); save(); });

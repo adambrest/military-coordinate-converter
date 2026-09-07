@@ -53,8 +53,65 @@ test('Google place URL uses final pin, not related place or camera',()=>{
   const r=vm.runInContext('extractMapCoordinate("https://www.google.com/maps/place/Test/@-22.5957012,149.235423,291833m/data=!3d-32.2978819!4d115.7029661!3d-22.7105094!4d150.4091992")',c);
   assert.equal(r.lat,-22.7105094);assert.equal(r.lon,150.4091992);
 });
-test('Singapore default accepts a short grid without asking for an area',()=>{
-  const a=app();a.paste('3000 3000');assert.equal(a.w.mapOptions,undefined);assert.equal(a.$('#copyBtn').disabled,false);assert.equal(a.state().settings.sg.sgDigits,4);a.dom.window.close();
+test('selected Singapore accepts a short grid without asking for an area',()=>{
+  const a=app();a.change('#fromSys','sg');a.paste('3000 3000');assert.equal(a.w.mapOptions,undefined);assert.equal(a.$('#copyBtn').disabled,false);assert.equal(a.state().settings.sg.sgDigits,4);a.dom.window.close();
+});
+test('blank input is inviting, auto-detects and preserves its name',()=>{
+  const a=app();assert.equal(a.$('#fromSys').value,'auto');assert.equal(a.$('#fromRows .b').hidden,true);
+  a.$('#fromRows .nm').value='Meeting point';a.paste('1.352083,103.819836');
+  assert.equal(a.$('#fromSys').value,'wgs84');assert.equal(a.state().points[0].name,'Meeting point');
+  a.$('#fromRows .del').click();assert.equal(a.$('#fromSys').value,'auto');
+  a.change('#fromSys','mgrs');assert.equal(a.$('#fromRows .b').hidden,true);assert.equal(a.w.mapOptions,undefined);
+  a.dom.window.close();
+});
+test('prefixed UTM and Garmin latitude-band input snap into zone and axes',()=>{
+  for(const input of ['48n 366000 149000','UTM 48N 366000mE 149000mN','48N band 366000 149000','48N 366000 149000']){
+    const a=app();a.paste(input);assert.equal(a.$('#fromSys').value,'globalutm',input);
+    assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
+    assert.ok(a.state().points[0].lat>1&&a.state().points[0].lat<2);
+    assert.equal(a.$('#fromRows .a').value,'366000');assert.ok(a.$('#fromRows .prefix').value.includes('48N'));
+    a.dom.window.close();
+  }
+});
+test('blank MGRS also auto-detects UTM; spaced MGRS gets a dedicated prefix field',()=>{
+  const a=app();a.change('#fromSys','mgrs');a.paste('51N 300000 2700000');
+  assert.equal(a.$('#fromSys').value,'globalutm');assert.equal(a.$('#copyBtn').disabled,false);
+  a.paste('51R TH 1234 5678');assert.equal(a.$('#fromSys').value,'mgrs');
+  assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
+  assert.match(a.$('#fromRows .prefix').value,/51RTH/);assert.equal(a.$('#fromRows .a').value,'1234');
+  a.dom.window.close();
+});
+test('unlabelled projected metres require CRS choice; EPSG:3857 is detected explicitly',()=>{
+  const raw='11553992.183085 151736.075979';const a=app();a.paste(raw);
+  assert.equal(a.$('#copyBtn').disabled,true);assert.match(a.$('#badPair').textContent,/EPSG:3857/);assert.equal(a.$('#fromRows .a').value,raw);
+  a.change('#fromSys','mercator');a.$('#convertBtn').click();assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
+  assert.ok(a.state().points[0].lat>1.3&&a.state().points[0].lat<1.4);
+  assert.ok(a.state().points[0].lon>103.7&&a.state().points[0].lon<103.9);
+  a.paste('EPSG:3857 '+raw);assert.equal(a.$('#fromSys').value,'mercator');assert.equal(a.$('#copyBtn').disabled,false);
+  a.dom.window.close();
+});
+test('UTM rejects bad zones, invalid bands and ambiguous S instead of guessing',()=>{
+  const c=core();
+  for(const text of ['61N 366000 149000','48N 0 149000','51R 300000 149000','32X 500000 8500000','51S 300000 2700000']){
+    c.input=text;assert.ok(vm.runInContext('parseProjected(input).error',c),text);
+  }
+  assert.equal(vm.runInContext('parseProjected("UTM 56S 230000 7490000").point.lat<0',c),true);
+  assert.equal(vm.runInContext('parseProjected("51S band 300000 3700000").point.lat>0',c),true);
+});
+test('typed input snaps from blank MGRS and edits revalidate without losing names',async()=>{
+  const a=app();a.change('#fromSys','mgrs');a.$('#fromRows .nm').value='Typed point';
+  a.$('#fromRows .a').value='48N 366000 149000';a.$('#fromRows .a').dispatchEvent(new a.w.Event('input',{bubbles:true}));
+  await new Promise(r=>setTimeout(r,760));assert.equal(a.$('#fromSys').value,'globalutm');assert.equal(a.state().points[0].name,'Typed point');
+  a.$('#fromRows .prefix').value='61N';a.$('#fromRows .prefix').dispatchEvent(new a.w.Event('input',{bubbles:true}));
+  assert.equal(a.$('#copyBtn').disabled,true);a.$('#convertBtn').click();assert.match(a.$('#badPair').textContent,/out of range/);
+  a.dom.window.close();
+});
+test('new projected formats still enforce country output and never need an AO',()=>{
+  const a=app();a.change('#toSys','taiwan');a.paste('48N 366000 149000');
+  assert.equal(a.$('#copyBtn').disabled,true);assert.match(a.$('#badPair').textContent,/Singapore, not Taiwan/);
+  a.change('#toSys','wgs84');assert.equal(a.$('#copyBtn').disabled,false);
+  a.change('#fromSys','mercator');a.paste('3000 3000');assert.equal(a.w.mapOptions,undefined);assert.equal(a.$('#copyBtn').disabled,false);
+  a.dom.window.close();
 });
 test('Singapore latitude/longitude defaults to local 4+4 without any location prompt',()=>{
   const a=app(undefined,true);a.paste('1.352083,103.819836');
