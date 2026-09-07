@@ -489,11 +489,14 @@
       if(!google&&!apple) continue;
       sawMapLink=true;
       if(google){
-        // Place/pin coordinates are more specific than the @ map-camera coordinates.
-        let m=decoded.match(new RegExp(`!3d(${DEC})!4d(${DEC})`,"i"));
-        if(m){ const p=mapPoint(m[1],m[2],"Google Maps pin"); if(p) return p; }
-        m=decoded.match(new RegExp(`!2d(${DEC})!3d(${DEC})`,"i"));
-        if(m){ const p=mapPoint(m[2],m[1],"Google Maps pin"); if(p) return p; }
+        // A place URL can contain pins for related places before the selected place.
+        // The last embedded pin is the selected destination and is more specific than the @ camera.
+        const pins=[];
+        for(const m of decoded.matchAll(new RegExp(`!3d(${DEC})!4d(${DEC})`,"gi"))) pins.push({index:m.index,lat:m[1],lon:m[2]});
+        for(const m of decoded.matchAll(new RegExp(`!2d(${DEC})!3d(${DEC})`,"gi"))) pins.push({index:m.index,lat:m[2],lon:m[1]});
+        pins.sort((a,b)=>b.index-a.index);
+        for(const pin of pins){ const p=mapPoint(pin.lat,pin.lon,"Google Maps pin"); if(p) return p; }
+        let m;
         for(const key of ["query","q","viewpoint","destination","origin","waypoints","center"]){
           const pair=decimalPair(u.searchParams.get(key));
           if(pair) return mapPoint(pair.lat,pair.lon,"Google Maps link");
