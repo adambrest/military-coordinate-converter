@@ -1,7 +1,7 @@
 /* Shared map picker: basemap, projected AO grids and approximate camp landmarks. */
 (function(root){
   "use strict";
-  root.createAOPicker=function({presets,contains,projection,plausible,militaryEnabled=()=>true,onSelect}){
+  root.createAOPicker=function({presets,contains,projection,plausible,presetEnabled=()=>true,onSelect}){
     const $=id=>document.getElementById(id);
     let map,grid,selectionLayer,pointLayer,selection,options={},returnFocus,frame,stableCenter,limitCenter;
     const landmarks=[];
@@ -194,18 +194,19 @@
     function showLocations(opts){
       options=opts;$("aoOverlay").classList.remove("open");$("locationOverlay").classList.add("open");
       // Only offer grids the entered digits could actually fall inside.
-      const inputs=picks();let unavailable=0;
+      const inputs=picks();let unavailable=0,enabled=0;
       for(const button of $("locationOverlay").querySelectorAll("[data-location]")){
         const id=button.dataset.location;
-        button.hidden=id==="mgrs"&&!militaryEnabled();
+        button.hidden=!presetEnabled(id);
         if(button.hidden)continue;
+        enabled++;
         const fits=!plausible||plausible(id,inputs);
         button.disabled=!fits;
         if(fits)button.removeAttribute("title");
         else{button.title="These digits do not land inside "+presets[id].name.replace(" MGR","")+" in any of its grid squares.";unavailable++;}
       }
-      $("locationNote").hidden=!unavailable;
-      $("locationNote").textContent=(unavailable===1?"One grid is":unavailable+" grids are")+" unavailable: these digits cannot fall inside "+(unavailable===1?"it":"them")+".";
+      $("locationNote").hidden=!!enabled&&!unavailable;
+      $("locationNote").textContent=!enabled?"All grid presets are disabled. Enable a grid in Settings to resolve this reference.":(unavailable===1?"One grid is":unavailable+" grids are")+" unavailable: these digits cannot fall inside "+(unavailable===1?"it":"them")+".";
       ($("locationOverlay").querySelector("[data-location]:not(:disabled):not([hidden])")||$("locationClose")).focus();
     }
     $("locationOverlay").querySelectorAll("[data-location]").forEach(button=>button.addEventListener("click",()=>choose(button.dataset.location)));

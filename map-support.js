@@ -9,7 +9,7 @@
   ];
   function marker(map,p,onClick){
     const label=document.createElement('span');label.textContent=p.name||'Point '+p.number;
-    const pin=L.circleMarker([p.lat,p.lon],{radius:6,color:'#fff',weight:1.5,fillColor:'#2563eb',fillOpacity:1})
+    const pin=L.circleMarker([p.lat,p.lon],{radius:6,color:'#fff',weight:1.5,fillColor:'#2563eb',fillOpacity:1,interactive:!!onClick})
       .bindTooltip(label,{permanent:true,direction:'top',offset:[0,-5],className:'map-point-label chosen-point-label'})
       .on('click',e=>{L.DomEvent.stopPropagation(e);onClick?.(p);});
     const wrap=()=>pin.setLatLng([p.lat,p.lon+360*Math.round((map.getCenter().lng-p.lon)/360)]);
@@ -68,15 +68,11 @@
     const size=map.getSize(),pixels=Math.max(80,Math.min(size.x,size.y)-40),latitude=Math.min(80,Math.abs(map.getCenter().lat));
     return Math.max(3,Math.min(10,Math.floor(Math.log2(pixels*156543.03392*Math.cos(latitude*Math.PI/180)/140000))));
   }
-  // Let the first tap settle before panning. A double tap instead zooms around
-  // its actual screen position, without the first click changing that position.
+  // Keep Leaflet's native mouse/touch double-click zoom anchored to the pointer.
+  // Single clicks never move the camera or choose a point.
   function pointGestures(map){
-    let click;
-    map.doubleClickZoom.disable();
-    map.on('click',e=>{clearTimeout(click);click=setTimeout(()=>map.panTo(e.latlng,{animate:false}),500);});
-    map.on('dblclick',e=>{clearTimeout(click);map.setZoomAround(e.containerPoint,map.getZoom()+(e.originalEvent?.shiftKey?-1:1));});
-    map.on('dragstart zoomstart',()=>clearTimeout(click));
-    return ()=>clearTimeout(click);
+    map.doubleClickZoom.enable();
+    return ()=>{};
   }
   function trainingArea(map){
     map.createPane('trainingArea').style.zIndex='300';

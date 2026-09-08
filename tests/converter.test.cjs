@@ -806,7 +806,7 @@ test('military grids are opt-in in selectors, settings and ambiguous chooser',()
   const a=app(undefined,true,false);
   assert.equal(a.$('#fromSys option[value="mgrs"]'),null);
   assert.equal(a.$('#toSys option[value="mgrs"]'),null);
-  a.$('#tab-set').click();assert.equal(a.$('[data-head="mgrs"]'),null);
+  a.$('#tab-set').click();assert.ok(a.$('[data-head="mgrs"]'));assert.equal(a.$('[data-id="mgrs"] .seg'),null);
   a.$('#tab-conv').click();a.paste('3000 3000');
   assert.equal(a.$('[data-location="mgrs"]').hidden,true);
   assert.equal(a.state().militaryEnabled,undefined);
@@ -866,4 +866,50 @@ test('southern Thailand accepts full meters and shortened full references',()=>{
     const point=vm.runInContext('parseCells("thailand",a,b,S)',c);
     assert.ok(Math.abs(point.lat-7)<.002&&Math.abs(point.lon-100)<.002);
   }
+});
+
+
+test('preset enable controls live inside each dropdown and Coordinates cannot be disabled',()=>{
+  const a=app(undefined,true,false);a.$('#tab-set').click();
+  assert.equal(a.$('[data-toggle="wgs84"]'),null);
+  for(const id of ['mgrs','sg','taiwan','thailand','australia','brunei']){
+    const toggle=a.$('[data-toggle="'+id+'"]');
+    assert.equal(toggle.closest('.preset').dataset.id,id);
+    assert.ok(toggle.closest('.preset-body'));
+    if(toggle.getAttribute('aria-pressed')==='true')toggle.click();
+    assert.equal(a.$('#fromSys option[value="'+id+'"]'),null);
+    assert.equal(a.$('#toSys option[value="'+id+'"]'),null);
+    assert.ok(a.$('[data-head="'+id+'"]'));
+  }
+  const saved=a.state();a.dom.window.close();const b=app(saved,true,false);
+  b.paste('3000 3000');
+  for(const el of b.w.document.querySelectorAll('[data-location]'))assert.equal(el.hidden,true);
+  b.$('#locationClose').click();b.$('#tab-set').click();b.$('[data-toggle="sg"]').click();
+  assert.ok(b.$('#fromSys option[value="sg"]'));
+  b.$('#tab-conv').click();b.paste('3000 3000');assert.equal(b.$('[data-location="sg"]').hidden,false);
+  b.dom.window.close();
+});
+test('disabling an active country grid preserves its resolved input as coordinates',()=>{
+  const a=app(undefined,false,false);a.change('#fromSys','sg');a.paste('3000 3000');
+  const original=a.state().points[0];
+  a.$('#tab-set').click();a.$('[data-toggle="sg"]').click();
+  assert.equal(a.state().from,'wgs84');assert.ok(a.state().disabledPresets.includes('sg'));
+  assert.ok(Math.abs(parseFloat(a.state().rows[0][0])-original.lat)<.000001);
+  const b=app(a.state(),false,false);b.paste('1.35,103.82');
+  assert.notEqual(b.state().to,'sg');b.dom.window.close();a.dom.window.close();
+});
+test('single taps, clicks and long presses never move the point-map camera or add points',async()=>{
+  const a=app(undefined,true,false);a.paste('1.35,103.82');a.$('#selectMap').click();
+  await new Promise(r=>setTimeout(r,20));const map=a.w.pointTestMap;
+  map.setView([1.35,103.82],12,{animate:false,reset:true});const before=map.getCenter(),zoom=map.getZoom(),count=a.state().rows.length;
+  const container=a.$('#pointMap');
+  for(const pointerType of ['mouse','touch']){
+    const event=new a.w.MouseEvent('click',{bubbles:true,detail:1,clientX:600,clientY:180});
+    Object.defineProperty(event,'pointerType',{value:pointerType});container.dispatchEvent(event);
+    await new Promise(r=>setTimeout(r,600));assert.ok(map.getCenter().equals(before));assert.equal(map.getZoom(),zoom);
+  }
+  container.dispatchEvent(new a.w.MouseEvent('contextmenu',{bubbles:true,clientX:600,clientY:180}));
+  map.eachLayer(layer=>{if(layer.getTooltip?.()){assert.equal(layer.options.interactive,false);layer.fire('click',{originalEvent:new a.w.MouseEvent('click')});}});
+  await new Promise(r=>setTimeout(r,600));assert.ok(map.getCenter().equals(before));assert.equal(a.state().rows.length,count);
+  a.dom.window.close();
 });

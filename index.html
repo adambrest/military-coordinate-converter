@@ -473,8 +473,8 @@
     if(p.outline) return pointInPolygon(lat,lon,p.outline);
     return !!bb;
   }
-  function suggestedGrid(points){
-    for(const id of COUNTRY_PRESETS){
+  function suggestedGrid(points,ids=COUNTRY_PRESETS){
+    for(const id of ids){
       if(points.length&&points.every(p=>presetContains(id,p.lat,p.lon))) return id;
     }
     return null;
@@ -754,7 +754,7 @@
           j.settings={...defaultSettings(),...j.settings};
           delete j.settings.australia.datum;
           if(!GLOBAL_FORMATS.includes(j.settings.mgrs.format))j.settings.mgrs.format="mgrs";
-          if(!PRESETS[j.to]||(!j.militaryEnabled&&GLOBAL_FORMATS.includes(j.to)))j.to="wgs84";
+          if(!PRESETS[j.to]||(!j.militaryEnabled&&GLOBAL_FORMATS.includes(j.to))||j.disabledPresets?.includes(j.to))j.to="wgs84";
           // Never restore computed output across engine versions.
           j.points=[];
           j.from="auto";j.explicitInput=false;j.aoConfirmed=false;delete j.pendingGrid;
@@ -771,13 +771,15 @@
     }
     function save(){ try{ localStorage.setItem(STORAGE, JSON.stringify(state)); }catch(_){} }
 
+    function presetEnabled(id){return id==="auto"||id==="wgs84"?true:GLOBAL_FORMATS.includes(id)?!!state.militaryEnabled:!state.disabledPresets?.includes(id);}
+    function enabledGrid(points){return suggestedGrid(points,COUNTRY_PRESETS.filter(presetEnabled));}
     // build system selects
-    function buildSel(sel){ const ids=sel.id==="fromSys"?["auto",...PRESET_ORDER]:PRESET_ORDER;sel.innerHTML=ids.filter(id=>id!=="mgrs"||state.militaryEnabled).map(id=>`<option value="${id}">${id==="mgrs"?"Military grid":PRESETS[id].name}</option>`).join(""); }
+    function buildSel(sel){ const ids=sel.id==="fromSys"?["auto",...PRESET_ORDER]:PRESET_ORDER;sel.innerHTML=ids.filter(presetEnabled).map(id=>`<option value="${id}">${id==="mgrs"?"Military grid":PRESETS[id].name}</option>`).join(""); }
     function syncFormat(side){
       const id=state[side],global=GLOBAL_FORMATS.includes(id);
       if(global&&!state.militaryEnabled){state.militaryEnabled=true;save();}
       buildSel($("#"+side+"Sys"));
-      if(side==="from"){buildSel($("#fromSys"));if(id!=="auto")$("#fromSys option[value=auto]")?.remove();}
+      if(side==="from"&&id!=="auto")$("#fromSys option[value=auto]")?.remove();
       $("#"+side+"Sys").value=global?"mgrs":id;
       $("#"+side+"FormatWrap").hidden=!global;
       if(global)$("#"+side+"Format").value=id;
@@ -994,7 +996,7 @@
     /* ---- smart paste + auto-split ---- */
     function llCells(lat,lon){ const S=state.settings.wgs84; const la=fmtLat(lat,S), lo=fmtLon(lon,S); return S.order==="lonlat"?[lo,la]:[la,lo]; }
     const picker=createAOPicker({
-      militaryEnabled:()=>!!state.militaryEnabled,presets:PRESETS,contains:presetContains,projection:id=>projectionFor(id,state.settings),plausible:gridPlausible,
+      presetEnabled,presets:PRESETS,contains:presetContains,projection:id=>projectionFor(id,state.settings),plausible:gridPlausible,
       onSelect(chosen,opts){
         const id=chosen.id, s=state.settings[id];
         if(id==="mgrs")s.ao=chosen.prefix;else s.square=[chosen.e,chosen.n];
@@ -1050,9 +1052,9 @@
     // military grid rather than asking about an area the points do not belong to.
     function outputTarget(points,inputId){
       let to=state.to;
-      if(!state.explicitOutput&&inputId===to)to=inputId==="wgs84"?(suggestedGrid(points)||"mgrs"):"wgs84";
+      if(!state.explicitOutput&&inputId===to)to=inputId==="wgs84"?(enabledGrid(points)||"mgrs"):"wgs84";
       if(!points.length||!COUNTRY_PRESETS.includes(to)||points.every(p=>presetContains(to,p.lat,p.lon)))return to;
-      const match=suggestedGrid(points);
+      const match=enabledGrid(points);
       if(match&&match!==inputId)return match;
       return inputId==="wgs84"?(state.settings.mgrs.format||"mgrs"):"wgs84";
     }
@@ -1209,7 +1211,7 @@
       delete state.pendingGrid;
       const points=parsed.map(p=>p.point).filter(Boolean);
       if(points.length&&!state.explicitOutput){
-        state.to=target==="mgrs"?"wgs84":suggestedGrid(points)||"mgrs";
+        state.to=target==="mgrs"?"wgs84":enabledGrid(points)||"mgrs";
         $("#toSys").value=state.to;
       }
       parsed.forEach((r,k)=>{while(state.rows.length<=i+k)state.rows.push(["","",""]);state.rows[i+k]=[...r.cells,state.rows[i+k][2]||""];});
@@ -1545,13 +1547,15 @@
         }
         return h;
       };
-      let html=`<div class="srow"><span class="k">Military grid (MGRS / UTM)</span><button class="setting-action" id="militaryToggle" aria-pressed="${!!state.militaryEnabled}">${state.militaryEnabled?"Disable":"Enable"}</button></div><p class="note">Enable global grids when needed. Map points outside the country presets enable them automatically.</p>`;
-      PRESET_ORDER.filter(id=>id!=="mgrs"||state.militaryEnabled).forEach(id=>{
+      let html="";
+      PRESET_ORDER.forEach(id=>{
         const p=PRESETS[id], open=(openPreset===id);
         const {basis,specs}=p;
         html+=`<div class="preset${open?" open":""}" data-id="${id}">`;
         html+=`<button class="preset-head" data-head="${id}"><span class="pname">${id==="mgrs"?"Military grid":p.name}${p.unverified?' <span class="tagu">unverified</span>':''}</span><span class="chev">${open?"▾":"▸"}</span></button>`;
         html+=`<div class="preset-body">`;
+        if(id!=="wgs84")html+=`<div class="srow"><span class="k">${presetEnabled(id)?"Enabled":"Disabled"}</span><button type="button" class="setting-action" ${id==="mgrs"?'id="militaryToggle"':""} data-toggle="${id}" aria-pressed="${presetEnabled(id)}">${presetEnabled(id)?"Disable":"Enable"}</button></div>`;
+        if(!presetEnabled(id)){html+=`<p class="note">Enable ${p.name} to show it in the converter and reference chooser.</p></div></div>`;return;}
         html+=`<div class="basis">${basis}</div>`;
         if(specs) html+=`<dl class="specs">${specs.map(x=>`<dt>${x[0]}</dt><dd>${x[1]}</dd>`).join("")}</dl>`;
         if(p.note)html+=`<div class="datum-warning">${p.note} ${p.feedback?`<a href="${p.feedback}" target="_blank" rel="noopener noreferrer">Submit feedback</a>.`:""}</div>`;
@@ -1560,20 +1564,22 @@
         html+=`</div></div>`;
       });
       el.innerHTML=html;
-      $("#militaryToggle").onclick=()=>{
-        readRows();const current=existingMapPoints();
-        state.militaryEnabled=!state.militaryEnabled;
-        if(!state.militaryEnabled){
-          if(GLOBAL_FORMATS.includes(state.from)){
+      el.querySelectorAll("[data-toggle]").forEach(button=>button.onclick=()=>{
+        readRows();const current=existingMapPoints(),id=button.dataset.toggle,enabled=!presetEnabled(id);
+        if(id==="mgrs")state.militaryEnabled=enabled;
+        else state.disabledPresets=enabled?(state.disabledPresets||[]).filter(p=>p!==id):[...(state.disabledPresets||[]),id];
+        if(!enabled){
+          const matches=value=>id==="mgrs"?GLOBAL_FORMATS.includes(value):value===id;
+          if(matches(state.from)){
             state.rows=current.unresolved?state.rows:current.points.map(p=>[...llCells(p.lat,p.lon),p.name]);
             if(!state.rows.length)state.rows=[["","",""]];
             state.from=current.unresolved?"auto":"wgs84";
           }
-          if(GLOBAL_FORMATS.includes(state.to))state.to=suggestedGrid(current.points)||"wgs84";
+          if(matches(state.to))state.to=enabledGrid(current.points)||"wgs84";
           delete state.pendingGrid;state.points=[];state.aoConfirmed=false;
         }
         renderFrom();renderTo();updatePairState();save();renderSettings();
-      };
+      });
       el.querySelectorAll(".preset-head").forEach(btn=>btn.addEventListener("click",()=>{ const id=btn.dataset.head; openPreset=(openPreset===id)?null:id; renderSettings(); }));
       el.querySelectorAll(".reset[data-reset]").forEach(btn=>btn.addEventListener("click",()=>{
         const id=btn.dataset.reset;state.settings[id]=defaultsFor(id);

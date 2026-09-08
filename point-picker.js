@@ -51,7 +51,7 @@
     function drawPoints(points){
       markers.clearLayers();
       for(const p of points){
-        MapSupport.marker(map,p,()=>map.panTo([p.lat,p.lon],{animate:false})).addTo(markers);
+        MapSupport.marker(map,p).addTo(markers);
       }
       $("pointCount").textContent=points.length+" existing point"+(points.length===1?"":"s");
       $("pointUnresolved").hidden=!options.unresolved;
@@ -62,7 +62,7 @@
       map.attributionControl.setPrefix(false);L.control.scale({imperial:false}).addTo(map);
       map.createPane("pointCountries").style.zIndex="150";
       map.createPane("offlineLand").style.zIndex="160";
-      MapSupport.context(map,p=>map.panTo([p.lat,p.lon],{animate:false}));
+      MapSupport.context(map);
       MapSupport.trainingArea(map);
       MapSupport.navigation(map,$("pointRegion"));
       limitCenter=MapSupport.limitCenter(map);

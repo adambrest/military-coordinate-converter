@@ -24,13 +24,15 @@ After the first online visit has finished loading, conversion and the basic area
 
 After detection, the paste area becomes separate coordinate fields and **Add row** appears. It becomes available once the last row has both coordinate fields populated. New grid rows inherit the previous row's prefix to save typing; you can edit it for a different square. Gray examples show what belongs in an empty field. Clear the last row to start again with Auto-detect.
 
-**Military grid** (global MGRS / UTM) is disabled by default. Enable it in Settings to show it in the converter and the ambiguous-reference chooser. A point outside all supported country presets enables global output automatically; explicit global references also enable it when detected. Disabling it converts resolved global input to latitude/longitude.
+**Military grid** (global MGRS / UTM) is disabled by default. Enable it inside its Settings dropdown to show it in the converter and the ambiguous-reference chooser. A point outside all supported country presets enables global output automatically; explicit global references also enable it when detected. Disabling it converts resolved global input to latitude/longitude.
+
+Each grid can be enabled or disabled inside its own Settings dropdown; disabled grids disappear from the converter and ambiguous-reference chooser. Coordinates always remains enabled.
 
 **Settings** contains format examples, precision options and your area-of-operations selection. Every grid preset states precision as a ground distance and defaults to 10 m, the familiar 4+4 reference. Country-grid full references also drop trailing digits (for example, 348250 / 2711930 becomes 34825 / 271193 at 10 m); global UTM remains explicitly in meters. Precision only drops trailing digits, so it applies whether or not a reference area has been chosen. Each preset shows a worked example that follows its own settings, so precision, prefix omission and the chosen reference area all change what you see. A shortened Maps link may need to be opened in a browser first: paste the expanded link containing the coordinates.
 
 ## Choose points directly from a map
 
-Select **Select from map** beside Add row. It is available with every input preset, including Auto-detect, when the connectivity check succeeds. The open center of the crosshair marks the selected point. Double-tap or double-click to zoom towards that spot. Drag, click or use arrow keys to move; pinch, scroll or use + / − to zoom.
+Select **Select from map** beside Add row. It is available with every input preset, including Auto-detect, when the connectivity check succeeds. The open center of the crosshair marks the selected point. Double-tap or double-click to zoom towards that spot. Single taps, clicks and long presses do nothing, including on existing pins and landmarks. Drag or use arrow keys to move; pinch, scroll or use + / − to zoom.
 
 Switch between **Street** and **Satellite** without leaving the picker. The same OpenStreetMap layer stays active from country overview to detailed streets, so zooming does not switch maps. Singapore has an extra marker and label at broad zoom. Street tiles and satellite imagery need an internet connection; the basic country overview is saved with the app.
 
