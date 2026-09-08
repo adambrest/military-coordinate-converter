@@ -43,8 +43,8 @@
   }
   // Leaflet's maxBounds keeps the whole viewport inside the box, so a zoomed-in
   // crosshair stops well short of a country's edge. Expanding the box by half a
-  // screen in every direction limits the map centre - the crosshair - instead.
-  function limitCentre(map){
+  // screen in every direction limits the map center - the crosshair - instead.
+  function limitCenter(map){
     let box=null;
     const apply=()=>{
       if(!box){map.setMaxBounds(null);return;}
@@ -84,5 +84,5 @@
     map.on('zoomend',update);
     map.attributionControl.addAttribution('© <a href="https://spatial-gis.information.qld.gov.au/arcgis/rest/services/Location/Places/FeatureServer/17">State of Queensland</a>');
   }
-  root.MapSupport={regions,marker,context,navigation,limitCentre,longitude,worlds,repeatGeometry,squareZoom,pointGestures,trainingArea};
+  root.MapSupport={regions,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,trainingArea};
 })(globalThis);

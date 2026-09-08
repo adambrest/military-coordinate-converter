@@ -1,4 +1,4 @@
-/* Global WGS 84 MGRS and shared AO geometry. Distances are metres. */
+/* Global WGS 84 MGRS and shared AO geometry. Distances are meters. */
 (function(root){
   "use strict";
   const bands="CDEFGHJKLMNPQRSTUVWX";

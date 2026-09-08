@@ -1,9 +1,9 @@
 /* Shared map picker: basemap, projected AO grids and approximate camp landmarks. */
 (function(root){
   "use strict";
-  root.createAOPicker=function({presets,contains,projection,onSelect}){
+  root.createAOPicker=function({presets,contains,projection,plausible,onSelect}){
     const $=id=>document.getElementById(id);
-    let map,grid,selectionLayer,pointLayer,selection,options={},returnFocus,frame,stableCenter,limitCentre;
+    let map,grid,selectionLayer,pointLayer,selection,options={},returnFocus,frame,stableCenter,limitCenter;
     const landmarks=[];
     const ids=["sg","taiwan","thailand","australia","brunei"];
     function gridId(){return options.system||options.preset||"mgrs";}
@@ -61,7 +61,7 @@
       $("aoApply").disabled=false;
       if(chosen.invalid){
         $("aoWarning").textContent=chosen.invalid==="reference"
-          ?"Your reference does not fall inside "+chosen.prefix+". The digits reach past this square's edge, so choose a neighbouring one."
+          ?"Your reference does not fall inside "+chosen.prefix+". The digits reach past this square's edge, so choose a neighboring one."
           :"This reference falls outside "+presets[chosen.id].name.replace(" MGR","")+" in this square. Check the digits or choose another grid square.";
         $("aoWarning").hidden=false;$("aoApply").disabled=true;
       }
@@ -165,7 +165,7 @@
         }
       }
       map.on("click",e=>{const threshold=wholeZone()?3:squareThreshold();if(map.getZoom()>=threshold)select(e.latlng.lat,e.latlng.lng);});
-      limitCentre=MapSupport.limitCentre(map);
+      limitCenter=MapSupport.limitCenter(map);
       map.on("moveend zoomend",()=>{const p=map.getCenter();stableCenter={lat:p.lat,lng:p.lng};cancelAnimationFrame(frame);frame=requestAnimationFrame(draw);});
       const resize=()=>{if(!$("aoOverlay").classList.contains("open"))return;const p=stableCenter||map.getCenter(),z=map.getZoom();map.invalidateSize({pan:false,animate:false});limitZoom();map.setView(p,Math.min(z,map.getMaxZoom()),{animate:false,reset:true});};
       if(root.ResizeObserver)new ResizeObserver(resize).observe($("aoMap"));else root.addEventListener("resize",resize);
@@ -193,13 +193,23 @@
     }
     function showLocations(opts){
       options=opts;$("aoOverlay").classList.remove("open");$("locationOverlay").classList.add("open");
-      $("locationOverlay").querySelector("[data-location]").focus();
+      // Only offer grids the entered digits could actually fall inside.
+      const inputs=picks();let unavailable=0;
+      for(const button of $("locationOverlay").querySelectorAll("[data-location]")){
+        const id=button.dataset.location,fits=!plausible||plausible(id,inputs);
+        button.disabled=!fits;
+        if(fits)button.removeAttribute("title");
+        else{button.title="These digits do not land inside "+presets[id].name.replace(" MGR","")+" in any of its grid squares.";unavailable++;}
+      }
+      $("locationNote").hidden=!unavailable;
+      $("locationNote").textContent=(unavailable===1?"One grid is":unavailable+" grids are")+" unavailable: these digits cannot fall inside "+(unavailable===1?"it":"them")+".";
+      ($("locationOverlay").querySelector("[data-location]:not(:disabled)")||$("locationClose")).focus();
     }
     $("locationOverlay").querySelectorAll("[data-location]").forEach(button=>button.addEventListener("click",()=>choose(button.dataset.location)));
     const closeLocations=()=>{$("locationOverlay").classList.remove("open");returnFocus?.focus();};
     $("locationClose").addEventListener("click",closeLocations);
     $("locationOverlay").addEventListener("keydown",e=>{if(e.key==="Escape")closeLocations();
-      if(e.key==="Tab"){const nodes=$("locationOverlay").querySelectorAll("button"),first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}
+      if(e.key==="Tab"){const nodes=$("locationOverlay").querySelectorAll("button:not(:disabled)"),first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}
     });
     $("aoBack").addEventListener("click",()=>showLocations(options));
     function showMap(opts){
@@ -213,7 +223,7 @@
       $("aoSystemLabel").textContent=raw?"MGRS":presets[id].zoneCode?"Zone "+presets[id].zoneCode:"";
       $("aoBack").hidden=!opts.pending;
       $("aoInstruction").textContent=raw?"Choose your area.":"Select a highlighted AO square.";
-      selectionLayer.clearLayers();pointLayer.clearLayers();map.invalidateSize();limitCentre(null);map.setMinZoom(1);map.setMaxZoom(10);
+      selectionLayer.clearLayers();pointLayer.clearLayers();map.invalidateSize();limitCenter(null);map.setMinZoom(1);map.setMaxZoom(10);
       if(raw){
         // Reopen at the granularity the stored area was chosen at.
         if(opts.point)map.setView([opts.point.lat,opts.point.lon],opts.scope==="zone"?5:9);else map.setView([15,30],2);
@@ -221,7 +231,7 @@
         const p=presets[id],b=p.bbox;let area=[[b[0],b[2]],[b[1],b[3]]];
         if(p.anchor){const [lat,lon]=p.anchor,dy=(p.anchorRadiusKm||65)*1.6/111,dx=dy/Math.cos(lat*Math.PI/180);area=[[lat-dy,lon-dx],[lat+dy,lon+dx]];}
         const focus=L.latLngBounds(area);map.fitBounds(focus,{padding:[28,28],maxZoom:9,animate:false});map.setZoom(Math.max(6,map.getZoom()),{animate:false});
-        const region=L.latLngBounds([[b[0],b[2]],[b[1],b[3]]]);map.setMaxZoom(MapSupport.squareZoom(map));map.setMinZoom(Math.min(map.getMaxZoom(),map.getBoundsZoom(region)));limitCentre(region);
+        const region=L.latLngBounds([[b[0],b[2]],[b[1],b[3]]]);map.setMaxZoom(MapSupport.squareZoom(map));map.setMinZoom(Math.min(map.getMaxZoom(),map.getBoundsZoom(region)));limitCenter(region);
       }
       draw();if(opts.point)select(opts.point.lat,opts.point.lon);$("aoClose").focus();
     }

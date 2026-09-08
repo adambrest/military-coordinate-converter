@@ -12,6 +12,8 @@
 .location-options{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:20px 0}
 .location-options button,.raw-grid{min-height:52px;padding:12px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);color:var(--text);font-size:14px;font-weight:700;cursor:pointer}
 .location-options button:hover,.raw-grid:hover{border-color:var(--accent);color:var(--accent)}
+.location-options button:disabled,.raw-grid:disabled{opacity:.45;cursor:not-allowed}
+.location-options button:disabled:hover,.raw-grid:disabled:hover{border-color:var(--line);color:var(--muted)}
 .raw-grid{width:100%;background:#fff;text-align:left;margin-bottom:12px}
 .raw-grid span{display:block;color:var(--muted);font-size:12px;font-weight:500;margin-top:4px}
 .ao-map-wrap{flex:1;min-height:180px;position:relative;background:#dceef5}

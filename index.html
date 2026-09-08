@@ -248,6 +248,7 @@
     <div class="modal location-modal"><div class="dialog-heading"><h3 id="locationTitle">Where is this grid reference?</h3><button id="locationClose" class="dialog-close" aria-label="Close location chooser">×</button></div><p class="location-intro">You entered a short MGR without its area. Choose the grid it belongs to.</p>
       <div class="location-options"><button data-location="sg">Singapore MGR</button><button data-location="thailand">Thailand MGR</button><button data-location="brunei">Brunei MGR</button><button data-location="australia">Australia MGR</button><button data-location="taiwan">Taiwan MGR</button></div>
       <button class="raw-grid" data-location="mgrs">Global MGRS <span>Select an area on the world map</span></button>
+      <p class="note" id="locationNote" hidden></p>
     </div>
   </div>
   <div class="overlay" id="aoOverlay" role="dialog" aria-modal="true" aria-labelledby="aoTitle">
@@ -574,7 +575,7 @@
       comps.push({val,neg,card,hasMinSec:!!(m[3]||m[4])});
     }
     if(comps.length!==2) return {error:"need exactly two coordinates"};
-    if(norm.replace(re,"").replace(/[\s,;|/]+/g,"")!=="")return {error:"unrecognised coordinate text"};
+    if(norm.replace(re,"").replace(/[\s,;|/]+/g,"")!=="")return {error:"unrecognized coordinate text"};
     const a=comps[0], b=comps[1];
     let lat, lon, warning, confidence="certain", detectedOrder=null;
     const roleOf=c=>/^[NS]$/.test(c.card)?"lat":/^[EW]$/.test(c.card)?"lon":null;
@@ -644,7 +645,7 @@
       }
       return {target:"globalutm",cells:[(band==="S"&&!latitudeBand?"UTM ":"")+zone+band+(latitudeBand?" band":"")+" "+m[3],m[4]],point};
     }
-    if(kind==="globalutm")return {error:"Enter UTM zone and metres, e.g. "+globalExample("globalutm")+". No UTM label is needed for northern coordinates."};
+    if(kind==="globalutm")return {error:"Enter UTM zone and meters, e.g. "+globalExample("globalutm")+". No UTM label is needed for northern coordinates."};
     return null;
   }
   function parseCells(presetId, a, b, S){
@@ -918,11 +919,12 @@
       readRows();
       const currentBefore=existingMapPoints(),id=pointOptions.presetId;
       const crossing=result.crossing;
-      const outputCrossing=state.to!==id?gridBoundary([...currentBefore.points,point],state.to):null;
+      const target=outputTarget([...currentBefore.points,point],id);
+      const outputCrossing=target!==id?gridBoundary([...currentBefore.points,point],target):null;
       const changes=[crossing,outputCrossing].filter(Boolean);
       if(changes.some(c=>!boundaryAccepted.has(c.key))&&!approved){
         if(currentBefore.unresolved)return {error:"Resolve incomplete rows before changing their grid prefixes."};
-        return new Promise(resolve=>reviewBoundary(changes,ok=>resolve(ok?addMapPoint(point,view,true):{cancelled:true})));
+        return new Promise(resolve=>reviewBoundary(changes,ok=>resolve(ok?addMapPoint(point,view,true):{canceled:true})));
       }
       for(const c of changes){boundaryAccepted.add(c.key);if(c.id!==id)(state.settings[c.id]||={}).sgOmit=false;}
       if(crossing){
@@ -940,7 +942,7 @@
       }else if(state.rows.length===1&&state.rows[0].every(v=>!String(v).trim()))state.rows=[];
       state.rows.push([...result.cells,""]);
       state.lastLocation={...point};state.pointMapView={...point,...view};
-      if(!state.explicitOutput&&state.from===state.to)state.to=state.from==="wgs84"?suggestedGrid([point])||"mgrs":"wgs84";
+      if(target!==state.to){state.to=target;state.explicitOutput=false;}
       state.points=[];stale=false;renderFrom();renderTo();updatePairState();save();
       const current=existingMapPoints();
       if(!current.unresolved&&!pairInvalid()&&state.from!==state.to)convert();
@@ -975,7 +977,7 @@
     /* ---- smart paste + auto-split ---- */
     function llCells(lat,lon){ const S=state.settings.wgs84; const la=fmtLat(lat,S), lo=fmtLon(lon,S); return S.order==="lonlat"?[lo,la]:[la,lo]; }
     const picker=createAOPicker({
-      presets:PRESETS,contains:presetContains,projection:id=>projectionFor(id,state.settings),
+      presets:PRESETS,contains:presetContains,projection:id=>projectionFor(id,state.settings),plausible:gridPlausible,
       onSelect(chosen,opts){
         const id=chosen.id, s=state.settings[id];
         if(id==="mgrs")s.ao=chosen.prefix;else s.square=[chosen.e,chosen.n];
@@ -995,6 +997,48 @@
         if(opts.afterPick)opts.afterPick();else if(rowsHaveContent())convert();
       }
     });
+    // Which local grids a short reference could belong to: its digits have to land
+    // inside the country in at least one of that preset's own 100 km squares. Offering
+    // a grid that cannot hold them only invites a confusing boundary question later.
+    const presetSquareCache=new Map();
+    function presetSquares(id){
+      if(presetSquareCache.has(id))return presetSquareCache.get(id);
+      const b=PRESETS[id].bbox,projection=projectionFor(id,state.settings),es=[],ns=[];
+      for(const [lat,lon] of [[b[0],b[2]],[b[0],b[3]],[b[1],b[2]],[b[1],b[3]]]){
+        const q=toProjFromWGS(lat,lon,projection);es.push(q.E);ns.push(q.N);
+      }
+      const squares=[];
+      for(let e=Math.floor(Math.min(...es)/100000);e<=Math.floor(Math.max(...es)/100000);e++)
+        for(let n=Math.floor(Math.min(...ns)/100000);n<=Math.floor(Math.max(...ns)/100000);n++)squares.push([e,n]);
+      presetSquareCache.set(id,squares);return squares;
+    }
+    function gridPlausible(id,picks){
+      const p=PRESETS[id];
+      if(id==="mgrs"||!p||!p.bbox||!picks||!picks.length)return true;
+      const projection=projectionFor(id,state.settings),squares=p.lead?[p.lead]:presetSquares(id);
+      return picks.every(g=>{
+        const digits=String(g.e??"").length;
+        if(!digits||digits>5||String(g.n??"").length!==digits)return false;
+        const step=Math.pow(10,5-digits),de=Number(g.e)*step,dn=Number(g.n)*step;
+        // The coarse supported extent, not the coastline: a reference just offshore
+        // is ordinary, one that lands in the next country is not.
+        return squares.some(sq=>{
+          const point=toWGSfromProj(sq[0]*100000+de,sq[1]*100000+dn,projection);
+          return point.lat>=p.bbox[0]&&point.lat<=p.bbox[1]&&point.lon>=p.bbox[2]&&point.lon<=p.bbox[3];
+        });
+      });
+    }
+    // The output preset has to be able to hold the point being placed. When it cannot,
+    // move to a grid that fits; with nothing fitting, fall back between coordinates and
+    // military grid rather than asking about an area the points do not belong to.
+    function outputTarget(points,inputId){
+      let to=state.to;
+      if(!state.explicitOutput&&inputId===to)to=inputId==="wgs84"?(suggestedGrid(points)||"mgrs"):"wgs84";
+      if(!points.length||!COUNTRY_PRESETS.includes(to)||points.every(p=>presetContains(to,p.lat,p.lon)))return to;
+      const match=suggestedGrid(points);
+      if(match&&match!==inputId)return match;
+      return inputId==="wgs84"?(state.settings.mgrs.format||"mgrs"):"wgs84";
+    }
     function openCountryChooser(text,i){
       state.points=[];stale=false;renderTo();
       const preset=COUNTRY_PRESETS.includes(state.from)?state.from:null;
@@ -1115,7 +1159,7 @@
         if(short){const g=splitGrid(line);return {cells:[g.e,g.n]};}
         if(projected[k])return projected[k].target&&projected[k].target!==target?{error:"Paste one coordinate format at a time."}:projected[k];
         if(projected.some(Boolean))return {error:"Paste one coordinate format at a time."};
-        if(/^[-+]?\d{6,}(?:\.\d+)?[\s,;]+[-+]?\d+(?:\.\d+)?$/.test(line))return {error:"These look like projected metres. UTM needs its zone prefix."};
+        if(/^[-+]?\d{6,}(?:\.\d+)?[\s,;]+[-+]?\d+(?:\.\d+)?$/.test(line))return {error:"These look like projected meters. UTM needs its zone prefix."};
         const p=parseLatLon(line,state.settings.wgs84.order);
         return p.error?p:{cells:llCells(p.lat,p.lon),point:p};
       });
@@ -1410,7 +1454,7 @@
             if(GLOBAL_FORMATS.includes(state.to)){$("#toFormat").value=v;$("#toFormat").dispatchEvent(new Event("change"));}
             save();renderSettings();
           })}</div>`+(format==="mgrs"?"":`<div class="example">Example: <b>${globalExample(format,S)}</b></div>`);
-          if(format!=="mgrs")return h+`<div class="note">Zone, easting and northing in metres. N/S indicate hemispheres; use “band” for a latitude band. WGS 84 datum.</div>`;
+          if(format!=="mgrs")return h+`<div class="note">Zone, easting and northing in meters. N/S indicate hemispheres; use “band” for a latitude band. WGS 84 datum.</div>`;
         }
         if(p.kind==="latlong"){
           h+=`<div class="srow"><span class="k">Axis order (flip)</span>${seg([["latlon","Lat, Long"],["lonlat","Long, Lat"]],s.order,v=>{s.order=v;changed(true);})}</div>`;
@@ -1438,7 +1482,7 @@
             h+=`</section>`;
           }
 
-          const digits=s.sgDigits??4, metres=10**(5-digits), precision=metres>=1000?metres/1000+" km":metres+" meters";
+          const digits=s.sgDigits??4, meters=10**(5-digits), precision=meters>=1000?meters/1000+" km":meters+" meters";
           h+=`<section class="settings-section"><h4 class="settings-subhead">Output format</h4>`;
           h+=`<div class="srow"><span class="k">Precision</span>${seg(id==="mgrs"?[[5,"1 m"],[4,"10 m"],[3,"100 m"],[2,"1 km"],[1,"10 km"],[0,"100 km"]]:[[5,"5"],[4,"4"],[3,"3"]],digits,v=>{s.sgDigits=+v;changed();})}</div>`;
           h+=`<div class="note precision-note">${digits} digits per axis · ${precision}</div>`;
@@ -1453,7 +1497,7 @@
           h+=`</section>`;
         } else { // utm / projected
           h+=`<div class="srow"><span class="k">Precision (meters)</span>${seg([[0,"1 m"],[1,"10 cm"],[2,"1 cm"],[3,"1 mm"]],s.decimals,v=>{s.decimals=+v;changed();})}</div>`;
-          h+=`<div class="note">Easting / northing in metres.</div>`;
+          h+=`<div class="note">Easting / northing in meters.</div>`;
         }
         return h;
       };

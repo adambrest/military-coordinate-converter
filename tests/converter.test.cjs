@@ -83,7 +83,7 @@ test('blank MGRS also auto-detects UTM; spaced MGRS gets a dedicated prefix fiel
   assert.match(a.$('#fromRows .prefix').value,/51R TH/);assert.equal(a.$('#fromRows .a').value,'1234');
   a.dom.window.close();
 });
-test('unlabelled projected metres require a zone; removed projection is rejected',()=>{
+test('unlabelled projected meters require a zone; removed projection is rejected',()=>{
   const raw='11553992.183085 151736.075979';const a=app();a.paste(raw);
   assert.equal(a.$('#copyBtn').disabled,true);assert.match(a.$('#badPair').textContent,/zone prefix/);assert.equal(a.$('#fromRows .a').value,raw);
   a.paste('EPSG:3857 '+raw);assert.equal(a.$('#copyBtn').disabled,true);assert.match(a.$('#badPair').textContent,/not supported/);
@@ -124,7 +124,7 @@ test('global Settings controls format and holds examples outside converter',asyn
   assert.match(a.$('[data-head="mgrs"]').textContent,/Military grid/);
   a.$('[data-id="mgrs"] [data-v="globalutm"]').click();await new Promise(r=>setTimeout(r,20));
   assert.equal(a.state().to,'globalutm');assert.match(a.$('#toFormatChip').textContent,/UTM/);
-  assert.match(a.$('[data-id="mgrs"] .example').textContent,/368831.814/);assert.equal(a.$('#aoCentre'),null);
+  assert.match(a.$('[data-id="mgrs"] .example').textContent,/368831.814/);assert.equal(a.$('#aoCenter'),null);
   a.dom.window.close();
 });
 test('leaving Auto-detect snaps and keeps focus in the Name field',async()=>{
@@ -189,8 +189,8 @@ test('Singapore latitude/longitude defaults to local 4+4 without any location pr
   assert.equal(a.$('#locationOverlay').classList.contains('open'),false);assert.equal(a.$('#aoOverlay').classList.contains('open'),false);a.dom.window.close();
 });
 test('military grid without a prefix allows correction to Singapore',()=>{
-  const a=app(undefined,true);a.change('#fromSys','mgrs');a.paste('1234 5678');
-  assert.equal(a.$('#locationOverlay').classList.contains('open'),true);a.$('[data-location="sg"]').click();assert.equal(a.state().from,'sg');assert.deepEqual(a.state().rows[0].slice(0,2),['1234','5678']);a.dom.window.close();
+  const a=app(undefined,true);a.change('#fromSys','mgrs');a.paste('3000 3000');
+  assert.equal(a.$('#locationOverlay').classList.contains('open'),true);a.$('[data-location="sg"]').click();assert.equal(a.state().from,'sg');assert.deepEqual(a.state().rows[0].slice(0,2),['3000','3000']);a.dom.window.close();
 });
 test('Brunei can be resolved by one country choice without a map',()=>{
   const c=core(),cells=vm.runInContext('formatPoint(4.9,114.9,"brunei",defaultSettings())',c);
@@ -333,8 +333,8 @@ test('multiple links preserve URL commas and all coordinates',()=>{
 });
 
 test('bulk short grids retain digits through country correction',()=>{
-  const a=app(undefined,true);a.change('#fromSys','mgrs');a.paste('1234,5678;2345\t6789');assert.equal(a.$('#locationOverlay').classList.contains('open'),true);
-  a.$('[data-location="sg"]').click();assert.equal(a.state().from,'sg');assert.deepEqual(a.state().rows.map(r=>r.slice(0,2)),[['1234','5678'],['2345','6789']]);a.dom.window.close();
+  const a=app(undefined,true);a.change('#fromSys','mgrs');a.paste('3000,3000;5000\t4000');assert.equal(a.$('#locationOverlay').classList.contains('open'),true);
+  a.$('[data-location="sg"]').click();assert.equal(a.state().from,'sg');assert.deepEqual(a.state().rows.map(r=>r.slice(0,2)),[['3000','3000'],['5000','4000']]);a.dom.window.close();
 });
 
 test('bulk complete grids preserve each prefix',()=>{
@@ -359,7 +359,7 @@ test('Enter inherits UTM prefixes and keeps empty rows out of conversion',()=>{
   assert.equal(a.$('#fromRows').children[1].querySelector('.prefix').value,'UTM 56S');
   a.$('#convertBtn').click();assert.equal(a.state().points.length,1);assert.equal(a.$('#copyBtn').disabled,false);a.dom.window.close();
 });
-test('every labelled camp and city lies in its own preset boundary',()=>{
+test('every labeled camp and city lies in its own preset boundary',()=>{
   const c=core();assert.equal(vm.runInContext('Object.values(PRESETS).every(p=>(p.context?.landmarks||[]).every(l=>presetContains(p.id,l.lat,l.lon)))',c),true);
 });
 
@@ -418,7 +418,7 @@ test('real crosshair picker cancels cleanly and Add & continue adds distinct new
   a.$('#pointOverlay').dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(a.$('#pointOverlay').classList.contains('open'),false);a.dom.window.close();
 });
 
-test('street layer persists through overview zoom and satellite toggle preserves centre',async()=>{
+test('street layer persists through overview zoom and satellite toggle preserves center',async()=>{
   const a=app(undefined,true);a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));
   const activeTiles=()=>{const layers=[];a.w.pointTestMap.eachLayer(l=>{if(l instanceof a.w.L.TileLayer)layers.push(l);});return layers;};
   a.w.pointTestMap.setView([20,100],4,{animate:false});assert.equal(activeTiles().length,1);assert.equal(a.$('#pointMapScale'),null);assert.ok(a.$('.singapore-name'));
@@ -433,7 +433,7 @@ test('past-point labels render names as text and number unnamed points',async()=
   const labels=[...a.w.document.querySelectorAll('.chosen-point-label')];assert.ok(labels.some(el=>el.textContent==='<img src=x onerror=alert(1)>'));assert.ok(labels.some(el=>el.textContent==='Point 2'));assert.equal(a.$('.chosen-point-label img'),null);await new Promise(r=>setTimeout(r,20));a.dom.window.close();
 });
 
-test('resizing the point map preserves its geographic centre and zoom',async()=>{
+test('resizing the point map preserves its geographic center and zoom',async()=>{
   const a=app(undefined,true);a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));a.w.pointTestMap.setView([-22.65,150.35],9,{animate:false,reset:true});
   a.w.testWidth=390;a.w.testHeight=650;a.w.resizePicker();assert.equal(a.w.pointTestMap.getCenter().lat,-22.65);assert.equal(a.w.pointTestMap.getCenter().lng,150.35);assert.equal(a.w.pointTestMap.getZoom(),9);a.dom.window.close();
 });
@@ -447,7 +447,7 @@ test('map boundary confirmation expands short Taiwan rows without moving existin
   const first=a.state().points[0],before=a.state().rows;
   a.$('#selectMap').click();let pending=a.w.pointPickerHooks.onConfirm(q,{zoom:15,layer:'street'});
   assert.equal(a.$('#boundaryOverlay').classList.contains('open'),true);assert.deepEqual(a.state().rows,before);
-  a.$('#boundaryClose').click();assert.equal((await pending).cancelled,true);assert.deepEqual(a.state().rows,before);
+  a.$('#boundaryClose').click();assert.equal((await pending).canceled,true);assert.deepEqual(a.state().rows,before);
   pending=a.w.pointPickerHooks.onConfirm(q,{zoom:15,layer:'street'});a.$('#boundaryContinue').click();await pending;
   assert.equal(a.state().rows.length,2);assert.equal(a.state().settings.taiwan.sgOmit,false);
   assert.match(a.state().rows[0][0],/^\d{6}$/);assert.match(a.state().rows[1][0],/^\d{6}$/);
@@ -528,7 +528,7 @@ test('UTM batches crossing a zone require confirmation and retain both zones',()
   a.$('#boundaryContinue').click();assert.equal(a.state().points.length,2);assert.match(a.state().rows[0][0],/^31N/);assert.match(a.state().rows[1][0],/^30N/);a.dom.window.close();
 });
 
-test('map entry honours 100 km MGRS precision without treating the square as an empty row',()=>{
+test('map entry honors 100 km MGRS precision without treating the square as an empty row',()=>{
   const c=core(),settings=vm.runInContext('defaultSettings()',c);settings.mgrs.sgDigits=0;
   const a=app({settings,from:'mgrs',to:'wgs84',rows:[['','','']]});a.change('#fromSys','mgrs');a.$('#selectMap').click();
   a.w.pointPickerHooks.onConfirm({lat:48.8582,lon:2.2945},{zoom:15,layer:'street'});
@@ -692,5 +692,49 @@ test('a first Australian pin picks its own area; a pin in another square must be
   a.$('#boundaryContinue').click();await pending;
   assert.equal(a.state().settings.australia.sgOmit,false,'leading digits were still omitted across squares');
   assert.match(a.state().rows[0][0],/^\d{6}$/);assert.match(a.state().rows[1][0],/^\d{6}$/);
+  a.dom.window.close();
+});
+
+test('the location chooser only offers grids a reference could fall inside',()=>{
+  const a=app(undefined,true);a.change('#fromSys','mgrs');a.paste('1234 5678');
+  assert.equal(a.$('#locationOverlay').classList.contains('open'),true);
+  // 1234 5678 in the Singapore grid lands about 10 km west of the country.
+  assert.equal(a.$('[data-location="sg"]').disabled,true,'offered a grid the digits cannot fall inside');
+  assert.match(a.$('[data-location="sg"]').title,/do not land inside Singapore/);
+  for(const id of ['taiwan','thailand','australia','brunei','mgrs'])assert.equal(a.$('[data-location="'+id+'"]').disabled,false,id);
+  assert.equal(a.$('#locationNote').hidden,false);
+  a.$('#locationClose').click();
+  a.paste('3000 3000');
+  assert.equal(a.$('[data-location="sg"]').disabled,false,'a reference inside Singapore was refused');
+  assert.equal(a.$('#locationNote').hidden,true);
+  a.dom.window.close();
+});
+test('a point the output grid cannot hold changes the output, not the question',async()=>{
+  const c=core();const settings=vm.runInContext('defaultSettings()',c);
+  const a=app({settings,to:'taiwan',explicitOutput:true,aoSelectionVersion:2,rows:[['','','']]});
+  a.change('#fromSys','wgs84');
+  assert.equal(a.state().to,'taiwan');
+  a.$('#selectMap').click();
+  a.w.pointPickerHooks.onConfirm({lat:37.4419,lon:-122.1430},{zoom:15,layer:'street'});
+  assert.notEqual(a.state().to,'taiwan','kept an output grid that cannot hold the point');
+  assert.equal(a.state().to,'mgrs','no country grid fits, so it should fall back to military grid');
+  assert.equal(a.$('#boundaryOverlay').classList.contains('open'),false);
+  a.$('#selectMap').click();
+  const pending=a.w.pointPickerHooks.onConfirm({lat:19.0760,lon:72.8777},{zoom:15,layer:'street'});
+  if(a.$('#boundaryOverlay').classList.contains('open')){
+    assert.doesNotMatch(a.$('#boundaryDetail').textContent,/Taiwan/,'asked about an area the points never belonged to');
+    a.$('#boundaryContinue').click();
+  }
+  await pending;
+  assert.equal(a.state().points.length,2);
+  assert.equal(a.state().to,'mgrs');
+  a.dom.window.close();
+});
+test('a map point inside a supported country selects that country as the output',()=>{
+  const c=core();const settings=vm.runInContext('defaultSettings()',c);
+  const a=app({settings,to:'taiwan',explicitOutput:true,aoSelectionVersion:2,rows:[['','','']]});
+  a.change('#fromSys','wgs84');a.$('#selectMap').click();
+  a.w.pointPickerHooks.onConfirm({lat:14.00287,lon:99.24459},{zoom:15,layer:'street'});
+  assert.equal(a.state().to,'thailand','a Thai point should convert to the Thai grid');
   a.dom.window.close();
 });
