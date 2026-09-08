@@ -18,15 +18,17 @@ function app(saved,realMap=false){
   const dom=new JSDOM(html.replace(/<script[\s\S]*?<\/script>/g,''),{url:'https://example.test/',runScripts:'outside-only',pretendToBeVisual:true});
   const w=dom.window;
   if(saved)w.localStorage.setItem('mgrconv-v1',JSON.stringify(saved));
-  for(const f of ['version.js','proj4.js','vendor/mgrs.js','grid-core.js','map-context.js'])w.eval(read(f));
+  for(const f of ['version.js','proj4.js','vendor/mgrs.js','grid-core.js','map-context.js','map-support.js'])w.eval(read(f));
   if(realMap){
     const ctx=new Proxy({measureText:s=>({width:String(s).length*6})},{get:(obj,key)=>key in obj?obj[key]:()=>{}});
     w.HTMLCanvasElement.prototype.getContext=()=>ctx;
-    Object.defineProperty(w.HTMLElement.prototype,'clientWidth',{get(){return 800;}});
-    Object.defineProperty(w.HTMLElement.prototype,'clientHeight',{get(){return this.id==='aoMap'?480:40;}});
-    w.fetch=async()=>({ok:true,json:async()=>JSON.parse(read('vendor/land.geojson'))});
-    w.eval(read('vendor/leaflet.js'));const createMap=w.L.map;w.L.map=(...args)=>w.testMap=createMap(...args);w.eval(read('map-picker.js'));
+    Object.defineProperty(w.HTMLElement.prototype,'clientWidth',{get(){return w.testWidth||800;}});
+    Object.defineProperty(w.HTMLElement.prototype,'clientHeight',{get(){return ['aoMap','pointMap'].includes(this.id)?w.testHeight||480:40;}});
+    w.ResizeObserver=class {constructor(callback){w.resizePicker=callback;}observe(){}};
+    w.fetch=async url=>({ok:true,text:async()=>read('version.js'),json:async()=>JSON.parse(read(url==='vendor/countries.geojson'?url:'vendor/land.geojson'))});
+    w.eval(read('vendor/leaflet.js'));const createMap=w.L.map;w.L.map=(...args)=>{const map=createMap(...args);if(args[0]==='pointMap')w.pointTestMap=map;else w.testMap=map;return map;};w.eval(read('map-picker.js'));w.eval(read('point-picker.js'));
   }else w.createAOPicker=opts=>{w.pickerHooks=opts;return {open:o=>{w.mapOptions=o;w.document.getElementById('aoOverlay').classList.add('open');}};};
+  if(!realMap)w.createPointPicker=opts=>{w.pointPickerHooks=opts;return {open:o=>{w.pointOptions=o;}};};
   w.eval(inline);
   const $=s=>w.document.querySelector(s);
   function change(id,value){$(id).value=value;$(id).dispatchEvent(new w.Event('change',{bubbles:true}));}
@@ -61,7 +63,7 @@ test('blank input is inviting, auto-detects and preserves its name',()=>{
   a.$('#fromRows .nm').value='Meeting point';a.paste('1.352083,103.819836');
   assert.equal(a.$('#fromSys').value,'wgs84');assert.equal(a.state().points[0].name,'Meeting point');
   a.$('#fromRows .del').click();assert.equal(a.$('#fromSys').value,'auto');
-  a.change('#fromSys','mgrs');assert.equal(a.$('#fromRows .b').hidden,true);assert.equal(a.w.mapOptions,undefined);
+  a.change('#fromSys','mgrs');assert.equal(a.$('#fromRows .b').hidden,false);assert.ok(a.$('#fromRows .prefix'));assert.equal(a.w.mapOptions,undefined);
   a.dom.window.close();
 });
 test('prefixed UTM and Garmin latitude-band input snap into zone and axes',()=>{
@@ -81,13 +83,11 @@ test('blank MGRS also auto-detects UTM; spaced MGRS gets a dedicated prefix fiel
   assert.match(a.$('#fromRows .prefix').value,/51R TH/);assert.equal(a.$('#fromRows .a').value,'1234');
   a.dom.window.close();
 });
-test('unlabelled projected metres require CRS choice; EPSG:3857 is detected explicitly',()=>{
+test('unlabelled projected metres require a zone; removed projection is rejected',()=>{
   const raw='11553992.183085 151736.075979';const a=app();a.paste(raw);
-  assert.equal(a.$('#copyBtn').disabled,true);assert.match(a.$('#badPair').textContent,/EPSG:3857/);assert.equal(a.$('#fromRows .a').value,raw);
-  a.change('#fromSys','mgrs');a.change('#fromFormat','mercator');a.$('#convertBtn').click();assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
-  assert.ok(a.state().points[0].lat>1.3&&a.state().points[0].lat<1.4);
-  assert.ok(a.state().points[0].lon>103.7&&a.state().points[0].lon<103.9);
-  a.paste('EPSG:3857 '+raw);assert.equal(a.$('#fromFormat').value,'mercator');assert.equal(a.$('#copyBtn').disabled,false);
+  assert.equal(a.$('#copyBtn').disabled,true);assert.match(a.$('#badPair').textContent,/zone prefix/);assert.equal(a.$('#fromRows .a').value,raw);
+  a.paste('EPSG:3857 '+raw);assert.equal(a.$('#copyBtn').disabled,true);assert.match(a.$('#badPair').textContent,/not supported/);
+  assert.equal(a.$('#fromFormat option[value="mercator"]'),null);
   a.dom.window.close();
 });
 test('UTM rejects bad zones, invalid bands and ambiguous S instead of guessing',()=>{
@@ -117,13 +117,13 @@ test('slow typing never replaces or blurs the input; complete MGRS needs no AO',
   a.$('#fromRows .prefix').value='48nug';a.$('#convertBtn').click();assert.equal(a.$('#fromRows .prefix').value,'48N UG');assert.equal(a.$('#copyBtn').disabled,false);
   a.dom.window.close();
 });
-test('global Settings format matches converter and examples use Mount Echo Park',async()=>{
+test('global Settings controls format and holds examples outside converter',async()=>{
   const a=app();a.paste('1.2964704,103.8210085');a.change('#toSys','mgrs');
-  assert.match(a.$('#toFormatExample').textContent,/48N UG 6883 4332/);
+  assert.equal(a.$('#toFormatExample'),null);assert.match(a.$('#toFormatChip').textContent,/MGRS/);
   a.$('#tab-set').click();a.$('[data-head="mgrs"]').click();await new Promise(r=>setTimeout(r,20));
-  assert.match(a.$('[data-head="mgrs"]').textContent,/Global coordinates/);
+  assert.match(a.$('[data-head="mgrs"]').textContent,/Military grid/);
   a.$('[data-id="mgrs"] [data-v="globalutm"]').click();await new Promise(r=>setTimeout(r,20));
-  assert.equal(a.state().to,'globalutm');assert.match(a.$('#toFormatExample').textContent,/48N 368831.814 143329.716/);
+  assert.equal(a.state().to,'globalutm');assert.match(a.$('#toFormatChip').textContent,/UTM/);
   assert.match(a.$('[data-id="mgrs"] .example').textContent,/368831.814/);assert.equal(a.$('#aoCentre'),null);
   a.dom.window.close();
 });
@@ -142,14 +142,14 @@ test('new projected formats still enforce country output and never need an AO',(
   const a=app();a.change('#toSys','taiwan');a.paste('48N 366000 149000');
   assert.equal(a.$('#copyBtn').disabled,true);assert.match(a.$('#badPair').textContent,/Singapore, not Taiwan/);
   a.change('#toSys','wgs84');assert.equal(a.$('#copyBtn').disabled,false);
-  a.change('#fromFormat','mercator');a.paste('3000 3000');assert.equal(a.w.mapOptions,undefined);assert.equal(a.$('#copyBtn').disabled,false);
+  assert.equal(a.w.mapOptions,undefined);assert.equal(a.$('#copyBtn').disabled,false);
   a.dom.window.close();
 });
 test('reload always returns to Auto-detect while retaining coordinates and names',()=>{
   const first=app();first.paste('48N 366000 149000');const saved=first.state();saved.rows[0][2]='Keep me';first.dom.window.close();
   const a=app(saved);assert.equal(a.$('#fromSys').value,'auto');assert.equal(a.$('#fromRows .nm').value,'Keep me');
   assert.match(a.$('#fromRows .a').value,/48N 366000 149000/);assert.equal(a.$('#copyBtn').disabled,true);
-  assert.equal(a.$('#pasteHint').querySelectorAll('li').length,6);assert.equal(a.$('#fromRows .a').placeholder,'Paste here');a.dom.window.close();
+  assert.equal(a.$('#pasteHint').querySelectorAll('li').length,0);assert.equal(a.$('#fromRows .nm').hidden,true);assert.equal(a.$('#fromRows .a').placeholder,'Paste here');a.dom.window.close();
 });
 test('restored batches can be detected again without losing row names',()=>{
   const a=app();a.paste('1.35,103.82\n1.36,103.83');const saved=a.state();saved.rows[0][2]='One';saved.rows[1][2]='Two';a.dom.window.close();
@@ -159,13 +159,13 @@ test('restored batches can be detected again without losing row names',()=>{
 test('global formats are grouped on both sides and preserve the point when changed',()=>{
   const a=app();assert.equal([...a.$('#fromSys').options].some(o=>o.value==='mercator'||o.value==='globalutm'),false);
   a.paste('1.352083,103.819836');a.change('#toSys','mgrs');
-  for(const format of ['globalutm','mercator','mgrs']){
+  for(const format of ['globalutm','mgrs']){
     a.change('#toFormat',format);assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);assert.equal(a.$('#toSys').value,'mgrs');
     assert.equal(a.state().to,format);
   }
   a.change('#toFormat','globalutm');a.$('#swapBtn').click();a.$('#convertBtn').click();
   assert.ok(a.$('#fromRows .prefix').value.includes('48N'));assert.match(a.$('#fromRows .a').value,/^\d+\.\d{3}$/);
-  for(const format of ['mercator','mgrs','globalutm']){
+  for(const format of ['mgrs','globalutm']){
     a.change('#fromFormat',format);assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
     assert.ok(Math.abs(a.state().points[0].lat-1.352083)<.0001);assert.equal(a.$('#regionChip').hidden,true);
   }
@@ -188,9 +188,9 @@ test('Singapore latitude/longitude defaults to local 4+4 without any location pr
   assert.equal(a.$('#toSys').value,'sg');assert.match(a.$('#toRows .a').value,/^\d{4}$/);
   assert.equal(a.$('#locationOverlay').classList.contains('open'),false);assert.equal(a.$('#aoOverlay').classList.contains('open'),false);a.dom.window.close();
 });
-test('explicit Raw WGS 84 input skips the quick selector',()=>{
+test('military grid without a prefix allows correction to Singapore',()=>{
   const a=app(undefined,true);a.change('#fromSys','mgrs');a.paste('1234 5678');
-  assert.equal(a.$('#locationOverlay').classList.contains('open'),false);assert.ok(a.$('#aoOverlay').classList.contains('open'));a.dom.window.close();
+  assert.equal(a.$('#locationOverlay').classList.contains('open'),true);a.$('[data-location="sg"]').click();assert.equal(a.state().from,'sg');assert.deepEqual(a.state().rows[0].slice(0,2),['1234','5678']);a.dom.window.close();
 });
 test('Brunei can be resolved by one country choice without a map',()=>{
   const c=core(),cells=vm.runInContext('formatPoint(4.9,114.9,"brunei",defaultSettings())',c);
@@ -199,7 +199,7 @@ test('Brunei can be resolved by one country choice without a map',()=>{
 });
 test('paste outside presets selects global MGRS with letters and auto AO',()=>{
   const a=app();a.paste('48.8582, 2.2945');assert.equal(a.$('#toSys').value,'mgrs');
-  assert.match(a.$('#toRows .a').value,/^31UDQ \d{4}$/);assert.equal(a.state().settings.mgrs.ao,'31UDQ');a.dom.window.close();
+  assert.equal(a.$('#toRows .prefix').value,'31U DQ');assert.match(a.$('#toRows .a').value,/^\d{4}$/);assert.equal(a.state().settings.mgrs.ao,'31UDQ');a.dom.window.close();
 });
 test('country change revalidates immediately, clears output and exports',()=>{
   const a=app();a.paste('1.352083,103.819836');assert.equal(a.$('#toSys').value,'sg');assert.equal(a.$('#copyBtn').disabled,false);
@@ -207,14 +207,15 @@ test('country change revalidates immediately, clears output and exports',()=>{
 });
 test('explicit global output assumes WGS 84 without confirmation or auto-switching',()=>{
   const a=app();a.paste('1.352083,103.819836');a.change('#toSys','mgrs');assert.equal(a.$('#datumOverlay'),null);assert.equal(a.$('#copyBtn').disabled,false);
-  assert.match(a.$('#toRows .a').value,/^48N/);a.paste('1.36,103.83');assert.equal(a.$('#toSys').value,'mgrs');a.dom.window.close();
+  assert.match(a.$('#toRows .prefix').value,/^48N/);a.paste('1.36,103.83');assert.equal(a.$('#toSys').value,'mgrs');a.dom.window.close();
 });
 test('cross-AO batch forces prefixes and red warning even after format toggles',()=>{
   const a=app();a.paste('48.8582,2.2945');
   const s=a.state();s.settings.mgrs.sgOmit=true;
   a.dom.window.close();const b=app(s);b.paste('48.8582,2.2945\n51.5074,-0.1278');
-  assert.match(b.$('#badPair').textContent,/cross an AO boundary/);assert.equal(b.state().settings.mgrs.sgOmit,false);
-  assert.match(b.$('#toRows').children[0].querySelector('.a').value,/^31UDQ/);assert.match(b.$('#toRows').children[1].querySelector('.a').value,/^30U/);b.dom.window.close();
+  assert.equal(b.$('#boundaryOverlay').classList.contains('open'),true);assert.equal(b.$('#copyBtn').disabled,true);b.$('#boundaryContinue').click();
+  assert.match(b.$('#badPair').textContent,/grid boundary/);assert.equal(b.state().settings.mgrs.sgOmit,false);
+  assert.match(b.$('#toRows').children[0].querySelector('.prefix').value,/^31U DQ/);assert.match(b.$('#toRows').children[1].querySelector('.prefix').value,/^30U/);b.dom.window.close();
 });
 test('complete MGRS input needs no AO, exports location',()=>{
   const a=app();a.paste('31UDQ 4825 1193');assert.equal(a.$('#fromSys').value,'mgrs');assert.equal(a.$('#toSys').value,'wgs84');assert.equal(a.$('#copyBtn').disabled,false);assert.equal(a.w.mapOptions,undefined);a.dom.window.close();
@@ -236,15 +237,15 @@ test('country selection opens a focused map with named camps and only AO grids',
   for(const [id,names] of [['thailand',['Sai Yok']],['australia',['Camp Tilpal','Camp Growl']],['taiwan',['Hukou','Heng Chun']]]){
     const a=app(undefined,true);a.change('#fromSys','wgs84');a.paste('1234 5678');a.$('[data-location="'+id+'"]').click();
     assert.ok(a.$('#aoOverlay').classList.contains('open'));assert.equal(a.$('#aoJump'),null);
-    const labels=[...a.w.document.querySelectorAll('.camp-label')].map(e=>e.textContent).join(' ');
+    const labels=[...a.w.document.querySelectorAll('.map-point-label')].map(e=>e.textContent).join(' ');
     for(const name of names)assert.ok(labels.includes(name),name);
-    assert.match(a.$('#aoScale').textContent,/100 km AO squares|No matching AO/);a.dom.window.close();
+    assert.equal(a.$('#aoScale'),null);assert.match(a.$('#aoInstruction').textContent,/100 km grid square/);a.dom.window.close();
   }
 });
 test('Raw WGS 84 starts with an uncluttered world map and no extra confirmation',()=>{
   const a=app(undefined,true);a.change('#fromSys','wgs84');a.paste('1234 5678');a.$('[data-location="mgrs"]').click();
-  assert.match(a.$('#aoTitle').textContent,/Raw WGS 84/);assert.equal(a.$('#aoDatumConfirm'),null);
-  assert.equal(a.w.document.querySelectorAll('.grid-label').length,0);assert.match(a.$('#aoScale').textContent,/Zoom in/);a.dom.window.close();
+  assert.match(a.$('#aoTitle').textContent,/Military grid/);assert.equal(a.$('#aoDatumConfirm'),null);
+  assert.equal(a.w.document.querySelectorAll('.grid-label').length,0);assert.equal(a.$('#aoScale'),null);a.dom.window.close();
 });
 test('dismissed chooser preserves input and Convert asks again',()=>{
   const a=app(undefined,true);a.change('#fromSys','wgs84');a.paste('1234 5678');a.$('#locationClose').click();
@@ -253,10 +254,11 @@ test('dismissed chooser preserves input and Convert asks again',()=>{
 });
 test('complete global inputs across AOs warn even with latitude/longitude output',()=>{
   const a=app();a.paste('31UDQ 4825 1193\n30UXC 9931 1016');
-  assert.match(a.$('#badPair').textContent,/AO boundary/);assert.equal(a.$('#copyBtn').disabled,false);a.dom.window.close();
+  assert.equal(a.$('#boundaryOverlay').classList.contains('open'),true);a.$('#boundaryContinue').click();
+  assert.match(a.$('#badPair').textContent,/grid boundary/);assert.equal(a.$('#copyBtn').disabled,false);a.dom.window.close();
 });
 test('global formatting does not invent finer grid precision',()=>{
-  const c=core();assert.deepEqual(Array.from(vm.runInContext('formatPoint(48.8582,2.2945,"mgrs",defaultSettings(),3)',c)),['31UDQ 482','119']);
+  const c=core();assert.deepEqual(Array.from(vm.runInContext('formatPoint(48.8582,2.2945,"mgrs",defaultSettings(),3)',c)),['31U DQ 482','119']);
 });
 test('source settings changes invalidate previous results',()=>{
   const a=app();a.paste('31UDQ 4825 1193');a.$('#tab-set').click();a.$('[data-head="mgrs"]').click();
@@ -264,9 +266,9 @@ test('source settings changes invalidate previous results',()=>{
   assert.equal(a.$('#copyBtn').disabled,true);a.dom.window.close();
 });
 test('boundary guard cannot be bypassed by the output-prefix checkbox',async()=>{
-  const a=app();a.paste('48.8582,2.2945\n51.5074,-0.1278');a.$('#tab-set').click();a.$('[data-head="mgrs"]').click();
+  const a=app();a.paste('48.8582,2.2945\n51.5074,-0.1278');a.$('#boundaryContinue').click();a.$('#tab-set').click();a.$('[data-head="mgrs"]').click();
   await new Promise(resolve=>setTimeout(resolve,10));
-  a.$('#om_mgrs').click();assert.equal(a.$('#om_mgrs').checked,false);assert.match(a.$('#badPair').textContent,/AO boundary/);a.dom.window.close();
+  a.$('#om_mgrs').click();assert.equal(a.$('#om_mgrs').checked,false);assert.match(a.$('#badPair').textContent,/grid boundary/);a.dom.window.close();
 });
 test('explicit WGS 84 remains global when moving from Singapore to Brunei',()=>{
   const a=app();a.paste('1.352083,103.819836');a.change('#toSys','mgrs');
@@ -297,7 +299,7 @@ test('larger Raw WGS 84 zones retain square letters and cannot invent missing on
   assert.equal(c.GlobalGrid.parse('DQ 4825 1193','31U').prefix,'31UDQ');
   const settings=vm.runInContext('defaultSettings()',c);settings.mgrs.ao='31U';settings.mgrs.sgOmit=true;c.settings=settings;
   assert.match(vm.runInContext('formatPoint(48.8582,2.2945,"mgrs",settings)[0]',c),/^DQ /);
-  const a=app(undefined,true);a.change('#fromSys','mgrs');a.paste('1234 5678');a.change('#aoSize','zone');
+  const a=app(undefined,true);a.change('#fromSys','mgrs');a.paste('1234 5678');a.$('[data-location="mgrs"]').click();a.change('#aoSize','zone');
   a.w.testMap.setView([48,2],5,{animate:false});a.change('#aoSize','zone');
   const cells=[];a.w.testMap.eachLayer(l=>{if(l.options?.aoCandidate)cells.push(l);});assert.ok(cells.length);
   const cell=cells.find(l=>l.options.aoCandidate.prefix==='31U');assert.ok(cell);cell.fire('click',{originalEvent:new a.w.MouseEvent('click')});
@@ -305,12 +307,229 @@ test('larger Raw WGS 84 zones retain square letters and cannot invent missing on
   a.paste('DQ 4825 1193');assert.equal(a.$('#copyBtn').disabled,false);a.dom.window.close();
 });
 test('coarse global output supports 100 km references and never becomes blank',()=>{
-  const c=core();assert.equal(vm.runInContext('(()=>{const s=defaultSettings();s.mgrs={sgDigits:0,sgOmit:true,ao:"31UDQ"};return formatPoint(48.8582,2.2945,"mgrs",s)[0]})()',c),'31UDQ');
+  const c=core();assert.equal(vm.runInContext('(()=>{const s=defaultSettings();s.mgrs={sgDigits:0,sgOmit:true,ao:"31UDQ"};return formatPoint(48.8582,2.2945,"mgrs",s)[0]})()',c),'31U DQ');
 });
 test('requested Cloudflare analytics is present once with the supplied token',()=>{
   const doc=new JSDOM(html).window.document,scripts=doc.querySelectorAll('script[data-cf-beacon]');assert.equal(scripts.length,1);
   assert.equal(scripts[0].src,'https://static.cloudflareinsights.com/beacon.min.js');assert.equal(JSON.parse(scripts[0].dataset.cfBeacon).token,'21282bd8a3994bb8a1e41ced9b4a604d');
 });
+
+test('auto-detect hides names and Add row until detection, then removes its option',()=>{
+  const a=app();assert.equal(a.$('#fromRows .a').tagName,'TEXTAREA');assert.equal(a.$('#fromRows .nm').hidden,true);assert.equal(a.$('#addRow').hidden,true);
+  a.paste('1.35,103.82');assert.equal(a.$('#fromSys option[value="auto"]'),null);assert.equal(a.$('#addRow').hidden,false);assert.equal(a.$('#fromRows .nm').hidden,false);
+  a.$('#fromRows .del').click();assert.ok(a.$('#fromSys option[value="auto"]'));a.dom.window.close();
+});
+
+test('bulk coordinate delimiters retain all points in order',()=>{
+  for(const text of ['1.35,103.82,1.36,103.83','1.35\t103.82\t1.36\t103.83','1.35 103.82;1.36 103.83','1.35,103.82\n1.36,103.83']){
+    const a=app();a.paste(text);assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);assert.equal(a.state().points.length,2,text);assert.deepEqual(a.state().points.map(p=>p.lat),[1.35,1.36]);a.dom.window.close();
+  }
+});
+
+test('multiple links preserve URL commas and all coordinates',()=>{
+  for(const separator of [' ', '\t', ',', '\n']){
+    const a=app();a.paste('https://maps.google.com/?q=1.35,103.82'+separator+'https://maps.apple.com/?ll=1.36,103.83');assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);assert.equal(a.state().points.length,2);a.dom.window.close();
+  }
+});
+
+test('bulk short grids retain digits through country correction',()=>{
+  const a=app(undefined,true);a.change('#fromSys','mgrs');a.paste('1234,5678;2345\t6789');assert.equal(a.$('#locationOverlay').classList.contains('open'),true);
+  a.$('[data-location="sg"]').click();assert.equal(a.state().from,'sg');assert.deepEqual(a.state().rows.map(r=>r.slice(0,2)),[['1234','5678'],['2345','6789']]);a.dom.window.close();
+});
+
+test('bulk complete grids preserve each prefix',()=>{
+  const a=app();a.paste('48N UG 6883 4332,48N UG 6983 4432');assert.equal(a.state().points.length,2,a.$('#badPair').textContent);assert.equal(a.$('#fromRows .prefix').value,'48N UG');a.dom.window.close();
+});
+
+test('new rows inherit the preceding prefix once and never overwrite existing edits',()=>{
+  const a=app();a.paste('48N UG 6883 4332');a.$('#addRow').click();
+  const rows=()=>a.$('#fromRows').children;
+  assert.equal(rows()[1].querySelector('.prefix').value,'48N UG');assert.equal(rows()[1].querySelector('.a').value,'');
+  a.$('#convertBtn').click();assert.equal(a.state().points.length,1);assert.equal(a.$('#copyBtn').disabled,false);
+  rows()[1].querySelector('.prefix').value='48N VG';a.$('#addRow').click();assert.equal(rows().length,2);
+  rows()[1].querySelector('.a').value='1234';rows()[1].querySelector('.b').value='5678';rows()[1].querySelector('.b').dispatchEvent(new a.w.Event('input'));a.$('#addRow').click();
+  assert.equal(rows()[1].querySelector('.prefix').value,'48N VG');assert.equal(rows()[2].querySelector('.prefix').value,'48N VG');
+  rows()[2].querySelector('.prefix').value='';rows()[2].querySelector('.a').value='1234';rows()[2].querySelector('.b').value='5678';rows()[2].querySelector('.b').dispatchEvent(new a.w.Event('input'));a.$('#addRow').click();assert.equal(rows()[2].querySelector('.prefix').value,'');assert.equal(rows()[3].querySelector('.prefix').value,'');
+  a.dom.window.close();
+});
+
+test('Enter inherits UTM prefixes and keeps empty rows out of conversion',()=>{
+  const a=app();a.paste('UTM 56S 250000 7500000');
+  a.$('#fromRows .b').dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+  assert.equal(a.$('#fromRows').children[1].querySelector('.prefix').value,'UTM 56S');
+  a.$('#convertBtn').click();assert.equal(a.state().points.length,1);assert.equal(a.$('#copyBtn').disabled,false);a.dom.window.close();
+});
 test('every labelled camp and city lies in its own preset boundary',()=>{
   const c=core();assert.equal(vm.runInContext('Object.values(PRESETS).every(p=>(p.context?.landmarks||[]).every(l=>presetContains(p.id,l.lat,l.lon)))',c),true);
+});
+
+test('map button works from Auto-detect, appends points, and remembers the last location',()=>{
+  const a=app();assert.equal(a.$('#selectMap').hidden,false);a.$('#selectMap').click();
+  assert.equal(a.w.pointOptions.presetId,'wgs84');
+  a.w.pointPickerHooks.onConfirm({lat:1.35,lon:103.82},{zoom:16,layer:'satellite'});
+  assert.equal(a.state().from,'wgs84');assert.equal(a.state().rows.length,1);assert.equal(a.$('#copyBtn').disabled,false);
+  a.$('#fromRows .nm').value='Start';a.$('#selectMap').click();
+  assert.equal(a.w.pointOptions.points[0].name,'Start');assert.equal(a.w.pointOptions.center.lat,1.35);assert.equal(a.w.pointOptions.zoom,16);assert.equal(a.w.pointOptions.layer,'satellite');
+  const first=Array.from(a.state().rows[0]);
+  a.w.pointPickerHooks.onConfirm({lat:1.36,lon:103.83},{zoom:17,layer:'street'});
+  assert.equal(a.state().rows.length,2);assert.deepEqual(a.state().rows[0].slice(0,2),first.slice(0,2));assert.equal(a.state().rows[0][2],'Start');
+  a.$('#selectMap').click();assert.equal(a.w.pointOptions.center.lat,1.36);assert.equal(a.w.pointOptions.points[1].number,2);a.dom.window.close();
+});
+
+test('map points use every selected preset and full prefixes across country AOs',()=>{
+  for(const [id,lat,lon] of [['wgs84',1.35,103.82],['mgrs',48.8582,2.2945],['globalutm',-22.71,150.409],['sg',1.35,103.82],['taiwan',24.1,120.5],['thailand',14,99.24],['australia',-22.71,150.409],['brunei',4.7,114.7]]){
+    const a=app();a.change('#fromSys',id==='globalutm'?'mgrs':id);if(id==='globalutm')a.change('#fromFormat',id);
+    a.$('#selectMap').click();const p={lat,lon};assert.equal(a.w.pointPickerHooks.preview(p,a.w.pointOptions).error,undefined,id);
+    a.w.pointPickerHooks.onConfirm(p,{zoom:15,layer:'street'});assert.equal(a.state().from,id);assert.equal(a.state().rows.length,1,id);
+    if(id==='wgs84')a.change('#toSys','sg');else a.change('#toSys','wgs84');
+    a.$('#convertBtn').click();assert.equal(a.$('#copyBtn').disabled,false,id+': '+a.$('#badPair').textContent);
+    assert.ok(Math.abs(a.state().points[0].lat-lat)<.0002,id);assert.ok(Math.abs(a.state().points[0].lon-lon)<.0002,id);
+    if(['taiwan','thailand','australia'].includes(id)){assert.match(a.state().rows[0][0],/^\d{4}$/);assert.ok(a.state().settings[id].square);}
+    a.dom.window.close();
+  }
+});
+
+test('map rejects points outside a country preset without adding or replacing rows',()=>{
+  const a=app();a.change('#fromSys','sg');a.paste('3000 3000');a.$('#selectMap').click();const before=a.state().rows;
+  const p={lat:48.8582,lon:2.2945};assert.match(a.w.pointPickerHooks.preview(p,a.w.pointOptions).error,/inside/);
+  assert.ok(a.w.pointPickerHooks.onConfirm(p,{zoom:12,layer:'street'}).error);assert.deepEqual(a.state().rows,before);a.dom.window.close();
+});
+
+test('choosing a country leaves map entry accessible; only short input needs an AO',()=>{
+  const a=app();a.change('#fromSys','taiwan');assert.equal(a.w.mapOptions,undefined);
+  a.$('#selectMap').click();assert.equal(a.w.pointOptions.presetId,'taiwan');a.paste('1234 5678');assert.ok(a.w.mapOptions.pending);a.dom.window.close();
+});
+
+test('map appends around incomplete rows without interpreting an unknown AO',()=>{
+  const a=app();a.change('#fromSys','mgrs');a.$('#fromRows .a').value='1234';a.$('#fromRows .b').value='5678';a.$('#selectMap').click();
+  assert.equal(a.w.pointOptions.unresolved,1);assert.equal(a.w.pointOptions.points.length,0);
+  a.w.pointPickerHooks.onConfirm({lat:48.8582,lon:2.2945},{zoom:15,layer:'street'});
+  assert.deepEqual(a.state().rows[0],['1234','5678','']);assert.equal(a.state().rows.length,2);assert.equal(a.state().settings.mgrs.ao,undefined);a.dom.window.close();
+});
+
+test('real crosshair picker cancels cleanly and Add & continue adds distinct new rows',async()=>{
+  const a=app(undefined,true);a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));
+  assert.equal(a.$('#pointOverlay').classList.contains('open'),true);assert.equal(a.$('main').inert,true);
+  a.$('#pointClose').click();assert.equal(a.$('#pointOverlay').classList.contains('open'),false);assert.equal(a.$('main').inert,undefined);
+  a.$('#selectMap').click();a.w.pointTestMap.setView([1.35,103.82],15,{animate:false});a.$('#pointContinue').click();
+  assert.equal(a.state().rows.length,1);assert.equal(a.$('#pointOverlay').classList.contains('open'),true);assert.match(a.$('#pointCount').textContent,/1 existing/);
+  a.w.pointTestMap.setView([1.36,103.83],16,{animate:false});a.$('#pointConfirm').click();assert.equal(a.state().rows.length,2);assert.equal(a.$('#pointOverlay').classList.contains('open'),false);
+  a.$('#selectMap').click();assert.ok(Math.abs(a.w.pointTestMap.getCenter().lat-1.36)<.00005,JSON.stringify(a.w.pointTestMap.getCenter()));assert.equal(a.w.pointTestMap.getZoom(),16);
+  a.$('#pointOverlay').dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(a.$('#pointOverlay').classList.contains('open'),false);a.dom.window.close();
+});
+
+test('overview delays street tiles until zoom 7 and satellite toggle preserves centre',async()=>{
+  const a=app(undefined,true);a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));
+  const activeTiles=()=>{const layers=[];a.w.pointTestMap.eachLayer(l=>{if(l instanceof a.w.L.TileLayer)layers.push(l);});return layers;};
+  a.w.pointTestMap.setView([20,100],4,{animate:false});assert.equal(activeTiles().length,0);assert.equal(a.$('#pointMapScale'),null);assert.ok(a.$('.country-name'));
+  a.w.pointTestMap.setZoom(7,{animate:false});assert.equal(activeTiles().length,1);assert.match(activeTiles()[0]._url,/openstreetmap/);
+  const center=a.w.pointTestMap.getCenter();a.$('#pointSatellite').click();assert.equal(activeTiles().length,1);assert.match(activeTiles()[0]._url,/World_Imagery/);assert.equal(a.w.pointTestMap.getCenter().lat,center.lat);
+  activeTiles()[0].fire('tileerror');assert.equal(a.$('#pointNetwork').hidden,false);
+  a.$('#pointStreet').click();assert.equal(a.$('#pointNetwork').hidden,true);a.dom.window.close();
+});
+
+test('past-point labels render names as text and number unnamed points',async()=>{
+  const a=app(undefined,true);a.paste('1.35,103.82\n1.36,103.83');a.$('#fromRows .nm').value='<img src=x onerror=alert(1)>';a.$('#selectMap').click();
+  const labels=[...a.w.document.querySelectorAll('.chosen-point-label')];assert.ok(labels.some(el=>el.textContent==='<img src=x onerror=alert(1)>'));assert.ok(labels.some(el=>el.textContent==='Point 2'));assert.equal(a.$('.chosen-point-label img'),null);await new Promise(r=>setTimeout(r,20));a.dom.window.close();
+});
+
+test('resizing the point map preserves its geographic centre and zoom',async()=>{
+  const a=app(undefined,true);a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));a.w.pointTestMap.setView([-22.65,150.35],9,{animate:false,reset:true});
+  a.w.testWidth=390;a.w.testHeight=650;a.w.resizePicker();assert.equal(a.w.pointTestMap.getCenter().lat,-22.65);assert.equal(a.w.pointTestMap.getCenter().lng,150.35);assert.equal(a.w.pointTestMap.getZoom(),9);a.dom.window.close();
+});
+
+test('map boundary confirmation expands short Taiwan rows without moving existing points',async()=>{
+  const a=app();a.change('#fromSys','taiwan');a.$('#selectMap').click();
+  const p={lat:24.9,lon:121.05},q={lat:22.065843,lon:120.794543};
+  const preview=a.w.pointPickerHooks.preview(p,a.w.pointOptions);
+  a.w.pointPickerHooks.onConfirm(p,{zoom:15,layer:'street'});
+  assert.deepEqual(a.state().rows[0].slice(0,2),Array.from(preview.cells));assert.match(a.state().rows[0][0],/^\d{4}$/);
+  const first=a.state().points[0],before=a.state().rows;
+  a.$('#selectMap').click();let pending=a.w.pointPickerHooks.onConfirm(q,{zoom:15,layer:'street'});
+  assert.equal(a.$('#boundaryOverlay').classList.contains('open'),true);assert.deepEqual(a.state().rows,before);
+  a.$('#boundaryClose').click();assert.equal((await pending).cancelled,true);assert.deepEqual(a.state().rows,before);
+  pending=a.w.pointPickerHooks.onConfirm(q,{zoom:15,layer:'street'});a.$('#boundaryContinue').click();await pending;
+  assert.equal(a.state().rows.length,2);assert.equal(a.state().settings.taiwan.sgOmit,false);
+  assert.match(a.state().rows[0][0],/^\d{6}$/);assert.match(a.state().rows[1][0],/^\d{6}$/);
+  assert.ok(Math.abs(a.state().points[0].lat-first.lat)<.00002);assert.ok(Math.abs(a.state().points[0].lon-first.lon)<.00002);
+  assert.ok(Math.abs(a.state().points[1].lat-q.lat)<.0002);a.dom.window.close();
+});
+
+test('MGRS map preview respects precision and boundary approval changes each prefix',async()=>{
+  const a=app();a.change('#fromSys','mgrs');a.$('#selectMap').click();
+  const p={lat:48.8582,lon:2.2945},q={lat:51.5074,lon:-.1278};
+  const preview=a.w.pointPickerHooks.preview(p,a.w.pointOptions);assert.match(preview.cells[1],/^\d{4}$/);
+  a.w.pointPickerHooks.onConfirm(p,{zoom:15,layer:'street'});a.$('#selectMap').click();
+  const pending=a.w.pointPickerHooks.onConfirm(q,{zoom:15,layer:'street'});assert.equal(a.$('#boundaryOverlay').classList.contains('open'),true);
+  a.$('#boundaryContinue').click();await pending;
+  assert.match(a.state().rows[0][0],/^31U DQ/);assert.match(a.state().rows[1][0],/^30U/);assert.equal(a.state().points.length,2);a.dom.window.close();
+});
+
+test('map confirmation checks output boundaries before closing its parent',async()=>{
+  const a=app(undefined,true);a.change('#fromSys','wgs84');a.change('#toSys','mgrs');a.paste('48.8582,2.2945');a.$('#selectMap').click();
+  a.w.pointTestMap.setView([51.5074,-.1278],15,{animate:false});a.$('#pointConfirm').click();
+  assert.equal(a.$('#boundaryOverlay').classList.contains('open'),true);assert.equal(a.$('#pointOverlay').classList.contains('open'),true);assert.equal(a.state().rows.length,1);
+  a.$('#boundaryContinue').click();await new Promise(r=>setTimeout(r,20));
+  assert.equal(a.$('#boundaryOverlay').classList.contains('open'),false);assert.equal(a.$('#pointOverlay').classList.contains('open'),false);assert.equal(a.state().points.length,2);assert.equal(a.$('main').inert,undefined);a.dom.window.close();
+});
+
+test('offline and failed connectivity disable map entry, recovery restores it',async()=>{
+  const a=app();Object.defineProperty(a.w.navigator,'onLine',{configurable:true,value:false});a.w.dispatchEvent(new a.w.Event('offline'));
+  assert.equal(a.$('#selectMap').disabled,true);a.$('#selectMap').click();assert.equal(a.w.pointOptions,undefined);
+  Object.defineProperty(a.w.navigator,'onLine',{configurable:true,value:true});a.w.fetch=async()=>{throw Error('network');};a.w.dispatchEvent(new a.w.Event('online'));await new Promise(r=>setTimeout(r,0));assert.equal(a.$('#selectMap').disabled,true);
+  a.w.fetch=async()=>({ok:true,text:async()=>'<html>Sign in to Wi-Fi</html>'});a.w.dispatchEvent(new a.w.Event('online'));await new Promise(r=>setTimeout(r,0));assert.equal(a.$('#selectMap').disabled,true);
+  a.w.fetch=async()=>({ok:true,text:async()=>read('version.js')});a.w.dispatchEvent(new a.w.Event('online'));await new Promise(r=>setTimeout(r,0));assert.equal(a.$('#selectMap').disabled,false);
+  // Reference-area selection remains usable with local geometry while offline.
+  Object.defineProperty(a.w.navigator,'onLine',{configurable:true,value:false});a.w.dispatchEvent(new a.w.Event('offline'));a.change('#fromSys','taiwan');a.$('#regionChip').click();assert.equal(a.w.mapOptions.preset,'taiwan');a.dom.window.close();
+});
+
+test('region snap is mild, only follows a human drag, and yields on the next drag',async()=>{
+  const a=app(undefined,true);a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));const map=a.w.pointTestMap;
+  map.setView([14.02,99.3],6,{animate:false});assert.equal(map.getCenter().lng,99.3);
+  map.fire('dragstart');map.setView([14.01,99.28],6,{animate:false});assert.equal(map.getCenter().lng,99.24459);
+  map.fire('dragstart');map.setView([14.03,99.31],6,{animate:false,reset:true});assert.equal(map.getCenter().lng,99.31);
+  map.fire('dragstart');map.setView([1.351,103.821],15,{animate:false});assert.equal(map.getCenter().lng,103.821);
+  a.change('#pointRegion','brunei');assert.equal(map.getCenter().lng,114.75);assert.equal(map.getZoom(),9);
+  assert.equal(map.getMinZoom(),1);map.setZoom(22,{animate:false});assert.equal(map.getZoom(),22);a.dom.window.close();
+});
+
+test('AO map can leave its initial region and whole-zone guidance explains missing letters',async()=>{
+  const a=app(undefined,true);a.change('#fromSys','taiwan');a.$('#regionChip').click();const map=a.w.testMap;
+  assert.equal(map.getMinZoom(),1);map.setView([14,99],4,{animate:false});assert.equal(map.getCenter().lng,99);map.setZoom(22,{animate:false});assert.equal(map.getZoom(),22);
+  a.change('#aoRegion','brunei');await new Promise(r=>setTimeout(r,20));assert.match(a.$('#aoTitle').textContent,/Brunei/);
+  const labels=[...a.w.document.querySelectorAll('.map-point-label')].map(e=>e.textContent);assert.ok(labels.includes('Jalan Aman Camp'));assert.ok(labels.includes('Lakiun Camp'));
+  a.$('#aoClose').click();a.change('#fromSys','mgrs');a.$('#regionChip').click();a.change('#aoSize','zone');await new Promise(r=>setTimeout(r,20));assert.match(a.$('#aoInstruction').textContent,/Keep the square letters/);a.dom.window.close();
+});
+
+test('empty rows cannot multiply through Add row or Enter, and Auto-detect keeps it hidden',()=>{
+  const a=app();assert.equal(a.$('#addRow').hidden,true);a.$('#fromRows .a').dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));assert.equal(a.$('#fromRows').children.length,1);
+  a.change('#fromSys','sg');assert.equal(a.$('#addRow').disabled,true);a.$('#fromRows .a').value='1234';a.$('#fromRows .a').dispatchEvent(new a.w.Event('input'));assert.equal(a.$('#addRow').disabled,true);
+  a.$('#fromRows .b').value='5678';a.$('#fromRows .b').dispatchEvent(new a.w.Event('input'));assert.equal(a.$('#addRow').disabled,false);a.$('#addRow').click();assert.equal(a.$('#fromRows').children.length,2);assert.equal(a.$('#addRow').disabled,true);a.dom.window.close();
+});
+
+test('offline installation contains map geometry and connectivity never falls back to cache',async()=>{
+  const handlers={},cached=new Map();let offline=false;
+  const response={ok:true,type:'basic',clone(){return this;}};
+  const ctx=vm.createContext({URL,Request,importScripts(){},self:{APP_VERSION:'test',location:{href:'https://example.test/sw.js',origin:'https://example.test'},addEventListener:(type,fn)=>handlers[type]=fn},
+    caches:{open:async()=>({addAll:async requests=>{for(const r of requests){const pathname=new URL(r.url).pathname.slice(1)||'index.html';assert.ok(fs.existsSync(path.join(root,pathname)),pathname);cached.set(r.url,response);}},put:async(k,v)=>cached.set(k.url||k,v)}),match:async r=>cached.get(r.url||r)},
+    fetch:async()=>{if(offline)throw Error('offline');return response;}});
+  vm.runInContext(read('sw.js'),ctx);let work;handlers.install({waitUntil:p=>work=p});await work;
+  offline=true;
+  for(const file of ['map-context.js','vendor/countries.geojson','map-support.js','map-picker.js']){
+    handlers.fetch({request:new Request('https://example.test/'+file),respondWith:p=>work=p});assert.equal(await work,response,file);
+  }
+  handlers.fetch({request:new Request('https://example.test/version.js?connectivity=1'),respondWith:p=>work=p});await assert.rejects(work,/offline/);
+});
+
+test('UTM batches crossing a zone require confirmation and retain both zones',()=>{
+  const a=app();a.paste('31N 448000 5412000\n30N 699000 5710000');assert.equal(a.$('#boundaryOverlay').classList.contains('open'),true);assert.match(a.$('#boundaryDetail').textContent,/31N|30N/);
+  a.$('#boundaryContinue').click();assert.equal(a.state().points.length,2);assert.match(a.state().rows[0][0],/^31N/);assert.match(a.state().rows[1][0],/^30N/);a.dom.window.close();
+});
+
+test('map entry honours 100 km MGRS precision without treating the square as an empty row',()=>{
+  const c=core(),settings=vm.runInContext('defaultSettings()',c);settings.mgrs.sgDigits=0;
+  const a=app({settings,from:'mgrs',to:'wgs84',rows:[['','','']]});a.change('#fromSys','mgrs');a.$('#selectMap').click();
+  a.w.pointPickerHooks.onConfirm({lat:48.8582,lon:2.2945},{zoom:15,layer:'street'});
+  assert.match(a.state().rows[0][0].trim(),/^31U DQ$/);assert.equal(a.state().rows[0][1],'');assert.equal(a.state().points.length,1);assert.equal(a.$('#addRow').disabled,false);
+  a.$('#selectMap').click();assert.equal(a.w.pointOptions.points.length,1);a.$('#addRow').click();assert.deepEqual(a.state().rows[1],['','','']);a.dom.window.close();
 });

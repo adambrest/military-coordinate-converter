@@ -3,7 +3,7 @@
   "use strict";
   root.createAOPicker=function({presets,contains,projection,onSelect}){
     const $=id=>document.getElementById(id);
-    let map,grid,selectionLayer,pointLayer,selection,options={},returnFocus,frame;
+    let map,grid,selectionLayer,pointLayer,selection,options={},returnFocus,frame,stableCenter;
     const landmarks=[];
     const ids=["sg","taiwan","thailand","australia","brunei"];
     function gridId(){return options.system||options.preset||"mgrs";}
@@ -50,7 +50,7 @@
       $("aoSelection").textContent=presets[chosen.id].name+" · "+chosen.prefix;
       $("aoApply").disabled=false;
       if(chosen.invalid){
-        $("aoWarning").textContent="This reference falls outside "+presets[chosen.id].name.replace(" MGR","")+" in this square. Check the digits or choose another AO.";
+        $("aoWarning").textContent="This reference falls outside "+presets[chosen.id].name.replace(" MGR","")+" in this square. Check the digits or choose another grid square.";
         $("aoWarning").hidden=false;$("aoApply").disabled=true;
       }
       if(chosen.scope==="zone"&&picks().length){
@@ -92,8 +92,8 @@
         if(visible){if(!map.hasLayer(marker))marker.addTo(map);marker.openTooltip();}else if(map.hasLayer(marker))map.removeLayer(marker);
       }
       const broad=id==="mgrs"&&$("aoSize").value==="zone",threshold=broad?3:6;
-      $("aoScale").textContent=zoom<threshold?"Zoom in to select an area":broad?"Grid-zone areas":"100 km AO squares";
-      if(zoom<threshold)return;
+      $("aoInstruction").textContent=broad?"A whole zone contains many 100 km squares. Keep the square letters in every reference.":"Select a 100 km grid square to omit its prefix. Your operating area may span several squares.";
+      if(zoom<threshold){if(!selection)$("aoSelection").textContent="Zoom in to select a grid square";return;}
       if(id!=="mgrs"){
         const bb=presets[id].bbox;
         const view={west:Math.max(b.west,bb[2]),east:Math.min(b.east,bb[3]),south:Math.max(b.south,bb[0]),north:Math.min(b.north,bb[1])};
@@ -106,33 +106,43 @@
         const view={west:Math.max(b.west,z.west),east:Math.min(b.east,z.east),south:Math.max(b.south,z.south),north:Math.min(b.north,z.north)};
         projectedGrid(GlobalGrid.projection(z.zone,z.south<0),view,z,"mgrs");
       }
-      if(!candidates.length)$("aoScale").textContent=picks().length?"No matching AO squares here":"No AO squares in view";
+      if(!candidates.length)$("aoSelection").textContent=selection?$("aoSelection").textContent:zoom<6?"Zoom in to select a grid square":"No matching grid squares in view";
     }
     function init(){
-      map=L.map("aoMap",{minZoom:2,maxZoom:17,maxBounds:[[-85,-180],[85,180]],maxBoundsViscosity:1,preferCanvas:true,zoomControl:true});
+      map=L.map("aoMap",{minZoom:1,maxZoom:22,maxBounds:[[-85,-180],[85,180]],maxBoundsViscosity:1,preferCanvas:true,zoomControl:true,trackResize:false});
       map.setView([12,95],3);
       map.attributionControl.setPrefix(false);
       L.control.scale({imperial:false}).addTo(map);
       map.createPane("offlineLand").style.zIndex="150";
       const land=L.geoJSON(null,{pane:"offlineLand",style:{color:"#a8bcc2",weight:.6,fillColor:"#f3f3eb",fillOpacity:1},interactive:false}).addTo(map);
-      fetch("vendor/land.geojson").then(r=>{if(!r.ok)throw Error();return r.json();}).then(data=>land.addData(data)).catch(()=>{});
+      fetch("vendor/countries.geojson").then(r=>{if(!r.ok)throw Error();return r.json();}).then(data=>land.addData(data)).catch(()=>{});
       map.attributionControl.addAttribution('<a href="https://www.naturalearthdata.com/">Natural Earth</a>');
       map.attributionControl.addAttribution('© <a href="https://spatial-gis.information.qld.gov.au/arcgis/rest/services/Basemaps/FoundationData/MapServer/23">Queensland</a>');
-      const tiles=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,noWrap:true,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
+      const tiles=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxNativeZoom:19,maxZoom:22,noWrap:true,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
       tiles.on("tileerror",()=>{$("aoNetwork").hidden=false;});
       tiles.on("load",()=>{if(navigator.onLine)$("aoNetwork").hidden=true;});
       grid=L.layerGroup().addTo(map);selectionLayer=L.layerGroup().addTo(map);pointLayer=L.layerGroup().addTo(map);
+      MapSupport.navigation(map,$("aoRegion"),r=>{
+        if(gridId()!=="mgrs"){
+          options={...options,system:r.id,preset:r.id};
+          $("aoTitle").textContent=presets[r.id].name+" · reference area";
+          $("aoSystemLabel").textContent=presets[r.id].zoneCode?"Zone "+presets[r.id].zoneCode:"";
+        }
+        selection=null;selectionLayer.clearLayers();pointLayer.clearLayers();$("aoApply").disabled=true;$("aoSelection").textContent="No area selected";$("aoWarning").hidden=true;
+      });
       for(const id of ids){
         const p=presets[id],bb=p.bbox;
         const context=p.context||{};
         for(const poly of context.land||[])polygon(poly,{pane:"offlineLand",color:"#a8bcc2",weight:.6,fillColor:"#f3f3eb",fillOpacity:1},land);
         for(const line of context.roads||[])L.polyline(line.map(p=>[p[1],p[0]]),{color:"#ce8a22",weight:2,interactive:false}).addTo(land);
         for(const [index,lm] of (context.landmarks||[]).entries()){
-          landmarks.push({id,marker:L.circleMarker([lm.lat,lm.lon],{radius:5,color:"#fff",weight:1.5,fillColor:"#be123c",fillOpacity:1}).bindTooltip(lm.name,{permanent:true,direction:index%2?"right":"left",className:"camp-label"}).on("click",e=>{L.DomEvent.stopPropagation(e);select(lm.lat,lm.lon);})});
+          landmarks.push({id,marker:MapSupport.marker(map,lm,()=>select(lm.lat,lm.lon))});
         }
       }
       map.on("click",e=>{const threshold=gridId()==="mgrs"&&$("aoSize").value==="zone"?3:6;if(map.getZoom()<threshold){map.setView(e.latlng,threshold+1);return;}select(e.latlng.lat,e.latlng.lng);});
-      map.on("moveend zoomend",()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(draw);});
+      map.on("moveend zoomend",()=>{const p=map.getCenter();stableCenter={lat:p.lat,lng:p.lng};cancelAnimationFrame(frame);frame=requestAnimationFrame(draw);});
+      const resize=()=>{if(!$("aoOverlay").classList.contains("open"))return;const p=stableCenter||map.getCenter(),z=map.getZoom();map.invalidateSize({pan:false,animate:false});map.setView(p,z,{animate:false,reset:true});};
+      if(root.ResizeObserver)new ResizeObserver(resize).observe($("aoMap"));else root.addEventListener("resize",resize);
       $("aoSize").addEventListener("change",()=>{selection=null;selectionLayer.clearLayers();pointLayer.clearLayers();$("aoApply").disabled=true;$("aoSelection").textContent="No area selected";$("aoWarning").hidden=true;draw();});
     }
     function close(){ $("aoOverlay").classList.remove("open");returnFocus?.focus(); }
@@ -164,7 +174,7 @@
     const closeLocations=()=>{$("locationOverlay").classList.remove("open");returnFocus?.focus();};
     $("locationClose").addEventListener("click",closeLocations);
     $("locationOverlay").addEventListener("keydown",e=>{if(e.key==="Escape")closeLocations();
-      if(e.key==="Tab"){const first=$("locationOverlay").querySelector("[data-location]"),last=$("locationClose");if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}
+      if(e.key==="Tab"){const nodes=$("locationOverlay").querySelectorAll("button"),first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}
     });
     $("aoBack").addEventListener("click",()=>showLocations(options));
     function showMap(opts){
@@ -173,17 +183,17 @@
       $("aoApply").disabled=true;$("aoSelection").textContent="No area selected";$("aoWarning").hidden=true;
       const id=gridId(),raw=id==="mgrs";
       $("aoSizeLabel").hidden=!raw;$("aoSize").value=opts.scope||"square";
-      $("aoTitle").textContent=raw?"Raw WGS 84 · select your AO":presets[id].name+" · select your AO";
-      $("aoSystemLabel").textContent=raw?"WGS 84":presets[id].zoneCode?"Zone "+presets[id].zoneCode:"";
+      $("aoTitle").textContent=raw?"Military grid · reference area":presets[id].name+" · reference area";
+      $("aoSystemLabel").textContent=raw?"MGRS":presets[id].zoneCode?"Zone "+presets[id].zoneCode:"";
       $("aoBack").hidden=!opts.pending;
       $("aoInstruction").textContent=raw?"Choose your area.":"Select a highlighted AO square.";
-      selectionLayer.clearLayers();pointLayer.clearLayers();map.invalidateSize();map.setMaxBounds([[-85,-180],[85,180]]);map.setMinZoom(2);
+      selectionLayer.clearLayers();pointLayer.clearLayers();map.invalidateSize();map.setMaxBounds([[-85,-180],[85,180]]);map.setMinZoom(1);
       if(raw){
         if(opts.point)map.setView([opts.point.lat,opts.point.lon],9);else map.setView([15,30],2);
       }else{
         const p=presets[id],b=p.bbox;let area=[[b[0],b[2]],[b[1],b[3]]];
         if(p.anchor){const [lat,lon]=p.anchor,dy=(p.anchorRadiusKm||65)*1.6/111,dx=dy/Math.cos(lat*Math.PI/180);area=[[lat-dy,lon-dx],[lat+dy,lon+dx]];}
-        const focus=L.latLngBounds(area);map.fitBounds(focus,{padding:[28,28],maxZoom:9,animate:false});map.setMaxBounds(focus.pad(.5));map.setMinZoom(Math.max(6,map.getZoom()-1));
+        const focus=L.latLngBounds(area);map.fitBounds(focus,{padding:[28,28],maxZoom:9,animate:false});map.setZoom(Math.max(6,map.getZoom()),{animate:false});
         if(id==="australia")map.setZoom(map.getZoom()+1,{animate:false});
       }
       draw();$("aoClose").focus();

@@ -1,0 +1,35 @@
+.row-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:8px}
+.row-actions .addrow{margin:0}
+.select-map{border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--accent);padding:8px 12px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.modal.point-modal{width:min(1060px,96vw);max-width:1060px;height:min(900px,94dvh);display:flex;flex-direction:column;padding:0;overflow:hidden}
+.point-heading{display:flex;justify-content:space-between;align-items:start;gap:12px;padding:16px 18px 10px}
+.point-heading,.point-toolbar,.point-footer{flex-shrink:0}
+.point-heading h3{margin:0 0 5px;font-size:19px}.point-heading p{font-size:12px;line-height:1.4;color:var(--muted);margin:0}
+#pointClose{flex-shrink:0;border:0;border-radius:8px;background:var(--panel2);width:36px;height:36px;font-size:24px;cursor:pointer}
+.point-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:0 18px 12px}
+.point-layers{display:flex;gap:3px;padding:3px;border:1px solid var(--line);border-radius:9px;background:var(--panel2)}
+.point-layers button{border:0;border-radius:6px;padding:8px 14px;font:inherit;font-size:12px;font-weight:600;background:transparent;color:var(--muted);cursor:pointer}
+.point-layers button[aria-pressed="true"]{background:var(--accent);color:white}
+#pointPreset{font-size:12px;font-weight:700}#pointCount{margin-left:auto;font-size:11px;color:var(--muted)}
+.point-map-wrap{position:relative;flex:1;min-height:180px;background:#dceef5}
+#pointMap{height:100%;width:100%;font-family:inherit;background:#dceef5}
+.point-crosshair{position:absolute;left:50%;top:50%;width:26px;height:26px;transform:translate(-50%,-50%);z-index:600;pointer-events:none;filter:drop-shadow(0 0 1px white)}
+.point-crosshair:before,.point-crosshair:after{content:"";position:absolute;background:linear-gradient(to right,#374151 0 32%,transparent 32% 68%,#374151 68%);opacity:.85}
+.point-crosshair:before{width:26px;height:1px;top:12.5px;left:0}.point-crosshair:after{width:26px;height:1px;top:12.5px;left:0;transform:rotate(90deg)}
+.point-crosshair i{display:none}
+.country-name{color:#334155;font:600 11px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-align:center;text-shadow:0 1px 2px white,0 -1px 2px white;white-space:normal;pointer-events:none}
+.chosen-point-label{font:600 11px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;width:max-content;max-width:180px;white-space:normal;overflow-wrap:anywhere}
+.point-footer{padding:12px 18px 16px;border-top:1px solid var(--line)}
+#pointCoordinate{font-size:13px;font-variant-numeric:tabular-nums;font-weight:600}
+#pointFormatPreview{margin-top:4px;font-size:12px;color:var(--muted);overflow-wrap:anywhere}#pointFormatPreview.invalid{color:var(--danger)}
+.point-status{margin:5px 0 0;font-size:11px;line-height:1.4;color:var(--muted)}#pointAdded{color:var(--accent)}
+.point-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:10px}
+.point-actions button{min-height:40px}.point-actions button:disabled{opacity:.45;cursor:default}
+@media(max-width:600px){.modal.point-modal{width:100%;height:100dvh;max-height:100dvh;border-radius:0}.overlay:has(.point-modal){padding:0}.point-heading{padding:max(12px,env(safe-area-inset-top)) 12px 8px}.point-toolbar{padding:0 12px 8px;gap:6px}.point-footer{padding:10px 12px max(12px,env(safe-area-inset-bottom))}.point-actions{gap:5px}.point-actions button{padding:8px 10px;font-size:12px}.point-map-wrap{min-height:140px}}
+@media(max-height:500px){.modal.point-modal{width:100%;height:100dvh;max-height:100dvh;border-radius:0}.overlay:has(.point-modal){padding:0}.point-heading{padding:6px 12px 4px}.point-heading h3{font-size:16px;margin-bottom:2px}.point-heading p{font-size:11px}.point-toolbar{padding:0 12px 6px}.point-layers button{padding:5px 10px}.point-map-wrap{min-height:70px}.point-footer{padding:6px 12px max(8px,env(safe-area-inset-bottom))}.point-actions{margin-top:5px}.point-actions button{min-height:34px;padding:6px 10px}}
+
+.row-actions .addrow,.row-actions .select-map{align-self:auto;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--accent);padding:8px 12px;font-family:inherit;font-size:12px;font-weight:600;line-height:1.4;min-height:36px;margin:0}
+.row-actions button:disabled{opacity:.4;cursor:default}
+.map-region{max-width:100%;min-width:0;padding:7px;border:1px solid var(--line);border-radius:7px;background:var(--panel2);color:var(--text);font:inherit;font-size:12px}
+.dialog-heading{display:flex;justify-content:space-between;align-items:start;gap:12px}.dialog-heading h3{margin-top:0}.dialog-close{border:0;background:var(--panel2);border-radius:8px;font-size:24px;width:38px;height:38px;flex-shrink:0;cursor:pointer}
+#boundaryOverlay{z-index:2100}#boundaryDetail{font-size:14px;line-height:1.5}
