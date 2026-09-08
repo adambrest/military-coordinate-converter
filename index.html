@@ -233,9 +233,9 @@
   </main>
 
   <!-- GPX modal -->
-  <div class="overlay" id="gpxOverlay">
+  <div class="overlay" id="gpxOverlay" role="dialog" aria-modal="true" aria-labelledby="gpxTitle">
     <div class="modal">
-      <div class="dialog-heading"><h3>Download GPX points</h3><button id="gpxCancel" class="dialog-close" aria-label="Close GPX dialog">×</button></div>
+      <div class="dialog-heading"><h3 id="gpxTitle">Download GPX points</h3><button id="gpxCancel" class="dialog-close" aria-label="Close GPX dialog">×</button></div>
       <input type="text" id="gpxName" placeholder="Name (required)" autocomplete="off">
       <div class="note" id="gpxNote"></div>
       <div class="m-actions">
@@ -442,14 +442,7 @@
     if(p.kind==="grid"||p.shortGrid){
       const {E,N}=toProjFromWGS(lat,lon,projectionFor(presetId,S)), lead=[Math.floor(E/100000),Math.floor(N/100000)];
       const selected=p.lead||s.square;
-      const canOmit = selected && selected[0]===lead[0] && selected[1]===lead[1];
-      // Full UTM references retain meter units, matching the full-reference parser.
-      if(p.large && (!canOmit || s.sgOmit===false)){
-        // Dropping trailing digits needs no reference area. Keep full meter width so
-        // the value still reads back as meters.
-        const step=Math.pow(10,5-(s.sgDigits??4));
-        return [String(Math.floor((E+0.05)/step)*step),String(Math.floor((N+0.05)/step)*step)];
-      }
+      const canOmit = !!selected && selected[0]===lead[0] && selected[1]===lead[1];
       return sgHalvesEN(E,N,s,lead,canOmit);
     }
     // utm / projected -> full easting/northing in meters (configurable decimals)
@@ -681,6 +674,14 @@
     // utm: full easting/northing in meters, OR a truncated grid that needs a picked 100 km square
     if(!a && !b) return {error:"empty",empty:true};
     const trunc = /^\d{1,5}$/.test(a) && /^\d{1,5}$/.test(b) && a.length===b.length;
+    // Near the equator, full E/N can have equal widths. Extra leading digits
+    // beyond the selected precision identify the full form when omission is off
+    // or no square has been selected.
+    if(trunc&&a.length>(s.sgDigits??4)&&(!s.square||s.sgOmit===false)){
+      const step=10**(5-(s.sgDigits??4));
+      const point=toWGSfromProj(Number(a)*step,Number(b)*step,projectionFor(presetId,S));
+      if(presetContains(presetId,point.lat,point.lon))return {...point,digits:s.sgDigits??4};
+    }
     if(p.large && trunc){
       const sq=s.square;
       if(!sq) return {error:"pick-square", pick:{e:a,n:b}};
@@ -691,6 +692,14 @@
     const na=Number(a), nb=Number(b);
     if(!isFinite(na)||a==="") return {error:"E not a number",badA:true};
     if(!isFinite(nb)||b==="") return {error:"N not a number",badB:true};
+    // Try meter and shortened full references against the preset footprint.
+    // Northing width varies by latitude (notably southern Thailand).
+    if(/^\d+$/.test(a)&&/^\d+$/.test(b)){
+      for(const digits of [5,4,3]){
+        const step=10**(5-digits),point=toWGSfromProj(na*step,nb*step,projectionFor(presetId,S));
+        if(presetContains(presetId,point.lat,point.lon))return {...point,digits};
+      }
+    }
     return toWGSfromProj(na,nb,projectionFor(presetId,S));
   }
 
@@ -745,7 +754,7 @@
           j.settings={...defaultSettings(),...j.settings};
           delete j.settings.australia.datum;
           if(!GLOBAL_FORMATS.includes(j.settings.mgrs.format))j.settings.mgrs.format="mgrs";
-          if(!PRESETS[j.to])j.to="wgs84";
+          if(!PRESETS[j.to]||(!j.militaryEnabled&&GLOBAL_FORMATS.includes(j.to)))j.to="wgs84";
           // Never restore computed output across engine versions.
           j.points=[];
           j.from="auto";j.explicitInput=false;j.aoConfirmed=false;delete j.pendingGrid;
@@ -763,9 +772,11 @@
     function save(){ try{ localStorage.setItem(STORAGE, JSON.stringify(state)); }catch(_){} }
 
     // build system selects
-    function buildSel(sel){ const ids=sel.id==="fromSys"?["auto",...PRESET_ORDER]:PRESET_ORDER;sel.innerHTML=ids.map(id=>`<option value="${id}">${id==="mgrs"?"Military grid":PRESETS[id].name}</option>`).join(""); }
+    function buildSel(sel){ const ids=sel.id==="fromSys"?["auto",...PRESET_ORDER]:PRESET_ORDER;sel.innerHTML=ids.filter(id=>id!=="mgrs"||state.militaryEnabled).map(id=>`<option value="${id}">${id==="mgrs"?"Military grid":PRESETS[id].name}</option>`).join(""); }
     function syncFormat(side){
       const id=state[side],global=GLOBAL_FORMATS.includes(id);
+      if(global&&!state.militaryEnabled){state.militaryEnabled=true;save();}
+      buildSel($("#"+side+"Sys"));
       if(side==="from"){buildSel($("#fromSys"));if(id!=="auto")$("#fromSys option[value=auto]")?.remove();}
       $("#"+side+"Sys").value=global?"mgrs":id;
       $("#"+side+"FormatWrap").hidden=!global;
@@ -983,7 +994,7 @@
     /* ---- smart paste + auto-split ---- */
     function llCells(lat,lon){ const S=state.settings.wgs84; const la=fmtLat(lat,S), lo=fmtLon(lon,S); return S.order==="lonlat"?[lo,la]:[la,lo]; }
     const picker=createAOPicker({
-      presets:PRESETS,contains:presetContains,projection:id=>projectionFor(id,state.settings),plausible:gridPlausible,
+      militaryEnabled:()=>!!state.militaryEnabled,presets:PRESETS,contains:presetContains,projection:id=>projectionFor(id,state.settings),plausible:gridPlausible,
       onSelect(chosen,opts){
         const id=chosen.id, s=state.settings[id];
         if(id==="mgrs")s.ao=chosen.prefix;else s.square=[chosen.e,chosen.n];
@@ -1051,7 +1062,7 @@
       const system=state.pendingGrid?.system||(state.explicitInput&&preset?preset:undefined);
       state.pendingGrid={text,i,system};state.aoConfirmed=false;
       text.trim().split(/\r?\n/).forEach((line,k)=>{const g=splitGrid(line);if(g.error)return;while(state.rows.length<=i+k)state.rows.push(["","",""]);state.rows[i+k]=[g.e,g.n,state.rows[i+k][2]||""];});
-      if(["wgs84","auto"].includes(state.from)){state.from="mgrs";$("#fromSys").value="mgrs";}
+      if(state.militaryEnabled&&["wgs84","auto"].includes(state.from)){state.from="mgrs";$("#fromSys").value="mgrs";}
       renderFrom();save();
       const g=splitGrid(text.trim().split(/\r?\n/)[0]);
       picker.open({pending:{text,i},pick:g.error?null:g,point:state.lastLocation,preset,system});
@@ -1430,7 +1441,15 @@
 
     /* ---- GPX modal ---- */
     function openGpx(){ if(!state.points||!state.points.length)return; $("#gpxName").value=""; updateGpxNote(); $("#gpxOverlay").classList.add("open"); $("#gpxName").focus(); }
-    function closeGpx(){ $("#gpxOverlay").classList.remove("open"); }
+    function closeGpx(){ $("#gpxOverlay").classList.remove("open"); $("#gpxBtn").focus(); }
+    $("#gpxOverlay").addEventListener("keydown",e=>{
+      if(e.key==="Escape"){e.preventDefault();closeGpx();}
+      if(e.key==="Tab"){
+        const nodes=[...$("#gpxOverlay").querySelectorAll("button:not(:disabled),input")],first=nodes[0],last=nodes.at(-1);
+        if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+        else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+      }
+    });
     function updateGpxNote(){
       const n=(state.points||[]).length;
       const ok=$("#gpxName").value.trim().length>0 && n>0;
@@ -1500,7 +1519,7 @@
               setTimeout(()=>{ const b=document.getElementById(clId); if(b) b.addEventListener("click",()=>{ delete state.settings[id].square;delete state.settings[id].ao;state.aoConfirmed=false;state.points=[];renderTo();updateRegionChips();changed(); }); const m=document.getElementById(mapId); if(m) m.addEventListener("click",()=>openSquareBrowser(id,renderSettings)); },0);
             } else {
               const mapId="mapbtn_"+id;
-              h+=`<div class="note">Zoom out on the map for a grid zone, in for a 100 km square.</div>`;
+              h+=`<div class="note">${id==="mgrs"?"Zoom out on the map for a grid zone, in for a 100 km square.":"Choose the 100 km square containing your coordinates."}</div>`;
               h+=`<div class="ao-actions"><button class="setting-action primary" id="${mapId}" type="button">Choose reference area</button></div>`;
               setTimeout(()=>{ const b=document.getElementById(mapId); if(b) b.addEventListener("click",()=>openSquareBrowser(id,renderSettings)); },0);
             }
@@ -1510,7 +1529,7 @@
           const digits=s.sgDigits??4, meters=10**(5-digits), precision=meters>=1000?meters/1000+" km":meters+" meters";
           h+=`<section class="settings-section"><h4 class="settings-subhead">Output format</h4>`;
           h+=`<div class="srow"><span class="k">Precision</span>${seg(id==="mgrs"?[[5,"1 m"],[4,"10 m"],[3,"100 m"],[2,"1 km"],[1,"10 km"],[0,"100 km"]]:[[5,"1 m"],[4,"10 m"],[3,"100 m"]],digits,v=>{s.sgDigits=+v;changed();})}</div>`;
-          h+=`<div class="note precision-note">${precision} · ${digits} digits per axis</div>`;
+          h+=`<div class="note precision-note">${precision} · ${digits} digits within each 100 km square</div>`;
           const canOmit = id==="mgrs"?!!s.ao:!p.large || !!s.square;
           const omId="om_"+id;
           h+=`<label class="chk"><input type="checkbox" id="${omId}" ${canOmit&&s.sgOmit!==false?"checked":""} ${canOmit?"":"disabled"}> ${id==="mgrs"?"Omit selected reference-area prefix":"Omit 100 km square prefix"}</label>`;
@@ -1526,8 +1545,8 @@
         }
         return h;
       };
-      let html="";
-      PRESET_ORDER.forEach(id=>{
+      let html=`<div class="srow"><span class="k">Military grid (MGRS / UTM)</span><button class="setting-action" id="militaryToggle" aria-pressed="${!!state.militaryEnabled}">${state.militaryEnabled?"Disable":"Enable"}</button></div><p class="note">Enable global grids when needed. Map points outside the country presets enable them automatically.</p>`;
+      PRESET_ORDER.filter(id=>id!=="mgrs"||state.militaryEnabled).forEach(id=>{
         const p=PRESETS[id], open=(openPreset===id);
         const {basis,specs}=p;
         html+=`<div class="preset${open?" open":""}" data-id="${id}">`;
@@ -1541,6 +1560,20 @@
         html+=`</div></div>`;
       });
       el.innerHTML=html;
+      $("#militaryToggle").onclick=()=>{
+        readRows();const current=existingMapPoints();
+        state.militaryEnabled=!state.militaryEnabled;
+        if(!state.militaryEnabled){
+          if(GLOBAL_FORMATS.includes(state.from)){
+            state.rows=current.unresolved?state.rows:current.points.map(p=>[...llCells(p.lat,p.lon),p.name]);
+            if(!state.rows.length)state.rows=[["","",""]];
+            state.from=current.unresolved?"auto":"wgs84";
+          }
+          if(GLOBAL_FORMATS.includes(state.to))state.to=suggestedGrid(current.points)||"wgs84";
+          delete state.pendingGrid;state.points=[];state.aoConfirmed=false;
+        }
+        renderFrom();renderTo();updatePairState();save();renderSettings();
+      };
       el.querySelectorAll(".preset-head").forEach(btn=>btn.addEventListener("click",()=>{ const id=btn.dataset.head; openPreset=(openPreset===id)?null:id; renderSettings(); }));
       el.querySelectorAll(".reset[data-reset]").forEach(btn=>btn.addEventListener("click",()=>{
         const id=btn.dataset.reset;state.settings[id]=defaultsFor(id);

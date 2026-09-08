@@ -14,7 +14,7 @@ function core(){
   vm.runInContext(inline.split('  /* ============================ UI / state')[0],ctx);
   return ctx;
 }
-function app(saved,realMap=false){
+function app(saved,realMap=false,militaryEnabled=true){
   const dom=new JSDOM(html.replace(/<script[\s\S]*?<\/script>/g,''),{url:'https://example.test/',runScripts:'outside-only',pretendToBeVisual:true});
   const w=dom.window;
   if(saved)w.localStorage.setItem('mgrconv-v1',JSON.stringify(saved));
@@ -30,6 +30,8 @@ function app(saved,realMap=false){
   }else w.createAOPicker=opts=>{w.pickerHooks=opts;return {open:o=>{w.mapOptions=o;w.document.getElementById('aoOverlay').classList.add('open');}};};
   if(!realMap)w.createPointPicker=opts=>{w.pointPickerHooks=opts;return {open:o=>{w.pointOptions=o;}};};
   w.eval(inline);
+  // Existing global-grid scenarios opt in through the same Settings control as users.
+  if(militaryEnabled){w.document.querySelector('#tab-set').click();const toggle=w.document.querySelector('#militaryToggle');if(toggle.getAttribute('aria-pressed')==='false')toggle.click();w.document.querySelector('#tab-conv').click();}
   const $=s=>w.document.querySelector(s);
   function change(id,value){$(id).value=value;$(id).dispatchEvent(new w.Event('change',{bubbles:true}));}
   function paste(text,row=0){const e=new w.Event('paste',{bubbles:true,cancelable:true});Object.defineProperty(e,'clipboardData',{value:{getData:()=>text}});$('#fromRows').children[row].querySelector('.a').dispatchEvent(e);}
@@ -450,7 +452,7 @@ test('map boundary confirmation expands short Taiwan rows without moving existin
   a.$('#boundaryClose').click();assert.equal((await pending).canceled,true);assert.deepEqual(a.state().rows,before);
   pending=a.w.pointPickerHooks.onConfirm(q,{zoom:15,layer:'street'});a.$('#boundaryContinue').click();await pending;
   assert.equal(a.state().rows.length,2);assert.equal(a.state().settings.taiwan.sgOmit,false);
-  assert.match(a.state().rows[0][0],/^\d{6}$/);assert.match(a.state().rows[1][0],/^\d{6}$/);
+  assert.match(a.state().rows[0][0],/^\d{5}$/);assert.match(a.state().rows[1][0],/^\d{5}$/);
   assert.ok(Math.abs(a.state().points[0].lat-first.lat)<.00002);assert.ok(Math.abs(a.state().points[0].lon-first.lon)<.00002);
   assert.ok(Math.abs(a.state().points[1].lat-q.lat)<.0002);a.dom.window.close();
 });
@@ -562,7 +564,7 @@ test('double tap zooms towards its screen location without a delayed first-tap p
   map.setView([1.35,103.82],12,{animate:false,reset:true});const screen=a.w.L.point(600,180),target=map.containerPointToLatLng(screen),before=map.getCenter();
   map.fire('click',{latlng:target,containerPoint:screen});map.fire('dblclick',{latlng:target,containerPoint:screen,originalEvent:{}});
   assert.equal(map.getZoom(),13);assert.ok(map.getCenter().lng>before.lng);assert.ok(map.latLngToContainerPoint(target).distanceTo(screen)<2);
-  const after=map.getCenter();await new Promise(r=>setTimeout(r,350));assert.equal(map.getCenter().lng,after.lng);assert.equal(map.getCenter().lat,after.lat);a.dom.window.close();
+  const after=map.getCenter();await new Promise(r=>setTimeout(r,550));assert.equal(map.getCenter().lng,after.lng);assert.equal(map.getCenter().lat,after.lat);a.dom.window.close();
 });
 
 test('global AO grid repeats at the date line and selects the wrapped canonical square',async()=>{
@@ -691,7 +693,7 @@ test('a first Australian pin picks its own area; a pin in another square must be
   assert.deepEqual(a.state().rows,before);
   a.$('#boundaryContinue').click();await pending;
   assert.equal(a.state().settings.australia.sgOmit,false,'leading digits were still omitted across squares');
-  assert.match(a.state().rows[0][0],/^\d{6}$/);assert.match(a.state().rows[1][0],/^\d{6}$/);
+  assert.match(a.state().rows[0][0],/^\d{5}$/);assert.match(a.state().rows[1][0],/^\d{5}$/);
   a.dom.window.close();
 });
 
@@ -762,8 +764,8 @@ test('precision drops trailing digits with no reference area selected',()=>{
   assert.equal(settings.taiwan.square,undefined,'this test needs an unset reference area');
   const fine=at(5),ten=at(4),hundred=at(3);
   assert.notDeepEqual(ten,fine,'precision had no effect without a reference area');
-  assert.match(ten[0],/0$/);assert.match(ten[1],/0$/);
-  assert.match(hundred[0],/00$/);assert.match(hundred[1],/00$/);
+  assert.deepEqual([...ten],[...fine].map(v=>v.slice(0,-1)));
+  assert.deepEqual([...hundred],[...fine].map(v=>v.slice(0,-2)));
   // The rounded form still reads back as meters within its own precision.
   const back=vm.runInContext('parseCells("taiwan","'+ten[0]+'","'+ten[1]+'",S)',c);
   assert.ok(Math.abs(back.lat-24.5)<0.001&&Math.abs(back.lon-120.9)<0.001,'rounded meters no longer round-trip');
@@ -798,4 +800,70 @@ test('the paste hint no longer explains easting and northing order',()=>{
   assert.doesNotMatch(a.$('#pasteHint').textContent,/easting/i);
   assert.equal(a.$('#pasteHint').hidden,true);
   a.dom.window.close();
+});
+
+test('military grids are opt-in in selectors, settings and ambiguous chooser',()=>{
+  const a=app(undefined,true,false);
+  assert.equal(a.$('#fromSys option[value="mgrs"]'),null);
+  assert.equal(a.$('#toSys option[value="mgrs"]'),null);
+  a.$('#tab-set').click();assert.equal(a.$('[data-head="mgrs"]'),null);
+  a.$('#tab-conv').click();a.paste('3000 3000');
+  assert.equal(a.$('[data-location="mgrs"]').hidden,true);
+  assert.equal(a.state().militaryEnabled,undefined);
+  a.$('#locationClose').click();a.$('#tab-set').click();a.$('#militaryToggle').click();
+  assert.ok(a.$('#fromSys option[value="mgrs"]'));
+  assert.ok(a.$('[data-head="mgrs"]'));
+  a.$('#tab-conv').click();a.paste('3000 3000');
+  assert.equal(a.$('[data-location="mgrs"]').hidden,false);
+  a.dom.window.close();
+});
+test('out-of-preset map point enables global output and disabling converts source to coordinates',()=>{
+  const a=app(undefined,false,false);a.$('#selectMap').click();
+  a.w.pointPickerHooks.onConfirm({lat:48.8582,lon:2.2945},{zoom:15,layer:'street'});
+  assert.equal(a.state().militaryEnabled,true);assert.equal(a.state().to,'mgrs');
+  a.$('#swapBtn').click();
+  a.$('#tab-set').click();a.$('#militaryToggle').click();
+  assert.equal(a.state().militaryEnabled,false);assert.equal(a.state().from,'wgs84');
+  assert.equal(a.$('#fromSys option[value="mgrs"]'),null);
+  a.dom.window.close();
+});
+test('all country examples drop trailing digits and full references round-trip at every precision',()=>{
+  const c=core();c.S=vm.runInContext('defaultSettings()',c);
+  for(const id of ['sg','brunei','taiwan','thailand','australia']){
+    c.id=id;c.S[id].sgOmit=false;
+    const point=vm.runInContext('examplePoint(id,S)',c);c.lat=point.lat;c.lon=point.lon;
+    let fine;
+    for(const digits of [5,4,3]){
+      c.S[id].sgDigits=digits;
+      const cells=[...vm.runInContext('formatPoint(lat,lon,id,S)',c)];
+      if(digits===5)fine=cells;else assert.deepEqual(cells,fine.map(v=>v.slice(0,digits-5)),id);
+      c.a=cells[0];c.b=cells[1];const back=vm.runInContext('parseCells(id,a,b,S)',c);
+      assert.ok(Math.abs(back.lat-point.lat)<.002&&Math.abs(back.lon-point.lon)<.002,id+' failed round trip');
+    }
+  }
+});
+test('desktop double click and mobile synthesized double tap zoom around the tapped point',async()=>{
+  for(const mobile of [false,true]){
+    const a=app(undefined,true,false);a.$('#selectMap').click();
+    await new Promise(r=>setTimeout(r,20));const map=a.w.pointTestMap;
+    map.setView([1.35,103.82],12,{animate:false,reset:true});
+    const screen=a.w.L.point(600,180),target=map.containerPointToLatLng(screen),container=a.$('#pointMap');
+    const fire=(type,detail)=>{const e=new a.w.MouseEvent(type,{bubbles:true,clientX:600,clientY:180,detail});Object.defineProperty(e,'pointerType',{value:mobile?'touch':'mouse'});container.dispatchEvent(e);};
+    fire('click',1);if(!mobile)await new Promise(r=>setTimeout(r,400));fire('click',mobile?1:2);if(!mobile)fire('dblclick',2);
+    assert.equal(map.getZoom(),13,mobile?'touch':'mouse');
+    assert.ok(map.latLngToContainerPoint(target).distanceTo(screen)<2);
+    const after=map.getCenter();await new Promise(r=>setTimeout(r,550));
+    assert.ok(map.getCenter().equals(after),'late click pan moved zoom target');a.dom.window.close();
+  }
+});
+
+
+test('southern Thailand accepts full meters and shortened full references',()=>{
+  const c=core();c.S=vm.runInContext('defaultSettings()',c);c.S.thailand.sgOmit=false;
+  for(const d of [5,4,3]){
+    c.S.thailand.sgDigits=d;
+    const cells=vm.runInContext('formatPoint(7,100,"thailand",S)',c);c.a=cells[0];c.b=cells[1];
+    const point=vm.runInContext('parseCells("thailand",a,b,S)',c);
+    assert.ok(Math.abs(point.lat-7)<.002&&Math.abs(point.lon-100)<.002);
+  }
 });

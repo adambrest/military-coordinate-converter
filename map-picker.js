@@ -1,7 +1,7 @@
 /* Shared map picker: basemap, projected AO grids and approximate camp landmarks. */
 (function(root){
   "use strict";
-  root.createAOPicker=function({presets,contains,projection,plausible,onSelect}){
+  root.createAOPicker=function({presets,contains,projection,plausible,militaryEnabled=()=>true,onSelect}){
     const $=id=>document.getElementById(id);
     let map,grid,selectionLayer,pointLayer,selection,options={},returnFocus,frame,stableCenter,limitCenter;
     const landmarks=[];
@@ -196,20 +196,23 @@
       // Only offer grids the entered digits could actually fall inside.
       const inputs=picks();let unavailable=0;
       for(const button of $("locationOverlay").querySelectorAll("[data-location]")){
-        const id=button.dataset.location,fits=!plausible||plausible(id,inputs);
+        const id=button.dataset.location;
+        button.hidden=id==="mgrs"&&!militaryEnabled();
+        if(button.hidden)continue;
+        const fits=!plausible||plausible(id,inputs);
         button.disabled=!fits;
         if(fits)button.removeAttribute("title");
         else{button.title="These digits do not land inside "+presets[id].name.replace(" MGR","")+" in any of its grid squares.";unavailable++;}
       }
       $("locationNote").hidden=!unavailable;
       $("locationNote").textContent=(unavailable===1?"One grid is":unavailable+" grids are")+" unavailable: these digits cannot fall inside "+(unavailable===1?"it":"them")+".";
-      ($("locationOverlay").querySelector("[data-location]:not(:disabled)")||$("locationClose")).focus();
+      ($("locationOverlay").querySelector("[data-location]:not(:disabled):not([hidden])")||$("locationClose")).focus();
     }
     $("locationOverlay").querySelectorAll("[data-location]").forEach(button=>button.addEventListener("click",()=>choose(button.dataset.location)));
     const closeLocations=()=>{$("locationOverlay").classList.remove("open");returnFocus?.focus();};
     $("locationClose").addEventListener("click",closeLocations);
     $("locationOverlay").addEventListener("keydown",e=>{if(e.key==="Escape")closeLocations();
-      if(e.key==="Tab"){const nodes=$("locationOverlay").querySelectorAll("button:not(:disabled)"),first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}
+      if(e.key==="Tab"){const nodes=$("locationOverlay").querySelectorAll("button:not(:disabled):not([hidden])"),first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}
     });
     $("aoBack").addEventListener("click",()=>showLocations(options));
     function showMap(opts){

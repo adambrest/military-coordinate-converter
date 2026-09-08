@@ -73,7 +73,7 @@
   function pointGestures(map){
     let click;
     map.doubleClickZoom.disable();
-    map.on('click',e=>{clearTimeout(click);click=setTimeout(()=>map.panTo(e.latlng,{animate:false}),300);});
+    map.on('click',e=>{clearTimeout(click);click=setTimeout(()=>map.panTo(e.latlng,{animate:false}),500);});
     map.on('dblclick',e=>{clearTimeout(click);map.setZoomAround(e.containerPoint,map.getZoom()+(e.originalEvent?.shiftKey?-1:1));});
     map.on('dragstart zoomstart',()=>clearTimeout(click));
     return ()=>clearTimeout(click);
