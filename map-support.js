@@ -45,16 +45,18 @@
   // crosshair stops well short of a country's edge. Expanding the box by half a
   // screen in every direction limits the map center - the crosshair - instead.
   function limitCenter(map){
-    let box=null;
+    let box=null,applied=null;
     const apply=()=>{
-      if(!box){map.setMaxBounds(null);return;}
+      if(!box){if(map.options.maxBounds){applied=null;map.setMaxBounds(null);}return;}
       const zoom=map.getZoom(),half=map.getSize().divideBy(2);
       const sw=map.project(box.getSouthWest(),zoom).add([-half.x,half.y]);
       const ne=map.project(box.getNorthEast(),zoom).add([half.x,-half.y]);
-      map.setMaxBounds(L.latLngBounds(map.unproject(sw,zoom),map.unproject(ne,zoom)));
+      const limit=L.latLngBounds(map.unproject(sw,zoom),map.unproject(ne,zoom));
+      if(applied&&applied.equals(limit,1e-9))return;
+      applied=limit;map.setMaxBounds(limit);
     };
     map.on("zoomend resize",apply);
-    return bounds=>{box=bounds?L.latLngBounds(bounds):null;apply();return box;};
+    return bounds=>{box=bounds?L.latLngBounds(bounds):null;applied=null;apply();return box;};
   }
   function longitude(lon){return ((lon+180)%360+360)%360-180;}
   function worlds(map){const b=map.getBounds();return Array.from({length:Math.ceil((b.getEast()+180)/360)-Math.floor((b.getWest()+180)/360)},(_,i)=>360*(Math.floor((b.getWest()+180)/360)+i));}

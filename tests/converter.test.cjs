@@ -738,3 +738,64 @@ test('a map point inside a supported country selects that country as the output'
   assert.equal(a.state().to,'thailand','a Thai point should convert to the Thai grid');
   a.dom.window.close();
 });
+
+test('Convert recovers once a typed grid is given a prefix that places it',()=>{
+  const a=app(undefined,true);
+  const box=a.$('#fromRows').children[0].querySelector('.a');
+  box.value='1234 5678';box.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+  a.$('#convertBtn').click();
+  assert.equal(a.$('#locationOverlay').classList.contains('open'),true);
+  a.$('#locationClose').click();
+  const prefix=a.$('#fromRows').children[0].querySelector('.prefix');
+  assert.ok(prefix,'expected a prefix field after detection');
+  prefix.value='48N UG';prefix.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+  a.$('#convertBtn').click();
+  assert.equal(a.$('#locationOverlay').classList.contains('open'),false,'Convert stayed stuck on the chooser');
+  assert.equal(a.$('#copyBtn').disabled,false,'Convert produced nothing');
+  assert.equal(a.state().pendingGrid,undefined);
+  a.dom.window.close();
+});
+test('precision drops trailing digits with no reference area selected',()=>{
+  const c=core();
+  const settings=vm.runInContext('defaultSettings()',c);c.S=settings;
+  const at=d=>{settings.taiwan.sgDigits=d;return vm.runInContext('formatPoint(24.5,120.9,"taiwan",S)',c);};
+  assert.equal(settings.taiwan.square,undefined,'this test needs an unset reference area');
+  const fine=at(5),ten=at(4),hundred=at(3);
+  assert.notDeepEqual(ten,fine,'precision had no effect without a reference area');
+  assert.match(ten[0],/0$/);assert.match(ten[1],/0$/);
+  assert.match(hundred[0],/00$/);assert.match(hundred[1],/00$/);
+  // The rounded form still reads back as meters within its own precision.
+  const back=vm.runInContext('parseCells("taiwan","'+ten[0]+'","'+ten[1]+'",S)',c);
+  assert.ok(Math.abs(back.lat-24.5)<0.001&&Math.abs(back.lon-120.9)<0.001,'rounded meters no longer round-trip');
+});
+test('every grid preset states precision in meters',async()=>{
+  const a=app(undefined,true);a.$('#tab-set').click();
+  for(const id of ['mgrs','sg','taiwan','thailand','australia','brunei']){
+    a.w.document.querySelector('[data-head="'+id+'"]').click();
+    await new Promise(r=>setTimeout(r,5));
+    const panel=a.w.document.querySelector('.preset[data-id="'+id+'"]');
+    const row=[...panel.querySelectorAll('.srow')].find(r=>r.textContent.startsWith('Precision'));
+    const labels=[...row.querySelectorAll('.seg button')].map(b=>b.textContent);
+    assert.ok(labels.every(l=>/\b(m|km)$/.test(l)),id+' precision is not in meters: '+labels.join(','));
+    assert.equal(row.querySelector('.seg button.on').textContent,'10 m',id+' does not default to 10 m');
+    a.w.document.querySelector('[data-head="'+id+'"]').click();
+  }
+  a.dom.window.close();
+});
+test('a fixed-footprint grid fills the military grid reference area before converting',()=>{
+  for(const from of ['sg','brunei']){
+    const a=app(undefined,true);
+    a.change('#fromSys',from);a.change('#toSys','mgrs');
+    assert.match(a.state().settings.mgrs.ao||'',/^\d{1,2}[C-HJ-NP-X][A-HJ-NP-Z]{2}$/,from+' left the output reference area empty');
+    assert.equal(a.$('#regionChipTo').hidden,false,from+' hid the output reference area');
+    assert.match(a.$('#regionChipTo').textContent,/^Reference area: /);
+    a.dom.window.close();
+  }
+});
+test('the paste hint no longer explains easting and northing order',()=>{
+  const a=app(undefined,true);a.change('#fromSys','sg');
+  a.paste('3000 3000');
+  assert.doesNotMatch(a.$('#pasteHint').textContent,/easting/i);
+  assert.equal(a.$('#pasteHint').hidden,true);
+  a.dom.window.close();
+});

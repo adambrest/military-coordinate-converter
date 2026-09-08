@@ -444,7 +444,12 @@
       const selected=p.lead||s.square;
       const canOmit = selected && selected[0]===lead[0] && selected[1]===lead[1];
       // Full UTM references retain meter units, matching the full-reference parser.
-      if(p.large && (!canOmit || s.sgOmit===false)) return [String(Math.floor(E+0.05)),String(Math.floor(N+0.05))];
+      if(p.large && (!canOmit || s.sgOmit===false)){
+        // Dropping trailing digits needs no reference area. Keep full meter width so
+        // the value still reads back as meters.
+        const step=Math.pow(10,5-(s.sgDigits??4));
+        return [String(Math.floor((E+0.05)/step)*step),String(Math.floor((N+0.05)/step)*step)];
+      }
       return sgHalvesEN(E,N,s,lead,canOmit);
     }
     // utm / projected -> full easting/northing in meters (configurable decimals)
@@ -785,7 +790,8 @@
       else if(state.from==="globalutm")hint.textContent="Zone, easting and northing.";
       else if(!rowsHaveContent()) hint.textContent="Paste coordinates, MGR or a Maps link.";
       else if(PRESETS[state.from].kind==="latlong") hint.textContent="Paste latitude and longitude together.";
-      else hint.textContent="Paste easting then northing.";
+      else hint.textContent="";
+      hint.hidden=!hint.textContent;
     }
     /* ---- render FROM table ---- */
     function renderFrom(){
@@ -1061,15 +1067,32 @@
     }
     function zoneCodeLabel(p,e,n){return (p.zoneCode||p.name.replace(" MGR",""))+" · E"+e+" N"+n;}
     function assignSquare(id,e,n){state.settings[id].square=[+e,+n];}
+    // A preset with a fixed footprint already says where its references are, so the
+    // output's reference area can be filled in before anything has been converted.
+    function presetAnchorPoint(id){
+      const p=PRESETS[id];if(!p)return null;
+      const square=state.settings[id]?.square||p.lead;
+      if(square&&p.epsg){try{const r=proj4(p.epsg,"WGS84",[square[0]*100000+50000,square[1]*100000+50000]);
+        if(Number.isFinite(r[0])&&Number.isFinite(r[1]))return {lat:r[1],lon:r[0]};}catch(_){}}
+      if(p.anchor)return {lat:p.anchor[0],lon:p.anchor[1]};
+      return null;
+    }
+    function seedOutputArea(){
+      const point=presetAnchorPoint(state.from);
+      if(point)fillArea([point],state.to);
+    }
     function autoArea(points){
       if(!points.length)return;
       state.lastLocation={lat:points[0].lat,lon:points[0].lon};
-      const id=state.to;
+      fillArea(points,state.to);
+    }
+    function fillArea(points,id){
+      if(!points.length)return;
       if(id==="mgrs"){
         try{const prefix=GlobalGrid.parts(points[0].lat,points[0].lon,0).prefix;if(!state.settings.mgrs.ao)state.settings.mgrs.ao=prefix;}catch(_){}
       }else if(COUNTRY_PRESETS.includes(id)&&points.every(p=>presetContains(id,p.lat,p.lon))){
         const square=suggestedSquare(id,points,state.settings);
-        if(square&&!state.settings[id].square)assignSquare(id,...square);
+        if(square&&!(state.settings[id]||={}).square)assignSquare(id,...square);
       }
     }
     const boundaryAccepted=new Set();
@@ -1201,7 +1224,7 @@
       const chip=$(chipId); if(!chip) return;
       const label=regionChipLabel(presetId);
       chip.hidden=!PRESETS[presetId].large;
-      if(presetId==="mgrs")chip.hidden=chipId==="#regionChip"?state.rows.every(r=>!r[0].trim()||fullMGR(r[0])):!state.settings.mgrs.sgOmit;
+      if(presetId==="mgrs")chip.hidden=chipId==="#regionChip"?state.rows.every(r=>!r[0].trim()||fullMGR(r[0])):!(state.settings.mgrs.ao||state.settings.mgrs.sgOmit);
       chip.textContent=label?`Reference area: ${label} · Change`:"Select reference area";
       chip.setAttribute("role","button");chip.tabIndex=0;
       chip.onclick=()=>openSquareBrowser(presetId);
@@ -1237,7 +1260,8 @@
       if(state.from===state.to){ detect(""); setBottomError("Not sure what you're trying to do here."); return; }
       if(state.pendingGrid){
         const i=state.pendingGrid.i,r=state.rows[i];
-        if(r){openCountryChooser(r[0]+" "+r[1],i);return;}
+        // Typing a prefix resolves the row; only still-placeless digits need the chooser.
+        if(r&&parseCells(state.from,r[0],r[1],state.settings).error==="pick-square"){openCountryChooser(r[0]+" "+r[1],i);return;}
         delete state.pendingGrid;
       }
       // Full prefixes, and short digits an existing reference area already resolves,
@@ -1372,10 +1396,11 @@
       state.points=[]; stale=false;
       renderFrom(); renderTo(); updatePairState();
       detect(hasInput?"Input kept — review it for the selected coordinate system.":"",hasInput?"warn":"");
+      seedOutputArea();updateRegionChips();
       save();
       // Ask for an AO when a short reference needs one; map entry already supplies a location.
     });
-    $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value;if(state.to==="mgrs")state.to=state.settings.mgrs.format||"mgrs";state.explicitOutput=true;updatePairState();if(rowsHaveContent())convert();else renderTo();save(); });
+    $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value;if(state.to==="mgrs")state.to=state.settings.mgrs.format||"mgrs";state.explicitOutput=true;seedOutputArea();updatePairState();if(rowsHaveContent())convert();else renderTo();save(); });
     $("#fromFormat").addEventListener("change",()=>{
       readRows();const pts=state.points||[],id=$("#fromFormat").value;
       if(pts.length){
@@ -1475,7 +1500,7 @@
               setTimeout(()=>{ const b=document.getElementById(clId); if(b) b.addEventListener("click",()=>{ delete state.settings[id].square;delete state.settings[id].ao;state.aoConfirmed=false;state.points=[];renderTo();updateRegionChips();changed(); }); const m=document.getElementById(mapId); if(m) m.addEventListener("click",()=>openSquareBrowser(id,renderSettings)); },0);
             } else {
               const mapId="mapbtn_"+id;
-              h+=`<div class="note">The map picks the granularity from its zoom: a whole grid zone such as 48N while a zone fits the screen, a 100 km square such as 48N UG once you zoom in. A square lets you omit its prefix; a zone still needs the square letters.</div>`;
+              h+=`<div class="note">Zoom out on the map for a grid zone, in for a 100 km square.</div>`;
               h+=`<div class="ao-actions"><button class="setting-action primary" id="${mapId}" type="button">Choose reference area</button></div>`;
               setTimeout(()=>{ const b=document.getElementById(mapId); if(b) b.addEventListener("click",()=>openSquareBrowser(id,renderSettings)); },0);
             }
@@ -1484,8 +1509,8 @@
 
           const digits=s.sgDigits??4, meters=10**(5-digits), precision=meters>=1000?meters/1000+" km":meters+" meters";
           h+=`<section class="settings-section"><h4 class="settings-subhead">Output format</h4>`;
-          h+=`<div class="srow"><span class="k">Precision</span>${seg(id==="mgrs"?[[5,"1 m"],[4,"10 m"],[3,"100 m"],[2,"1 km"],[1,"10 km"],[0,"100 km"]]:[[5,"5"],[4,"4"],[3,"3"]],digits,v=>{s.sgDigits=+v;changed();})}</div>`;
-          h+=`<div class="note precision-note">${digits} digits per axis · ${precision}</div>`;
+          h+=`<div class="srow"><span class="k">Precision</span>${seg(id==="mgrs"?[[5,"1 m"],[4,"10 m"],[3,"100 m"],[2,"1 km"],[1,"10 km"],[0,"100 km"]]:[[5,"1 m"],[4,"10 m"],[3,"100 m"]],digits,v=>{s.sgDigits=+v;changed();})}</div>`;
+          h+=`<div class="note precision-note">${precision} · ${digits} digits per axis</div>`;
           const canOmit = id==="mgrs"?!!s.ao:!p.large || !!s.square;
           const omId="om_"+id;
           h+=`<label class="chk"><input type="checkbox" id="${omId}" ${canOmit&&s.sgOmit!==false?"checked":""} ${canOmit?"":"disabled"}> ${id==="mgrs"?"Omit selected reference-area prefix":"Omit 100 km square prefix"}</label>`;
