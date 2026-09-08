@@ -253,7 +253,7 @@
   <div class="overlay" id="aoOverlay" role="dialog" aria-modal="true" aria-labelledby="aoTitle">
     <div class="modal ao-modal">
       <div class="ao-heading"><div><h3 id="aoTitle">Select your area</h3><p id="aoInstruction">Zoom in, then click your area to select its grid square.</p></div><button id="aoClose" aria-label="Close map">×</button></div>
-      <div class="ao-toolbar"><button id="aoBack" class="setting-action">Change location</button><select id="aoRegion" class="map-region" aria-label="Jump to"></select><span id="aoSystemLabel"></span><label id="aoSizeLabel" hidden>Reference area <select id="aoSize"><option value="square">100 km square</option><option value="zone">Whole grid zone</option></select></label></div>
+      <div class="ao-toolbar"><button id="aoBack" class="setting-action">Change location</button><select id="aoRegion" class="map-region" aria-label="Jump to"></select><span id="aoSystemLabel"></span><span id="aoScope" class="ao-scope" aria-live="polite"></span></div>
       <div class="ao-map-wrap"><div id="aoMap" aria-label="AO map. Arrow keys pan, plus and minus zoom. Click a grid square to select it." tabindex="0"></div></div>
       <div class="ao-footer">
         <div id="aoSelection" aria-live="polite">No area selected</div>
@@ -327,7 +327,9 @@
       specs:[["Map datum","WGS 84"],["Map spheroid","WGS 84"],["Grid zone","UTM 47N"]],
       proj:"+proj=utm +zone=47 +datum=WGS84 +units=m" },
     australia:{ id:"australia", name:"Australia MGR", kind:"utm", epsg:"UTM56S", zoneCode:"56S", large:true, shortGrid:true, exampleLead:[2,74],
-      bbox:[-23.2,-22.0,149.5,151.0], anchor:[-22.65,150.35], anchorRadiusKm:65,
+      // The whole of the preset grid: UTM zone 56S reaches about 500 km either side
+      // of 153 deg E, which is the eastern seaboard. The anchor still opens on Shoalwater.
+      bbox:[-38.0,-18.0,148.0,158.0], anchor:[-22.65,150.35], anchorRadiusKm:65,
       basis:"MGA / UTM Zone 56S.",
       specs:[["Map datums","WGS 84 / GDA2020"],["Map spheroids","WGS 84 / GRS80"],["Grid zone","MGA / UTM 56S"]],
       proj:"+proj=utm +zone=56 +south +datum=WGS84 +units=m" },
@@ -355,9 +357,44 @@
   }
   const PRESET_ORDER = ["wgs84","mgrs","sg","taiwan","thailand","australia","brunei"];
   const COUNTRY_PRESETS = ["sg","taiwan","thailand","australia","brunei"];
+  // Highest zoom the imagery providers genuinely hold for an area. Past this they
+  // only enlarge the tiles they have, so the picker stops rather than suggest
+  // detail the picture does not contain. Raise a value once better imagery lands.
+  const DETAIL_ZOOM = {default:19, australia:17, thailand:18, brunei:18};
   const GLOBAL_FORMATS = ["mgrs","globalutm"];
   const EXAMPLE_POINT = {lat:1.2964704,lon:103.8210085};
-  function globalExample(id){return formatPoint(EXAMPLE_POINT.lat,EXAMPLE_POINT.lon,id,defaultSettings()).join(" ").replace(/^(\d{1,2}[C-HJ-NP-X])([A-HJ-NP-Z]{2})/,"$1 $2");}
+  function globalExample(id,S){return formatPoint(EXAMPLE_POINT.lat,EXAMPLE_POINT.lon,id,S||defaultSettings()).join(" ").replace(/^(\d{1,2}[C-HJ-NP-X])([A-HJ-NP-Z]{2})/,"$1 $2");}
+  // A point inside the grid square a preset is currently working in, so its example
+  // responds to the reference area, precision and prefix-omission settings. Without
+  // one the example would sit outside the selected square and never show omission.
+  function examplePoint(id,S){
+    const p=PRESETS[id]||{}, s=(S||{})[id]||{}, ao=s.ao||"";
+    if(p.kind==="mgrs"){
+      if(/^\d{1,2}[C-HJ-NP-X][A-HJ-NP-Z]{2}$/.test(ao)){
+        try{const r=GlobalGrid.parse(ao+"4825011930");if(!r.error)return {lat:r.lat,lon:r.lon};}catch(_){}
+      }
+      if(/^\d{1,2}[C-HJ-NP-X]$/.test(ao)){
+        const b=GlobalGrid.zoneBounds(parseInt(ao,10),ao.replace(/^\d+/,""));
+        if(b)return {lat:(b.south+b.north)/2,lon:(b.west+b.east)/2};
+      }
+      return EXAMPLE_POINT;
+    }
+    const square=s.square||p.lead||p.exampleLead;
+    if(!square||!p.epsg)return EXAMPLE_POINT;
+    // Prefer a real place the preset already knows, whenever one sits in the square
+    // in force; otherwise a point inside it, offset so every digit is visible.
+    for(const known of [EXAMPLE_POINT,...(p.context?.landmarks||[])]){
+      try{
+        const q=toProjFromWGS(known.lat,known.lon,p.epsg);
+        if(Math.floor(q.E/100000)===square[0]&&Math.floor(q.N/100000)===square[1])return {lat:known.lat,lon:known.lon};
+      }catch(_){}
+    }
+    try{
+      const point=proj4(p.epsg,"WGS84",[square[0]*100000+48250,square[1]*100000+11930]);
+      if(Number.isFinite(point[0])&&Number.isFinite(point[1]))return {lat:point[1],lon:point[0]};
+    }catch(_){}
+    return EXAMPLE_POINT;
+  }
   function projectionFor(presetId){ return PRESETS[presetId].epsg; }
 
   /* ============================ formatting ============================ */
@@ -916,7 +953,7 @@
       const last=current.points.at(-1)||state.pointMapView||state.lastLocation;
       const previous=last&&(!p.bbox||presetContains(id,last.lat,last.lon))?last:null;
       const fallback=p.anchor?{lat:p.anchor[0],lon:p.anchor[1]}:p.bbox?{lat:(p.bbox[0]+p.bbox[1])/2,lon:(p.bbox[2]+p.bbox[3])/2}:{lat:1.35,lon:103.82};
-      pointOptions={...current,presetId:id,presetLabel:p.name,bounds:p.bbox?[[p.bbox[0],p.bbox[2]],[p.bbox[1],p.bbox[3]]]:null,center:previous||fallback,zoom:(previous?state.pointMapView?.zoom:0)||(previous?15:COUNTRY_PRESETS.includes(id)?9:4),layer:state.pointMapView?.layer||"street"};
+      pointOptions={...current,presetId:id,presetLabel:p.name,bounds:p.bbox?[[p.bbox[0],p.bbox[2]],[p.bbox[1],p.bbox[3]]]:null,detailZoom:DETAIL_ZOOM[id]||DETAIL_ZOOM.default,center:previous||fallback,zoom:(previous?state.pointMapView?.zoom:0)||(previous?15:COUNTRY_PRESETS.includes(id)?9:4),layer:state.pointMapView?.layer||"street"};
       pointPicker.open(pointOptions);
     });
 
@@ -1159,8 +1196,13 @@
         if(r){openCountryChooser(r[0]+" "+r[1],i);return;}
         delete state.pendingGrid;
       }
+      // Full prefixes, and short digits an existing reference area already resolves,
+      // convert without interruption. Only genuinely unplaceable digits need a country.
       if(!state.aoConfirmed&&PRESETS[state.from].large&&!PRESETS[state.from].lead){
-        const unresolved=state.rows.findIndex(r=>{const g=splitGrid(r[0]+" "+r[1]);return !g.error&&g.d>=3;});
+        const unresolved=state.rows.findIndex(r=>{
+          const g=splitGrid(r[0]+" "+r[1]);
+          return !g.error&&g.d>=3&&parseCells(state.from,r[0],r[1],state.settings).error==="pick-square";
+        });
         if(unresolved>=0){openCountryChooser(state.rows[unresolved][0]+" "+state.rows[unresolved][1],unresolved);return;}
       }
       const pts=[]; let bad=false, needPick=null, firstError=""; const detectedOrders=new Set();
@@ -1367,7 +1409,7 @@
             if(GLOBAL_FORMATS.includes(state.from)){$("#fromFormat").value=v;$("#fromFormat").dispatchEvent(new Event("change"));}
             if(GLOBAL_FORMATS.includes(state.to)){$("#toFormat").value=v;$("#toFormat").dispatchEvent(new Event("change"));}
             save();renderSettings();
-          })}</div><div class="example">Example: <b>${globalExample(format)}</b></div>`;
+          })}</div>`+(format==="mgrs"?"":`<div class="example">Example: <b>${globalExample(format,S)}</b></div>`);
           if(format!=="mgrs")return h+`<div class="note">Zone, easting and northing in metres. N/S indicate hemispheres; use “band” for a latitude band. WGS 84 datum.</div>`;
         }
         if(p.kind==="latlong"){
@@ -1389,7 +1431,7 @@
               setTimeout(()=>{ const b=document.getElementById(clId); if(b) b.addEventListener("click",()=>{ delete state.settings[id].square;delete state.settings[id].ao;state.aoConfirmed=false;state.points=[];renderTo();updateRegionChips();changed(); }); const m=document.getElementById(mapId); if(m) m.addEventListener("click",()=>openSquareBrowser(id,renderSettings)); },0);
             } else {
               const mapId="mapbtn_"+id;
-              h+=`<div class="note">A 100 km square lets you omit its prefix. A whole grid zone still requires square letters.</div>`;
+              h+=`<div class="note">The map picks the granularity from its zoom: a whole grid zone such as 48N while a zone fits the screen, a 100 km square such as 48N UG once you zoom in. A square lets you omit its prefix; a zone still needs the square letters.</div>`;
               h+=`<div class="ao-actions"><button class="setting-action primary" id="${mapId}" type="button">Choose reference area</button></div>`;
               setTimeout(()=>{ const b=document.getElementById(mapId); if(b) b.addEventListener("click",()=>openSquareBrowser(id,renderSettings)); },0);
             }
@@ -1406,7 +1448,8 @@
           if(!canOmit) h+=`<div class="note">Select a reference area first.</div>`;
           setTimeout(()=>{ const c=document.getElementById(omId); if(c) c.addEventListener("change",e=>{ s.sgOmit=e.target.checked; changed(); }); },0);
           if(id==="mgrs")h+=`<div class="note">Full references include zone, band and square letters. Prefixes are required when points cross the selected grid boundary.</div>`;
-          else if(id==="sg")h+=`<div class="example">Example: <b>${formatPoint(EXAMPLE_POINT.lat,EXAMPLE_POINT.lon,id,S).join(" ")}</b></div>`;
+          const example=examplePoint(id,S);
+          try{h+=`<div class="example">Example: <b>${escAttr(formatPoint(example.lat,example.lon,id,S).join(" "))}</b></div>`;}catch(_){}
           h+=`</section>`;
         } else { // utm / projected
           h+=`<div class="srow"><span class="k">Precision (meters)</span>${seg([[0,"1 m"],[1,"10 cm"],[2,"1 cm"],[3,"1 mm"]],s.decimals,v=>{s.decimals=+v;changed();})}</div>`;

@@ -3,12 +3,15 @@
   "use strict";
   root.createAOPicker=function({presets,contains,projection,onSelect}){
     const $=id=>document.getElementById(id);
-    let map,grid,selectionLayer,pointLayer,selection,options={},returnFocus,frame,stableCenter;
+    let map,grid,selectionLayer,pointLayer,selection,options={},returnFocus,frame,stableCenter,limitCentre;
     const landmarks=[];
     const ids=["sg","taiwan","thailand","australia","brunei"];
     function gridId(){return options.system||options.preset||"mgrs";}
     let candidates=[],worldOffset=0,worldLand,worldData,worldKey;
-    function wholeZone(){return gridId()==="mgrs"&&options.converter===false&&$("aoSize").value==="zone";}
+    // Granularity follows the zoom: grid zones while a whole zone still fits the
+    // screen, 100 km squares once one is close enough to be worth choosing.
+    function squareThreshold(){return Math.min(6,map?map.getMaxZoom():6);}
+    function wholeZone(){return gridId()==="mgrs"&&!!map&&map.getZoom()<squareThreshold();}
     function limitZoom(){const cap=MapSupport.squareZoom(map);if(map.getMinZoom()>cap)map.setMinZoom(cap);map.setMaxZoom(cap);}
     function polygon(coords,style,target=grid,offset=0){
       return L.polygon(coords.map(p=>[p[1],p[0]+offset]),{weight:1,color:"#2563eb",fillOpacity:0,interactive:false,...style}).addTo(target);
@@ -33,13 +36,18 @@
         if(inputs.length){
           for(const [i,g] of inputs.entries()){
             let point;
-            if(raw){point=GlobalGrid.parse(g.e+" "+g.n,result.prefix);if(point.error)return null;}
+            if(raw){
+              // A square the digits cannot fall in is still a real square. Show it and
+              // explain on selection, rather than leaving a hole in the grid.
+              try{point=GlobalGrid.parse(g.e+" "+g.n,result.prefix);}catch(_){point={error:"outside"};}
+              if(point.error){result.invalid="reference";point=null;}
+            }
             else{
               const step=10**(5-g.e.length),ll=root.proj4(proj,"WGS84",[e+Number(g.e)*step,n+Number(g.n)*step]);
               point={lat:ll[1],lon:ll[0]};
               if(!contains(id,point.lat,point.lon))result.invalid=true;
             }
-            if(i===0){result.point=point;result.lat=point.lat;result.lon=point.lon;}
+            if(i===0&&point){result.point=point;result.lat=point.lat;result.lon=point.lon;}
           }
         }
         return result;
@@ -52,12 +60,19 @@
       $("aoSelection").textContent=presets[chosen.id].name+" · "+chosen.prefix;
       $("aoApply").disabled=false;
       if(chosen.invalid){
-        $("aoWarning").textContent="This reference falls outside "+presets[chosen.id].name.replace(" MGR","")+" in this square. Check the digits or choose another grid square.";
+        $("aoWarning").textContent=chosen.invalid==="reference"
+          ?"Your reference does not fall inside "+chosen.prefix+". The digits reach past this square's edge, so choose a neighbouring one."
+          :"This reference falls outside "+presets[chosen.id].name.replace(" MGR","")+" in this square. Check the digits or choose another grid square.";
         $("aoWarning").hidden=false;$("aoApply").disabled=true;
       }
       if(chosen.scope==="zone"&&picks().length){
-        $("aoWarning").textContent="Include the 100 km square letters with your reference.";
+        // A zone cannot complete digits-only input, so only Settings may store one.
+        const resolving=options.converter!==false;
+        $("aoWarning").textContent=resolving
+          ?"Zoom in and choose a 100 km square: these digits need square letters to identify a place."
+          :"Include the 100 km square letters with your reference.";
         $("aoWarning").hidden=false;
+        if(resolving)$("aoApply").disabled=true;
       }
     }
     function addCandidate(chosen){
@@ -95,8 +110,11 @@
         const visible=id===country||(id==="mgrs"&&zoom>=8);
         if(visible){if(!map.hasLayer(marker))marker.addTo(map);marker.openTooltip();}else if(map.hasLayer(marker))map.removeLayer(marker);
       }
-      const broad=wholeZone(),threshold=broad?3:Math.min(6,map.getMaxZoom());
-      $("aoInstruction").textContent=broad?"A whole zone contains many 100 km squares. Keep the square letters in every reference.":"Select a 100 km grid square to omit its prefix. Your operating area may span several squares.";
+      const broad=wholeZone(),threshold=broad?3:squareThreshold();
+      $("aoScope").textContent=id==="mgrs"?(broad?"Selecting: grid zone, e.g. 48N":"Selecting: 100 km square, e.g. 48N UG"):"";
+      $("aoInstruction").textContent=broad
+        ?"Grid zones at this zoom. Zoom in for the 100 km squares that let you omit a prefix."
+        :"Select a 100 km grid square to omit its prefix. Your operating area may span several squares.";
       if(zoom<threshold){if(!selection)$("aoSelection").textContent="Zoom in to select a grid square";return;}
       for(const offset of id==="mgrs"?worlds:[0]){
       worldOffset=offset;const b=bounds(offset);
@@ -146,11 +164,11 @@
           landmarks.push({id,marker:MapSupport.marker(map,lm,()=>select(lm.lat,lm.lon))});
         }
       }
-      map.on("click",e=>{const threshold=wholeZone()?3:Math.min(6,map.getMaxZoom());if(map.getZoom()>=threshold)select(e.latlng.lat,e.latlng.lng);});
+      map.on("click",e=>{const threshold=wholeZone()?3:squareThreshold();if(map.getZoom()>=threshold)select(e.latlng.lat,e.latlng.lng);});
+      limitCentre=MapSupport.limitCentre(map);
       map.on("moveend zoomend",()=>{const p=map.getCenter();stableCenter={lat:p.lat,lng:p.lng};cancelAnimationFrame(frame);frame=requestAnimationFrame(draw);});
       const resize=()=>{if(!$("aoOverlay").classList.contains("open"))return;const p=stableCenter||map.getCenter(),z=map.getZoom();map.invalidateSize({pan:false,animate:false});limitZoom();map.setView(p,Math.min(z,map.getMaxZoom()),{animate:false,reset:true});};
       if(root.ResizeObserver)new ResizeObserver(resize).observe($("aoMap"));else root.addEventListener("resize",resize);
-      $("aoSize").addEventListener("change",()=>{selection=null;selectionLayer.clearLayers();pointLayer.clearLayers();$("aoApply").disabled=true;$("aoSelection").textContent="No area selected";$("aoWarning").hidden=true;draw();});
     }
     function close(){ $("aoOverlay").classList.remove("open");returnFocus?.focus(); }
     $("aoClose").addEventListener("click",close);
@@ -190,19 +208,20 @@
       $("aoApply").disabled=true;$("aoSelection").textContent="No area selected";$("aoWarning").hidden=true;
       const id=gridId(),raw=id==="mgrs";
       $("aoRegion").hidden=!raw;
-      $("aoSizeLabel").hidden=!raw||opts.converter!==false;$("aoSize").value=opts.converter===false?(opts.scope||"square"):"square";
+      $("aoScope").textContent="";
       $("aoTitle").textContent=raw?"Military grid · reference area":presets[id].name+" · reference area";
       $("aoSystemLabel").textContent=raw?"MGRS":presets[id].zoneCode?"Zone "+presets[id].zoneCode:"";
       $("aoBack").hidden=!opts.pending;
       $("aoInstruction").textContent=raw?"Choose your area.":"Select a highlighted AO square.";
-      selectionLayer.clearLayers();pointLayer.clearLayers();map.invalidateSize();map.setMaxBounds(null);map.setMinZoom(1);map.setMaxZoom(10);
+      selectionLayer.clearLayers();pointLayer.clearLayers();map.invalidateSize();limitCentre(null);map.setMinZoom(1);map.setMaxZoom(10);
       if(raw){
-        if(opts.point)map.setView([opts.point.lat,opts.point.lon],9);else map.setView([15,30],2);
+        // Reopen at the granularity the stored area was chosen at.
+        if(opts.point)map.setView([opts.point.lat,opts.point.lon],opts.scope==="zone"?5:9);else map.setView([15,30],2);
       }else{
         const p=presets[id],b=p.bbox;let area=[[b[0],b[2]],[b[1],b[3]]];
         if(p.anchor){const [lat,lon]=p.anchor,dy=(p.anchorRadiusKm||65)*1.6/111,dx=dy/Math.cos(lat*Math.PI/180);area=[[lat-dy,lon-dx],[lat+dy,lon+dx]];}
         const focus=L.latLngBounds(area);map.fitBounds(focus,{padding:[28,28],maxZoom:9,animate:false});map.setZoom(Math.max(6,map.getZoom()),{animate:false});
-        const region=L.latLngBounds([[b[0],b[2]],[b[1],b[3]]]);map.setMaxZoom(MapSupport.squareZoom(map));map.setMinZoom(Math.min(map.getMaxZoom(),map.getBoundsZoom(region)));map.setMaxBounds(region);
+        const region=L.latLngBounds([[b[0],b[2]],[b[1],b[3]]]);map.setMaxZoom(MapSupport.squareZoom(map));map.setMinZoom(Math.min(map.getMaxZoom(),map.getBoundsZoom(region)));limitCentre(region);
       }
       draw();if(opts.point)select(opts.point.lat,opts.point.lon);$("aoClose").focus();
     }

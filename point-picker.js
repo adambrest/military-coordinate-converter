@@ -4,7 +4,11 @@
   root.createPointPicker=function({preview,onConfirm}){
     const $=id=>document.getElementById(id),overlay=$("pointOverlay");
     const STREET_ZOOM=7;
-    let map,countries,labels,markers,streets,satellite,options={},returnFocus,frame,stableCenter;
+    let map,countries,labels,markers,streets,satellite,options={},returnFocus,frame,stableCenter,limitCentre;
+    // Beyond the imagery a provider actually holds for an area the tiles are only
+    // enlarged, so stopping there keeps the crosshair from implying detail that
+    // is not in the picture.
+    const DETAIL_ZOOM=19;
     let mode="street",countryData=[],countryGeometry,worldKey,cancelTap,busy=false,background=[],tileErrors=new Set();
     const textNode=text=>{const el=document.createElement("span");el.textContent=text;return el;};
     function center(){const p=map.getCenter();return {lat:p.lat,lon:MapSupport.longitude(p.lng)};}
@@ -61,6 +65,7 @@
       MapSupport.context(map,p=>map.panTo([p.lat,p.lon],{animate:false}));
       MapSupport.trainingArea(map);
       MapSupport.navigation(map,$("pointRegion"));
+      limitCentre=MapSupport.limitCentre(map);
       countries=L.geoJSON(null,{pane:"pointCountries",interactive:false,style:{color:"#90a5b5",weight:.8,fillColor:"#f2f0e9",fillOpacity:1}}).addTo(map);
       map.attributionControl.addAttribution('<a href="https://www.naturalearthdata.com/">Natural Earth</a>');
       labels=L.layerGroup().addTo(map);markers=L.layerGroup().addTo(map);
@@ -87,8 +92,8 @@
         if(!overlay.classList.contains("open"))return;
         const p=stableCenter||map.getCenter(),zoom=map.getZoom();
         map.invalidateSize({pan:false,animate:false});
-        if(options.bounds){map.setMinZoom(1);map.setMinZoom(Math.max(1,map.getBoundsZoom(L.latLngBounds(options.bounds))));}
-        map.setView(p,Math.max(map.getMinZoom(),zoom),{animate:false,reset:true});
+        if(options.bounds){map.setMinZoom(1);map.setMinZoom(Math.max(1,Math.min(map.getMaxZoom(),map.getBoundsZoom(L.latLngBounds(options.bounds)))));}
+        map.setView(p,Math.min(map.getMaxZoom(),Math.max(map.getMinZoom(),zoom)),{animate:false,reset:true});
       };
       if(root.ResizeObserver)new ResizeObserver(resize).observe($("pointMap"));else root.addEventListener("resize",resize);
     }
@@ -130,14 +135,15 @@
       overlay.classList.add("open");$("pointAdded").textContent="";
       background=[...document.querySelectorAll("body > header, body > main")].map(el=>{const previous=el.inert;el.inert=true;return [el,previous];});
       if(!map)init();
-      map.setMaxBounds(null);map.setMinZoom(1);map.invalidateSize({pan:false});
+      limitCentre(null);map.setMinZoom(1);map.setMaxZoom(opts.detailZoom||DETAIL_ZOOM);map.invalidateSize({pan:false});
       $("pointRegion").hidden=!!opts.bounds;
       map.invalidateSize({pan:false});
-      if(opts.bounds){const b=L.latLngBounds(opts.bounds);map.setMinZoom(Math.max(1,map.getBoundsZoom(b)));map.setMaxBounds(b);}
+      // The crosshair, not the whole viewport, is what has to stay in the area.
+      if(opts.bounds){const b=L.latLngBounds(opts.bounds);map.setMinZoom(Math.max(1,Math.min(map.getMaxZoom(),map.getBoundsZoom(b))));limitCentre(b);}
       $("pointPreset").textContent=opts.presetLabel;
-      map.invalidateSize();map.setView([opts.center.lat,opts.center.lon],Math.max(map.getMinZoom(),opts.zoom||12),{animate:false});
+      map.invalidateSize();map.setView([opts.center.lat,opts.center.lon],Math.min(map.getMaxZoom(),Math.max(map.getMinZoom(),opts.zoom||12)),{animate:false});
       drawPoints(opts.points||[]);layers();update();
-      map.invalidateSize({pan:false,animate:false});map.setView([opts.center.lat,opts.center.lon],Math.max(map.getMinZoom(),opts.zoom||map.getZoom()),{animate:false,reset:true});$("pointMap").focus();
+      map.invalidateSize({pan:false,animate:false});map.setView([opts.center.lat,opts.center.lon],Math.min(map.getMaxZoom(),Math.max(map.getMinZoom(),opts.zoom||map.getZoom())),{animate:false,reset:true});$("pointMap").focus();
     }};
   };
 })(globalThis);

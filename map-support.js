@@ -41,6 +41,21 @@
       if(r&&r.d<55){snapped.add(r.r.id);map.setView([r.r.lat,r.r.lon],z,{animate:false,reset:true});}
     });
   }
+  // Leaflet's maxBounds keeps the whole viewport inside the box, so a zoomed-in
+  // crosshair stops well short of a country's edge. Expanding the box by half a
+  // screen in every direction limits the map centre - the crosshair - instead.
+  function limitCentre(map){
+    let box=null;
+    const apply=()=>{
+      if(!box){map.setMaxBounds(null);return;}
+      const zoom=map.getZoom(),half=map.getSize().divideBy(2);
+      const sw=map.project(box.getSouthWest(),zoom).add([-half.x,half.y]);
+      const ne=map.project(box.getNorthEast(),zoom).add([half.x,-half.y]);
+      map.setMaxBounds(L.latLngBounds(map.unproject(sw,zoom),map.unproject(ne,zoom)));
+    };
+    map.on("zoomend resize",apply);
+    return bounds=>{box=bounds?L.latLngBounds(bounds):null;apply();return box;};
+  }
   function longitude(lon){return ((lon+180)%360+360)%360-180;}
   function worlds(map){const b=map.getBounds();return Array.from({length:Math.ceil((b.getEast()+180)/360)-Math.floor((b.getWest()+180)/360)},(_,i)=>360*(Math.floor((b.getWest()+180)/360)+i));}
   function repeatGeometry(data,offset){
@@ -69,5 +84,5 @@
     map.on('zoomend',update);
     map.attributionControl.addAttribution('© <a href="https://spatial-gis.information.qld.gov.au/arcgis/rest/services/Location/Places/FeatureServer/17">State of Queensland</a>');
   }
-  root.MapSupport={regions,marker,context,navigation,longitude,worlds,repeatGeometry,squareZoom,pointGestures,trainingArea};
+  root.MapSupport={regions,marker,context,navigation,limitCentre,longitude,worlds,repeatGeometry,squareZoom,pointGestures,trainingArea};
 })(globalThis);

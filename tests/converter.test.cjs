@@ -299,8 +299,8 @@ test('Settings retains whole-zone selection and requires square letters',async()
   assert.equal(c.GlobalGrid.parse('DQ 4825 1193','31U').prefix,'31UDQ');
   const settings=vm.runInContext('defaultSettings()',c);settings.mgrs.ao='31U';settings.mgrs.sgOmit=true;c.settings=settings;
   assert.match(vm.runInContext('formatPoint(48.8582,2.2945,"mgrs",settings)[0]',c),/^DQ /);
-  const a=app(undefined,true);a.change('#fromSys','mgrs');a.$('#tab-set').click();a.$('[data-head="mgrs"]').click();await new Promise(r=>setTimeout(r,20));a.$('#mapbtn_mgrs').click();a.change('#aoSize','zone');
-  a.w.testMap.setView([48,2],5,{animate:false});a.change('#aoSize','zone');
+  const a=app(undefined,true);a.change('#fromSys','mgrs');a.$('#tab-set').click();a.$('[data-head="mgrs"]').click();await new Promise(r=>setTimeout(r,20));a.$('#mapbtn_mgrs').click();
+  a.w.testMap.setView([48,2],5,{animate:false});await new Promise(r=>setTimeout(r,30));
   const cells=[];a.w.testMap.eachLayer(l=>{if(l.options?.aoCandidate)cells.push(l);});assert.ok(cells.length);
   const cell=cells.find(l=>l.options.aoCandidate.prefix==='31U');assert.ok(cell);cell.fire('click',{originalEvent:new a.w.MouseEvent('click')});
   a.$('#aoApply').click();assert.equal(a.state().settings.mgrs.ao,'31U');assert.equal(a.$('#copyBtn').disabled,true);
@@ -490,13 +490,17 @@ test('region snap is mild, only follows a human drag, and yields on the next dra
   map.fire('dragstart');map.setView([14.03,99.31],6,{animate:false,reset:true});assert.equal(map.getCenter().lng,99.31);
   map.fire('dragstart');map.setView([1.351,103.821],15,{animate:false});assert.equal(map.getCenter().lng,103.821);
   a.change('#pointRegion','brunei');assert.equal(map.getCenter().lng,114.75);assert.equal(map.getZoom(),9);
-  assert.equal(map.getMinZoom(),1);map.setZoom(22,{animate:false});assert.equal(map.getZoom(),22);a.dom.window.close();
+  assert.equal(map.getMinZoom(),1);map.setZoom(22,{animate:false});assert.equal(map.getZoom(),19);a.dom.window.close();
 });
 
 test('regional AO maps stay regional and converter selection always uses squares',async()=>{
   const a=app(undefined,true);a.change('#fromSys','taiwan');a.$('#regionChip').click();const map=a.w.testMap;
   assert.ok(map.getMinZoom()>1);assert.equal(a.$('#aoRegion').hidden,true);map.setView([14,99],4,{animate:false});assert.ok(map.getCenter().lng>119);map.setZoom(22,{animate:false});assert.ok(map.getZoom()<=9);
-  a.$('#aoClose').click();a.change('#fromSys','mgrs');a.$('#regionChip').click();assert.equal(a.$('#aoRegion').hidden,false);assert.equal(a.$('#aoSizeLabel').hidden,true);a.change('#aoSize','zone');await new Promise(r=>setTimeout(r,20));assert.match(a.$('#aoInstruction').textContent,/100 km grid square/);a.dom.window.close();
+  a.$('#aoClose').click();a.change('#fromSys','mgrs');a.$('#regionChip').click();assert.equal(a.$('#aoRegion').hidden,false);
+  a.w.testMap.setView([48,2],6,{animate:false});await new Promise(r=>setTimeout(r,30));
+  assert.match(a.$('#aoInstruction').textContent,/100 km grid square/);assert.match(a.$('#aoScope').textContent,/100 km square/);
+  a.w.testMap.setView([48,2],5,{animate:false});await new Promise(r=>setTimeout(r,30));
+  assert.match(a.$('#aoInstruction').textContent,/Grid zones at this zoom/);assert.match(a.$('#aoScope').textContent,/grid zone/);a.dom.window.close();
 });
 
 test('empty rows cannot multiply through Add row or Enter, and Auto-detect keeps it hidden',()=>{
@@ -582,4 +586,111 @@ test('imagery sits above offline land with only a transparent training-area outl
   assert.equal(a.w.MAP_CONTEXT.australia.roads,undefined);assert.equal(a.w.MAP_CONTEXT.thailand.roads,undefined);
   const boundaries=[];map.eachLayer(l=>{if(l.feature?.properties?.name==='Shoalwater Bay Training Area')boundaries.push(l);});assert.ok(boundaries.length);assert.equal(boundaries[0].options.fill,false);
   a.$('#pointSatellite').click();let satellite;map.eachLayer(l=>{if(l instanceof a.w.L.TileLayer&&/World_Imagery/.test(l._url))satellite=l;});assert.ok(satellite);a.dom.window.close();
+});
+
+test('a pending reference never leaves holes in the global grid',async()=>{
+  const a=app(undefined,true);a.paste('123 123');
+  assert.equal(a.$('#locationOverlay').classList.contains('open'),true);
+  a.$('[data-location="mgrs"]').click();
+  const map=a.w.testMap;map.setView([33.7,-118.5],8,{animate:false,reset:true});
+  await new Promise(r=>setTimeout(r,40));
+  const layers=[];map.eachLayer(l=>{if(l.options?.aoCandidate)layers.push(l);});
+  const drawn=new Set(layers.map(l=>l.options.aoCandidate.prefix)),b=map.getBounds();
+  for(let i=0;i<=24;i++)for(let j=0;j<=24;j++){
+    const lat=b.getSouth()+(b.getNorth()-b.getSouth())*i/24,lon=b.getWest()+(b.getEast()-b.getWest())*j/24;
+    const prefix=a.w.GlobalGrid.parts(lat,lon,0).prefix;
+    assert.ok(drawn.has(prefix),'no grid square drawn for '+prefix);
+  }
+  // Squares the digits cannot reach stay on the map and explain themselves.
+  const unreachable=layers.find(l=>l.options.aoCandidate.invalid);
+  assert.ok(unreachable,'expected a square the reference cannot fall in');
+  unreachable.fire('click',{originalEvent:new a.w.MouseEvent('click')});
+  assert.equal(a.$('#aoWarning').hidden,false);
+  assert.match(a.$('#aoWarning').textContent,/does not fall inside/);
+  assert.equal(a.$('#aoApply').disabled,true);
+  const reachable=layers.find(l=>!l.options.aoCandidate.invalid);
+  reachable.fire('click',{originalEvent:new a.w.MouseEvent('click')});
+  assert.equal(a.$('#aoApply').disabled,false);
+  a.dom.window.close();
+});
+test('country presets limit the crosshair, not the whole viewport',async()=>{
+  const a=app(undefined,true);a.change('#fromSys','sg');a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));
+  const map=a.w.pointTestMap;
+  // At this zoom a viewport-sized limit stops well short of both ends of Singapore.
+  map.setView([1.47,104.08],11,{animate:false,reset:true});
+  assert.ok(map.getCenter().lng>104.03,'east end unreachable: '+map.getCenter().lng);
+  assert.ok(map.getCenter().lat>1.44,'north edge unreachable: '+map.getCenter().lat);
+  map.setView([1.14,103.60],11,{animate:false,reset:true});
+  assert.ok(map.getCenter().lng<103.64,'west end unreachable: '+map.getCenter().lng);
+  assert.ok(map.getCenter().lat<1.17,'south edge unreachable: '+map.getCenter().lat);
+  // The crosshair still cannot leave the supported area.
+  map.setView([1.35,106],11,{animate:false,reset:true});
+  assert.ok(map.getCenter().lng<104.1,'crosshair escaped: '+map.getCenter().lng);
+  a.dom.window.close();
+});
+test('point zoom stops where the imagery stops',async()=>{
+  const a=app(undefined,true);a.change('#fromSys','australia');a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));
+  const map=a.w.pointTestMap;map.setZoom(22,{animate:false});
+  assert.equal(map.getZoom(),17);
+  a.$('#pointClose').click();a.change('#fromSys','wgs84');a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));
+  map.setZoom(22,{animate:false});assert.equal(map.getZoom(),19);
+  a.dom.window.close();
+});
+test('Australia MGR reaches its whole grid zone, not one training area',async()=>{
+  const a=app(undefined,true);a.change('#fromSys','australia');a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));
+  const map=a.w.pointTestMap;
+  map.setView([-27.47,153.03],10,{animate:false,reset:true});
+  assert.ok(Math.abs(map.getCenter().lat+27.47)<0.05,'Brisbane unreachable: '+map.getCenter().lat);
+  assert.doesNotMatch(a.$('#pointFormatPreview').textContent,/Move the crosshair/);
+  assert.equal(a.$('#pointConfirm').disabled,false);
+  a.dom.window.close();
+});
+test('a reference area that already resolves a row is not questioned again',async()=>{
+  const a=app(undefined,true);a.change('#fromSys','mgrs');a.paste('48N UG 6461 5755');
+  assert.equal(a.state().settings.mgrs.ao,'48NUG');
+  a.$('#addRow').click();
+  const row=a.$('#fromRows').children[1];
+  row.querySelector('.prefix').value='';row.querySelector('.a').value='123';row.querySelector('.b').value='123';
+  a.change('#fromSys','mgrs');
+  a.$('#convertBtn').click();
+  assert.equal(a.$('#locationOverlay').classList.contains('open'),false,'asked where a resolved reference belongs');
+  assert.equal(a.$('#aoOverlay').classList.contains('open'),false);
+  assert.equal(a.$('#copyBtn').disabled,false);
+  a.dom.window.close();
+});
+test('every preset shows an example that follows its own settings',async()=>{
+  const a=app(undefined,true);a.$('#tab-set').click();
+  const read=id=>[...a.w.document.querySelector('.preset[data-id="'+id+'"]').querySelectorAll('.example b')].map(e=>e.textContent).join(' ');
+  const open=id=>{a.w.document.querySelector('[data-head="'+id+'"]').click();return new Promise(r=>setTimeout(r,5));};
+  for(const id of ['wgs84','mgrs','sg','taiwan','thailand','australia','brunei']){
+    await open(id);
+    assert.ok(read(id).trim(),'no settings example for '+id);
+    await open(id);
+  }
+  await open('sg');
+  const before=read('sg');
+  a.w.document.querySelector('#om_sg').click();
+  assert.notEqual(read('sg'),before,'omitting the 100 km prefix left the example unchanged');
+  await open('mgrs');
+  const coarse=read('mgrs');
+  a.w.document.querySelector('.preset[data-id="mgrs"] .seg button[data-v="5"]').click();
+  assert.notEqual(read('mgrs'),coarse,'precision left the example unchanged');
+  a.dom.window.close();
+});
+test('a first Australian pin picks its own area; a pin in another square must be confirmed',async()=>{
+  const a=app();a.change('#fromSys','australia');a.$('#selectMap').click();
+  assert.equal(a.state().settings.australia.square,undefined);
+  const tilpal={lat:-22.81253,lon:150.13259},brisbane={lat:-27.47,lon:153.03};
+  a.w.pointPickerHooks.onConfirm(tilpal,{zoom:15,layer:'street'});
+  assert.deepEqual(a.state().settings.australia.square,[2,74],'first pin did not select its own area');
+  assert.match(a.state().rows[0][0],/^\d{4}$/);
+  const before=a.state().rows;
+  a.$('#selectMap').click();
+  const pending=a.w.pointPickerHooks.onConfirm(brisbane,{zoom:15,layer:'street'});
+  assert.equal(a.$('#boundaryOverlay').classList.contains('open'),true,'a pin in another square was accepted silently');
+  assert.deepEqual(a.state().rows,before);
+  a.$('#boundaryContinue').click();await pending;
+  assert.equal(a.state().settings.australia.sgOmit,false,'leading digits were still omitted across squares');
+  assert.match(a.state().rows[0][0],/^\d{6}$/);assert.match(a.state().rows[1][0],/^\d{6}$/);
+  a.dom.window.close();
 });
