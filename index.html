@@ -146,7 +146,12 @@
   .preset{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:hidden}
   .preset-head{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff;border:none;padding:12px 14px;cursor:pointer;font-size:14px;font-weight:700;color:var(--text)}
   .preset-head:hover{background:var(--panel2)}
-  .preset.open .preset-head{border-bottom:1px solid var(--line)}
+  .preset-heading{display:flex;align-items:center;background:#fff}
+  .preset-heading .preset-head{flex:1;min-width:0;width:auto}
+  .preset-heading .setting-action{flex:none;margin-right:12px}
+  .preset.disabled .preset-heading{background:var(--panel2)}
+  .preset.disabled .preset-head{background:transparent;color:var(--muted)}
+  .preset.open .preset-heading{border-bottom:1px solid var(--line)}
   .pname{display:flex;align-items:center;gap:8px}
   .chev{color:var(--muted);font-size:12px}
   .tagu{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--warn);border:1px solid var(--warn);border-radius:5px;padding:1px 5px}
@@ -358,10 +363,8 @@
   }
   const PRESET_ORDER = ["wgs84","mgrs","sg","taiwan","thailand","australia","brunei"];
   const COUNTRY_PRESETS = ["sg","taiwan","thailand","australia","brunei"];
-  // Highest zoom the imagery providers genuinely hold for an area. Past this they
-  // only enlarge the tiles they have, so the picker stops rather than suggest
-  // detail the picture does not contain. Raise a value once better imagery lands.
-  const DETAIL_ZOOM = {default:19, australia:17, thailand:18, brunei:18};
+  // Street detail ceiling. Satellite availability is queried at the map location.
+  const DETAIL_ZOOM = 19;
   const GLOBAL_FORMATS = ["mgrs","globalutm"];
   const EXAMPLE_POINT = {lat:1.2964704,lon:103.8210085};
   function globalExample(id,S){return formatPoint(EXAMPLE_POINT.lat,EXAMPLE_POINT.lon,id,S||defaultSettings()).join(" ").replace(/^(\d{1,2}[C-HJ-NP-X])([A-HJ-NP-Z]{2})/,"$1 $2");}
@@ -974,7 +977,7 @@
       const last=current.points.at(-1)||state.pointMapView||state.lastLocation;
       const previous=last&&(!p.bbox||presetContains(id,last.lat,last.lon))?last:null;
       const fallback=p.anchor?{lat:p.anchor[0],lon:p.anchor[1]}:p.bbox?{lat:(p.bbox[0]+p.bbox[1])/2,lon:(p.bbox[2]+p.bbox[3])/2}:{lat:1.35,lon:103.82};
-      pointOptions={...current,presetId:id,presetLabel:p.name,bounds:p.bbox?[[p.bbox[0],p.bbox[2]],[p.bbox[1],p.bbox[3]]]:null,detailZoom:DETAIL_ZOOM[id]||DETAIL_ZOOM.default,center:previous||fallback,zoom:(previous?state.pointMapView?.zoom:0)||(previous?15:COUNTRY_PRESETS.includes(id)?9:4),layer:state.pointMapView?.layer||"street"};
+      pointOptions={...current,presetId:id,presetLabel:p.name,bounds:p.bbox?[[p.bbox[0],p.bbox[2]],[p.bbox[1],p.bbox[3]]]:null,detailZoom:DETAIL_ZOOM,center:previous||fallback,zoom:(previous?state.pointMapView?.zoom:0)||(previous?15:COUNTRY_PRESETS.includes(id)?9:4),layer:state.pointMapView?.layer||"street"};
       pointPicker.open(pointOptions);
     });
 
@@ -1551,10 +1554,10 @@
       PRESET_ORDER.forEach(id=>{
         const p=PRESETS[id], open=(openPreset===id);
         const {basis,specs}=p;
-        html+=`<div class="preset${open?" open":""}" data-id="${id}">`;
-        html+=`<button class="preset-head" data-head="${id}"><span class="pname">${id==="mgrs"?"Military grid":p.name}${p.unverified?' <span class="tagu">unverified</span>':''}</span><span class="chev">${open?"▾":"▸"}</span></button>`;
-        html+=`<div class="preset-body">`;
-        if(id!=="wgs84")html+=`<div class="srow"><span class="k">${presetEnabled(id)?"Enabled":"Disabled"}</span><button type="button" class="setting-action" ${id==="mgrs"?'id="militaryToggle"':""} data-toggle="${id}" aria-pressed="${presetEnabled(id)}">${presetEnabled(id)?"Disable":"Enable"}</button></div>`;
+        html+=`<div class="preset${open?" open":""}${presetEnabled(id)?"":" disabled"}" data-id="${id}">`;
+        html+=`<div class="preset-heading"><button class="preset-head" data-head="${id}"><span class="pname">${id==="mgrs"?"Military grid":p.name}${p.unverified?' <span class="tagu">unverified</span>':''}</span><span class="chev">${open?"▾":"▸"}</span></button>`;
+        if(id!=="wgs84")html+=`<button type="button" class="setting-action" ${id==="mgrs"?'id="militaryToggle"':""} data-toggle="${id}" aria-pressed="${presetEnabled(id)}">${presetEnabled(id)?"Disable":"Enable"}</button>`;
+        html+=`</div><div class="preset-body">`;
         if(!presetEnabled(id)){html+=`<p class="note">Enable ${p.name} to show it in the converter and reference chooser.</p></div></div>`;return;}
         html+=`<div class="basis">${basis}</div>`;
         if(specs) html+=`<dl class="specs">${specs.map(x=>`<dt>${x[0]}</dt><dd>${x[1]}</dd>`).join("")}</dl>`;

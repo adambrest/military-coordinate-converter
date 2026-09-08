@@ -1,6 +1,12 @@
 {
   "name": "military-coordinate-converter",
   "private": true,
-  "scripts": { "test": "node --test tests/*.test.cjs" },
-  "devDependencies": { "jsdom": "26.1.0" }
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "test:browser": "node tests/mobile-browser.cjs"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0",
+    "playwright": "1.62.1"
+  }
 }

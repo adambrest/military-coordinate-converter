@@ -68,11 +68,69 @@
     const size=map.getSize(),pixels=Math.max(80,Math.min(size.x,size.y)-40),latitude=Math.min(80,Math.abs(map.getCenter().lat));
     return Math.max(3,Math.min(10,Math.floor(Math.log2(pixels*156543.03392*Math.cos(latitude*Math.PI/180)/140000))));
   }
-  // Keep Leaflet's native mouse/touch double-click zoom anchored to the pointer.
-  // Single clicks never move the camera or choose a point.
+  // Safari can label touch-generated clicks as mouse clicks, so detect taps
+  // from touch events directly. Mouse double-click stays a separate path.
   function pointGestures(map){
-    map.doubleClickZoom.enable();
-    return ()=>{};
+    let first=null,active=null,lastTouch=0;
+    const container=map.getContainer(),reset=()=>{first=null;active=null;};
+    map.doubleClickZoom.disable();
+    map.on('dblclick',e=>{if(Date.now()-lastTouch<700)return;map.setZoomAround(e.containerPoint,map.getZoom()+(e.originalEvent?.shiftKey?-1:1));});
+    container.addEventListener('touchstart',e=>{
+      lastTouch=Date.now();
+      if(e.touches.length!==1){reset();return;}
+      const t=e.touches[0];active={id:t.identifier,x:t.clientX,y:t.clientY,time:lastTouch};
+    },{passive:true});
+    container.addEventListener('touchmove',e=>{
+      if(!active)return;
+      const t=[...e.touches].find(t=>t.identifier===active.id);
+      if(e.touches.length!==1||!t||Math.hypot(t.clientX-active.x,t.clientY-active.y)>12)reset();
+    },{passive:true});
+    container.addEventListener('touchend',e=>{
+      lastTouch=Date.now();const start=active;active=null;
+      if(!start||e.touches.length||lastTouch-start.time>300){first=null;return;}
+      const t=[...e.changedTouches].find(t=>t.identifier===start.id);
+      if(!t||Math.hypot(t.clientX-start.x,t.clientY-start.y)>12){first=null;return;}
+      if(first&&lastTouch-first.time<=400&&Math.hypot(t.clientX-first.x,t.clientY-first.y)<=35){
+        first=null;e.preventDefault();map.setZoomAround(map.mouseEventToContainerPoint(t),map.getZoom()+1);
+      }else first={x:t.clientX,y:t.clientY,time:lastTouch};
+    },{passive:false});
+    container.addEventListener('touchcancel',reset,{passive:true});
+    map.on('dragstart zoomstart',reset);
+    return reset;
+  }
+  const imageryService='https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer';
+  const tileAvailability=new Map();
+  async function imageryZoom(lat,lon,width,height,request=fetch){
+    // Check every tile needed by the viewport at each candidate detail level.
+    // Requests cannot cross Esri's 128-tile bundle boundaries.
+    for(let z=19;z>=1;z--){
+      const count=2**z,x=(longitude(lon)+180)/360*count;
+      const radians=Math.max(-85,Math.min(85,lat))*Math.PI/180;
+      const y=(1-Math.asinh(Math.tan(radians))/Math.PI)/2*count;
+      const left=Math.floor(x-width/512),right=Math.floor(x+width/512);
+      const top=Math.max(0,Math.floor(y-height/512)),bottom=Math.min(count-1,Math.floor(y+height/512));
+      const checks=[];
+      for(let row=top;row<=bottom;){
+        const h=Math.min(bottom-row+1,128-row%128);
+        for(let col=left;col<=right;){
+          const wrapped=((col%count)+count)%count,w=Math.min(right-col+1,128-wrapped%128,count-wrapped);
+          const url=imageryService+'/tilemap/'+z+'/'+row+'/'+wrapped+'/'+w+'/'+h+'?f=json';
+          if(!tileAvailability.has(url)){
+            const promise=request(url).then(r=>{if(!r.ok&&r.status!==422)throw Error('Coverage unavailable');return r.json();}).then(data=>{
+              if(data.error?.code===422)return false;
+              if(!Array.isArray(data.data)||data.data.length!==w*h)throw Error('Incomplete imagery coverage');
+              return data.data.every(value=>value===1);
+            }).catch(error=>{tileAvailability.delete(url);throw error;});
+            tileAvailability.set(url,promise);
+            if(tileAvailability.size>256)tileAvailability.delete(tileAvailability.keys().next().value);
+          }
+          checks.push(tileAvailability.get(url));col+=w;
+        }
+        row+=h;
+      }
+      if((await Promise.all(checks)).every(Boolean))return z;
+    }
+    return 1;
   }
   function trainingArea(map){
     map.createPane('trainingArea').style.zIndex='300';
@@ -82,5 +140,5 @@
     map.on('zoomend',update);
     map.attributionControl.addAttribution('© <a href="https://spatial-gis.information.qld.gov.au/arcgis/rest/services/Location/Places/FeatureServer/17">State of Queensland</a>');
   }
-  root.MapSupport={regions,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,trainingArea};
+  root.MapSupport={regions,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,imageryZoom,imageryService,trainingArea};
 })(globalThis);

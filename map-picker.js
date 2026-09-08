@@ -3,7 +3,7 @@
   "use strict";
   root.createAOPicker=function({presets,contains,projection,plausible,presetEnabled=()=>true,onSelect}){
     const $=id=>document.getElementById(id);
-    let map,grid,selectionLayer,pointLayer,selection,options={},returnFocus,frame,stableCenter,limitCenter;
+    let map,grid,selectionLayer,pointLayer,selection,options={},returnFocus,frame,stableCenter,limitCenter,cancelTap;
     const landmarks=[];
     const ids=["sg","taiwan","thailand","australia","brunei"];
     function gridId(){return options.system||options.preset||"mgrs";}
@@ -136,6 +136,7 @@
     function init(){
       map=L.map("aoMap",{minZoom:1,maxZoom:10,worldCopyJump:true,maxBoundsViscosity:1,preferCanvas:true,zoomControl:true,trackResize:false});
       map.setView([12,95],3);
+      cancelTap=MapSupport.pointGestures(map);
       map.attributionControl.setPrefix(false);
       L.control.scale({imperial:false}).addTo(map);
       map.createPane("offlineLand").style.zIndex="150";
@@ -170,7 +171,7 @@
       const resize=()=>{if(!$("aoOverlay").classList.contains("open"))return;const p=stableCenter||map.getCenter(),z=map.getZoom();map.invalidateSize({pan:false,animate:false});limitZoom();map.setView(p,Math.min(z,map.getMaxZoom()),{animate:false,reset:true});};
       if(root.ResizeObserver)new ResizeObserver(resize).observe($("aoMap"));else root.addEventListener("resize",resize);
     }
-    function close(){ $("aoOverlay").classList.remove("open");returnFocus?.focus(); }
+    function close(){ cancelTap?.();$("aoOverlay").classList.remove("open");returnFocus?.focus(); }
     $("aoClose").addEventListener("click",close);
     $("aoApply").addEventListener("click",()=>{if(!selection||$("aoApply").disabled)return;const chosen=selection;close();onSelect(chosen,options);});
     $("aoOverlay").addEventListener("keydown",e=>{

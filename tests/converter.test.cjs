@@ -25,7 +25,7 @@ function app(saved,realMap=false,militaryEnabled=true){
     Object.defineProperty(w.HTMLElement.prototype,'clientWidth',{get(){return w.testWidth||800;}});
     Object.defineProperty(w.HTMLElement.prototype,'clientHeight',{get(){return ['aoMap','pointMap'].includes(this.id)?w.testHeight||480:40;}});
     w.ResizeObserver=class {constructor(callback){w.resizePicker=callback;}observe(){}};
-    w.fetch=async url=>({ok:true,text:async()=>read('version.js'),json:async()=>JSON.parse(read(url.startsWith('vendor/')?url:'vendor/land.geojson'))});
+    w.fetch=async url=>({ok:true,text:async()=>read('version.js'),json:async()=>{const match=url.match(/tilemap\/(\d+)\/\d+\/\d+\/(\d+)\/(\d+)/);return match?{data:Array(+match[2]*+match[3]).fill(+match[1]>18?0:1)}:JSON.parse(read(url.startsWith('vendor/')?url:'vendor/land.geojson'));}});
     w.eval(read('vendor/leaflet.js'));const createMap=w.L.map;w.L.map=(...args)=>{const map=createMap(...args);if(args[0]==='pointMap')w.pointTestMap=map;else w.testMap=map;return map;};w.eval(read('map-picker.js'));w.eval(read('point-picker.js'));
   }else w.createAOPicker=opts=>{w.pickerHooks=opts;return {open:o=>{w.mapOptions=o;w.document.getElementById('aoOverlay').classList.add('open');}};};
   if(!realMap)w.createPointPicker=opts=>{w.pointPickerHooks=opts;return {open:o=>{w.pointOptions=o;}};};
@@ -425,7 +425,7 @@ test('street layer persists through overview zoom and satellite toggle preserves
   const activeTiles=()=>{const layers=[];a.w.pointTestMap.eachLayer(l=>{if(l instanceof a.w.L.TileLayer)layers.push(l);});return layers;};
   a.w.pointTestMap.setView([20,100],4,{animate:false});assert.equal(activeTiles().length,1);assert.equal(a.$('#pointMapScale'),null);assert.ok(a.$('.singapore-name'));
   const streets=activeTiles()[0];a.w.pointTestMap.setZoom(7,{animate:false});assert.equal(activeTiles().length,1);assert.equal(activeTiles()[0],streets);assert.match(streets._url,/openstreetmap/);
-  const center=a.w.pointTestMap.getCenter();a.$('#pointSatellite').click();assert.equal(activeTiles().length,1);assert.match(activeTiles()[0]._url,/World_Imagery/);assert.equal(a.w.pointTestMap.getCenter().lat,center.lat);
+  const center=a.w.pointTestMap.getCenter();a.$('#pointSatellite').click();await new Promise(r=>setTimeout(r,250));assert.equal(activeTiles().length,1);assert.match(activeTiles()[0]._url,/World_Imagery/);assert.equal(a.w.pointTestMap.getCenter().lat,center.lat);
   activeTiles()[0].fire('tileerror');assert.equal(a.$('#pointNetwork').hidden,false);
   a.$('#pointStreet').click();assert.equal(a.$('#pointNetwork').hidden,true);a.dom.window.close();
 });
@@ -587,7 +587,7 @@ test('imagery sits above offline land with only a transparent training-area outl
   assert.ok(Number(map.getPane('offlineLand').style.zIndex)<200);assert.ok(Number(map.getPane('pointCountries').style.zIndex)<200);
   assert.equal(a.w.MAP_CONTEXT.australia.roads,undefined);assert.equal(a.w.MAP_CONTEXT.thailand.roads,undefined);
   const boundaries=[];map.eachLayer(l=>{if(l.feature?.properties?.name==='Shoalwater Bay Training Area')boundaries.push(l);});assert.ok(boundaries.length);assert.equal(boundaries[0].options.fill,false);
-  a.$('#pointSatellite').click();let satellite;map.eachLayer(l=>{if(l instanceof a.w.L.TileLayer&&/World_Imagery/.test(l._url))satellite=l;});assert.ok(satellite);a.dom.window.close();
+  a.$('#pointSatellite').click();await new Promise(r=>setTimeout(r,250));let satellite;map.eachLayer(l=>{if(l instanceof a.w.L.TileLayer&&/World_Imagery/.test(l._url))satellite=l;});assert.ok(satellite);a.dom.window.close();
 });
 
 test('a pending reference never leaves holes in the global grid',async()=>{
@@ -630,10 +630,10 @@ test('country presets limit the crosshair, not the whole viewport',async()=>{
   assert.ok(map.getCenter().lng<104.1,'crosshair escaped: '+map.getCenter().lng);
   a.dom.window.close();
 });
-test('point zoom stops where the imagery stops',async()=>{
+test('street detail limit is independent of the country input preset',async()=>{
   const a=app(undefined,true);a.change('#fromSys','australia');a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));
   const map=a.w.pointTestMap;map.setZoom(22,{animate:false});
-  assert.equal(map.getZoom(),17);
+  assert.equal(map.getZoom(),19);
   a.$('#pointClose').click();a.change('#fromSys','wgs84');a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));
   map.setZoom(22,{animate:false});assert.equal(map.getZoom(),19);
   a.dom.window.close();
@@ -875,7 +875,7 @@ test('preset enable controls live inside each dropdown and Coordinates cannot be
   for(const id of ['mgrs','sg','taiwan','thailand','australia','brunei']){
     const toggle=a.$('[data-toggle="'+id+'"]');
     assert.equal(toggle.closest('.preset').dataset.id,id);
-    assert.ok(toggle.closest('.preset-body'));
+    assert.ok(toggle.closest('.preset-heading'));assert.equal(toggle.closest('.preset-body'),null);
     if(toggle.getAttribute('aria-pressed')==='true')toggle.click();
     assert.equal(a.$('#fromSys option[value="'+id+'"]'),null);
     assert.equal(a.$('#toSys option[value="'+id+'"]'),null);
@@ -911,5 +911,22 @@ test('single taps, clicks and long presses never move the point-map camera or ad
   container.dispatchEvent(new a.w.MouseEvent('contextmenu',{bubbles:true,clientX:600,clientY:180}));
   map.eachLayer(layer=>{if(layer.getTooltip?.()){assert.equal(layer.options.interactive,false);layer.fire('click',{originalEvent:new a.w.MouseEvent('click')});}});
   await new Promise(r=>setTimeout(r,600));assert.ok(map.getCenter().equals(before));assert.equal(a.state().rows.length,count);
+  a.dom.window.close();
+});
+
+
+test('satellite coverage checks viewport tiles and drops unavailable zoom levels',async()=>{
+  const a=app(undefined,false,false),calls=[];
+  const max=await a.w.MapSupport.imageryZoom(-22.65,150.35,390,500,async url=>{
+    const [,z,row,col,width,height]=url.match(/tilemap\/(\d+)\/(\d+)\/(\d+)\/(\d+)\/(\d+)/).map(Number);
+    calls.push({z,row,col,width,height});
+    assert.ok(col%128+width<=128&&row%128+height<=128,'request crosses a bundle');
+    return {ok:true,json:async()=>({data:Array(width*height).fill(z===19?0:1)})};
+  });
+  assert.equal(max,18);assert.ok(calls.some(c=>c.z===19));assert.ok(calls.some(c=>c.z===18));a.dom.window.close();
+});
+test('coverage errors are not interpreted as available imagery',async()=>{
+  const a=app(undefined,false,false);
+  await assert.rejects(a.w.MapSupport.imageryZoom(48,2,390,500,async()=>({ok:true,json:async()=>({error:{code:500}})})),/coverage/);
   a.dom.window.close();
 });

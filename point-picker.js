@@ -9,20 +9,45 @@
     // enlarged, so stopping there keeps the crosshair from implying detail that
     // is not in the picture.
     const DETAIL_ZOOM=19;
+    let coverageKey="",coverageToken=0,coveragePending=false,coverageTimer,coverageFailed=false;
     let mode="street",countryData=[],countryGeometry,worldKey,cancelTap,busy=false,background=[],tileErrors=new Set();
     const textNode=text=>{const el=document.createElement("span");el.textContent=text;return el;};
     function center(){const p=map.getCenter();return {lat:p.lat,lon:MapSupport.longitude(p.lng)};}
     function toggle(layer,show){if(show&&!map.hasLayer(layer))layer.addTo(map);else if(!show&&map.hasLayer(layer))map.removeLayer(layer);}
     function networkStatus(){
       const active=mode==="satellite"?satellite:streets;
-      $("pointNetwork").hidden=!active||(!tileErrors.has(active)&&navigator.onLine!==false);
+      $("pointNetwork").hidden=!active||(!tileErrors.has(active)&&navigator.onLine!==false&&!coverageFailed);
       $("pointNetwork").textContent="Map imagery is unavailable here. Try the other layer or check your connection.";
+    }
+    function checkCoverage(){
+      clearTimeout(coverageTimer);
+      if(!map||!overlay.classList.contains("open"))return;
+      if(mode!=="satellite"){
+        coverageToken++;coverageKey="";coveragePending=false;coverageFailed=false;
+        map.setMaxZoom(DETAIL_ZOOM);return;
+      }
+      const p=center(),size=map.getSize(),pixel=map.project([p.lat,p.lon],19);
+      const key=[Math.floor(pixel.x),Math.floor(pixel.y),size.x,size.y].join(',');
+      if(key===coverageKey)return;
+      coverageKey=key;const token=++coverageToken;coveragePending=true;coverageFailed=false;
+      // Keep street context visible until the provider confirms satellite coverage.
+      layers();
+      coverageTimer=setTimeout(async()=>{
+        try{
+          const zoom=await MapSupport.imageryZoom(p.lat,p.lon,size.x,size.y,url=>fetch(url,{signal:AbortSignal.timeout(5000)}));
+          if(token!==coverageToken||mode!=="satellite")return;
+          coveragePending=false;satellite.options.maxNativeZoom=zoom;map.setMaxZoom(zoom);layers();
+        }catch(_){
+          if(token!==coverageToken)return;
+          coveragePending=false;coverageFailed=true;coverageKey="";layers();
+        }
+      },150);
     }
     function layers(){
       const zoom=map.getZoom(),broad=zoom<STREET_ZOOM;
       // Keep the same tile layer throughout pinch zoom; the offline country
       // geometry stays underneath while new tiles load.
-      toggle(streets,mode==="street");toggle(satellite,mode==="satellite");
+      toggle(streets,mode==="street"||coveragePending||coverageFailed);toggle(satellite,mode==="satellite"&&!coveragePending&&!coverageFailed);
       const worlds=MapSupport.worlds(map),key=worlds.join(',');
       if(countryGeometry&&worldKey!==key){countries.clearLayers();for(const offset of worlds)countries.addData(MapSupport.repeatGeometry(countryGeometry,offset));worldKey=key;}
       toggle(labels,broad);labels.clearLayers();
@@ -85,7 +110,7 @@
         layers();
       }).catch(()=>{$("pointNetwork").hidden=false;$("pointNetwork").textContent="Country overview unavailable. Zoom in for street detail or choose Satellite.";});
       map.on("move zoom",()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(update);});
-      map.on("moveend zoomend",()=>{const p=map.getCenter();stableCenter={lat:p.lat,lng:p.lng};layers();update();});
+      map.on("moveend zoomend",()=>{const p=map.getCenter();stableCenter={lat:p.lat,lng:p.lng};checkCoverage();layers();update();});
       cancelTap=MapSupport.pointGestures(map);
       root.addEventListener("online",networkStatus);root.addEventListener("offline",networkStatus);
       const resize=()=>{
@@ -98,7 +123,7 @@
       if(root.ResizeObserver)new ResizeObserver(resize).observe($("pointMap"));else root.addEventListener("resize",resize);
     }
     function close(){
-      cancelTap?.();map?.stop();overlay.classList.remove("open");cancelAnimationFrame(frame);
+      cancelTap?.();clearTimeout(coverageTimer);coverageToken++;coverageKey="";map?.stop();overlay.classList.remove("open");cancelAnimationFrame(frame);
       for(const [el,inert] of background)el.inert=inert;
       background=[];returnFocus?.focus();
     }
@@ -119,8 +144,8 @@
     }
     $("pointClose").addEventListener("click",close);
     $("pointConfirm").addEventListener("click",()=>confirm(false));$("pointContinue").addEventListener("click",()=>confirm(true));
-    $("pointStreet").addEventListener("click",()=>{mode="street";layers();});
-    $("pointSatellite").addEventListener("click",()=>{mode="satellite";layers();});
+    $("pointStreet").addEventListener("click",()=>{mode="street";checkCoverage();layers();});
+    $("pointSatellite").addEventListener("click",()=>{mode="satellite";checkCoverage();layers();});
     overlay.addEventListener("keydown",e=>{
       if(e.key==="Escape"&&!busy){e.preventDefault();close();}
       if(e.key==="Enter"&&e.target===$("pointMap")){e.preventDefault();confirm(false);}
@@ -131,7 +156,7 @@
       }
     });
     return {open(opts){
-      options=opts;returnFocus=document.activeElement;mode=opts.layer||mode;busy=false;
+      options=opts;returnFocus=document.activeElement;mode=opts.layer||mode;busy=false;coverageKey="";coveragePending=mode==="satellite";
       overlay.classList.add("open");$("pointAdded").textContent="";
       background=[...document.querySelectorAll("body > header, body > main")].map(el=>{const previous=el.inert;el.inert=true;return [el,previous];});
       if(!map)init();
@@ -142,7 +167,7 @@
       if(opts.bounds){const b=L.latLngBounds(opts.bounds);map.setMinZoom(Math.max(1,Math.min(map.getMaxZoom(),map.getBoundsZoom(b))));limitCenter(b);}
       $("pointPreset").textContent=opts.presetLabel;
       map.invalidateSize();map.setView([opts.center.lat,opts.center.lon],Math.min(map.getMaxZoom(),Math.max(map.getMinZoom(),opts.zoom||12)),{animate:false});
-      drawPoints(opts.points||[]);layers();update();
+      drawPoints(opts.points||[]);checkCoverage();layers();update();
       map.invalidateSize({pan:false,animate:false});map.setView([opts.center.lat,opts.center.lon],Math.min(map.getMaxZoom(),Math.max(map.getMinZoom(),opts.zoom||map.getZoom())),{animate:false,reset:true});$("pointMap").focus();
     }};
   };
