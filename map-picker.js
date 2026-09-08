@@ -7,9 +7,11 @@
     const landmarks=[];
     const ids=["sg","taiwan","thailand","australia","brunei"];
     function gridId(){return options.system||options.preset||"mgrs";}
-    let candidates=[];
-    function polygon(coords,style,target=grid){
-      return L.polygon(coords.map(p=>[p[1],p[0]]),{weight:1,color:"#2563eb",fillOpacity:0,interactive:false,...style}).addTo(target);
+    let candidates=[],worldOffset=0,worldLand,worldData,worldKey;
+    function wholeZone(){return gridId()==="mgrs"&&options.converter===false&&$("aoSize").value==="zone";}
+    function limitZoom(){const cap=MapSupport.squareZoom(map);if(map.getMinZoom()>cap)map.setMinZoom(cap);map.setMaxZoom(cap);}
+    function polygon(coords,style,target=grid,offset=0){
+      return L.polygon(coords.map(p=>[p[1],p[0]+offset]),{weight:1,color:"#2563eb",fillOpacity:0,interactive:false,...style}).addTo(target);
     }
     function picks(){
       if(options.pending)return options.pending.text.trim().split(/\r?\n/).map(line=>{
@@ -45,8 +47,8 @@
     }
     function selectCandidate(chosen){
       selection=chosen;selectionLayer.clearLayers();pointLayer.clearLayers();$("aoWarning").hidden=true;
-      polygon(chosen.polygon,{weight:3,color:"#7c3aed",fillColor:"#7c3aed",fillOpacity:.12},selectionLayer);
-      if(chosen.point)L.circleMarker([chosen.point.lat,chosen.point.lon],{radius:7,color:"#fff",weight:2,fillColor:"#7c3aed",fillOpacity:1}).addTo(pointLayer);
+      polygon(chosen.polygon,{weight:3,color:"#7c3aed",fillColor:"#7c3aed",fillOpacity:.12},selectionLayer,chosen.offset||0);
+      if(chosen.point)L.circleMarker([chosen.point.lat,chosen.point.lon+(chosen.offset||0)],{radius:7,color:"#fff",weight:2,fillColor:"#7c3aed",fillOpacity:1}).addTo(pointLayer);
       $("aoSelection").textContent=presets[chosen.id].name+" · "+chosen.prefix;
       $("aoApply").disabled=false;
       if(chosen.invalid){
@@ -59,19 +61,19 @@
       }
     }
     function addCandidate(chosen){
-      candidates.push(chosen);
-      const layer=polygon(chosen.polygon,{interactive:true,bubblingMouseEvents:false,fillOpacity:.05,weight:1.5});
+      chosen.offset=worldOffset;candidates.push(chosen);
+      const layer=polygon(chosen.polygon,{interactive:true,bubblingMouseEvents:false,fillOpacity:.05,weight:1.5},grid,worldOffset);
       layer.options.aoCandidate=chosen;
       layer.on("click",e=>{L.DomEvent.stopPropagation(e);selectCandidate(chosen);});
       layer.on("mouseover",()=>layer.setStyle({fillOpacity:.15}));
       layer.on("mouseout",()=>layer.setStyle({fillOpacity:.05}));
-      if(map.getZoom()>=7||chosen.scope==="zone")layer.bindTooltip(chosen.prefix,{permanent:true,direction:"center",className:"grid-label"});
+      layer.bindTooltip(chosen.prefix,{permanent:true,direction:"center",className:"grid-label"});
     }
     function select(lat,lon){
-      const selected=candidates.find(c=>GlobalGrid.inside(lon,lat,c.polygon));
+      const selected=candidates.find(c=>GlobalGrid.inside(MapSupport.longitude(lon),lat,c.polygon));
       if(selected)selectCandidate(selected);
     }
-    function bounds(){const b=map.getBounds();return {west:Math.max(-180,b.getWest()),east:Math.min(180,b.getEast()),south:Math.max(-80,b.getSouth()),north:Math.min(84,b.getNorth())};}
+    function bounds(offset=0){const b=map.getBounds();return {west:Math.max(-180,b.getWest()-offset),east:Math.min(180,b.getEast()-offset),south:Math.max(-80,b.getSouth()),north:Math.min(84,b.getNorth())};}
     function projectedGrid(proj,b,clipBounds,id){
       const size=100000,samples=[];
       for(let i=0;i<=8;i++){const t=i/8;for(const p of [[b.west+(b.east-b.west)*t,b.south],[b.west+(b.east-b.west)*t,b.north],[b.west,b.south+(b.north-b.south)*t],[b.east,b.south+(b.north-b.south)*t]])samples.push(root.proj4("WGS84",proj,p));}
@@ -86,14 +88,18 @@
     }
     function draw(){
       if(!map||!$("aoOverlay").classList.contains("open"))return;
-      grid.clearLayers();candidates=[];const b=bounds(),zoom=map.getZoom(),id=gridId();
+      limitZoom();
+      grid.clearLayers();candidates=[];const zoom=map.getZoom(),id=gridId(),worlds=MapSupport.worlds(map),key=worlds.join(',');
+      if(worldData&&worldKey!==key){worldLand.clearLayers();for(const offset of worlds)worldLand.addData(MapSupport.repeatGeometry(worldData,offset));worldKey=key;}
       for(const {id:country,marker} of landmarks){
         const visible=id===country||(id==="mgrs"&&zoom>=8);
         if(visible){if(!map.hasLayer(marker))marker.addTo(map);marker.openTooltip();}else if(map.hasLayer(marker))map.removeLayer(marker);
       }
-      const broad=id==="mgrs"&&$("aoSize").value==="zone",threshold=broad?3:6;
+      const broad=wholeZone(),threshold=broad?3:Math.min(6,map.getMaxZoom());
       $("aoInstruction").textContent=broad?"A whole zone contains many 100 km squares. Keep the square letters in every reference.":"Select a 100 km grid square to omit its prefix. Your operating area may span several squares.";
       if(zoom<threshold){if(!selection)$("aoSelection").textContent="Zoom in to select a grid square";return;}
+      for(const offset of id==="mgrs"?worlds:[0]){
+      worldOffset=offset;const b=bounds(offset);
       if(id!=="mgrs"){
         const bb=presets[id].bbox;
         const view={west:Math.max(b.west,bb[2]),east:Math.min(b.east,bb[3]),south:Math.max(b.south,bb[0]),north:Math.min(b.north,bb[1])};
@@ -106,19 +112,21 @@
         const view={west:Math.max(b.west,z.west),east:Math.min(b.east,z.east),south:Math.max(b.south,z.south),north:Math.min(b.north,z.north)};
         projectedGrid(GlobalGrid.projection(z.zone,z.south<0),view,z,"mgrs");
       }
+      }
       if(!candidates.length)$("aoSelection").textContent=selection?$("aoSelection").textContent:zoom<6?"Zoom in to select a grid square":"No matching grid squares in view";
     }
     function init(){
-      map=L.map("aoMap",{minZoom:1,maxZoom:22,maxBounds:[[-85,-180],[85,180]],maxBoundsViscosity:1,preferCanvas:true,zoomControl:true,trackResize:false});
+      map=L.map("aoMap",{minZoom:1,maxZoom:10,worldCopyJump:true,maxBoundsViscosity:1,preferCanvas:true,zoomControl:true,trackResize:false});
       map.setView([12,95],3);
       map.attributionControl.setPrefix(false);
       L.control.scale({imperial:false}).addTo(map);
       map.createPane("offlineLand").style.zIndex="150";
-      const land=L.geoJSON(null,{pane:"offlineLand",style:{color:"#a8bcc2",weight:.6,fillColor:"#f3f3eb",fillOpacity:1},interactive:false}).addTo(map);
-      fetch("vendor/countries.geojson").then(r=>{if(!r.ok)throw Error();return r.json();}).then(data=>land.addData(data)).catch(()=>{});
+      const land=L.layerGroup().addTo(map);
+      worldLand=L.geoJSON(null,{pane:"offlineLand",style:{color:"#a8bcc2",weight:.6,fillColor:"#f3f3eb",fillOpacity:1},interactive:false}).addTo(land);
+      fetch("vendor/countries.geojson").then(r=>{if(!r.ok)throw Error();return r.json();}).then(data=>{worldData=data;draw();}).catch(()=>{});
       map.attributionControl.addAttribution('<a href="https://www.naturalearthdata.com/">Natural Earth</a>');
-      map.attributionControl.addAttribution('© <a href="https://spatial-gis.information.qld.gov.au/arcgis/rest/services/Basemaps/FoundationData/MapServer/23">Queensland</a>');
-      const tiles=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxNativeZoom:19,maxZoom:22,noWrap:true,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
+      MapSupport.trainingArea(map);
+      const tiles=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxNativeZoom:19,maxZoom:22,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
       tiles.on("tileerror",()=>{$("aoNetwork").hidden=false;});
       tiles.on("load",()=>{if(navigator.onLine)$("aoNetwork").hidden=true;});
       grid=L.layerGroup().addTo(map);selectionLayer=L.layerGroup().addTo(map);pointLayer=L.layerGroup().addTo(map);
@@ -134,14 +142,13 @@
         const p=presets[id],bb=p.bbox;
         const context=p.context||{};
         for(const poly of context.land||[])polygon(poly,{pane:"offlineLand",color:"#a8bcc2",weight:.6,fillColor:"#f3f3eb",fillOpacity:1},land);
-        for(const line of context.roads||[])L.polyline(line.map(p=>[p[1],p[0]]),{color:"#ce8a22",weight:2,interactive:false}).addTo(land);
         for(const [index,lm] of (context.landmarks||[]).entries()){
           landmarks.push({id,marker:MapSupport.marker(map,lm,()=>select(lm.lat,lm.lon))});
         }
       }
-      map.on("click",e=>{const threshold=gridId()==="mgrs"&&$("aoSize").value==="zone"?3:6;if(map.getZoom()<threshold){map.setView(e.latlng,threshold+1);return;}select(e.latlng.lat,e.latlng.lng);});
+      map.on("click",e=>{const threshold=wholeZone()?3:Math.min(6,map.getMaxZoom());if(map.getZoom()>=threshold)select(e.latlng.lat,e.latlng.lng);});
       map.on("moveend zoomend",()=>{const p=map.getCenter();stableCenter={lat:p.lat,lng:p.lng};cancelAnimationFrame(frame);frame=requestAnimationFrame(draw);});
-      const resize=()=>{if(!$("aoOverlay").classList.contains("open"))return;const p=stableCenter||map.getCenter(),z=map.getZoom();map.invalidateSize({pan:false,animate:false});map.setView(p,z,{animate:false,reset:true});};
+      const resize=()=>{if(!$("aoOverlay").classList.contains("open"))return;const p=stableCenter||map.getCenter(),z=map.getZoom();map.invalidateSize({pan:false,animate:false});limitZoom();map.setView(p,Math.min(z,map.getMaxZoom()),{animate:false,reset:true});};
       if(root.ResizeObserver)new ResizeObserver(resize).observe($("aoMap"));else root.addEventListener("resize",resize);
       $("aoSize").addEventListener("change",()=>{selection=null;selectionLayer.clearLayers();pointLayer.clearLayers();$("aoApply").disabled=true;$("aoSelection").textContent="No area selected";$("aoWarning").hidden=true;draw();});
     }
@@ -182,21 +189,22 @@
       $("aoOverlay").classList.add("open");if(!map)init();
       $("aoApply").disabled=true;$("aoSelection").textContent="No area selected";$("aoWarning").hidden=true;
       const id=gridId(),raw=id==="mgrs";
-      $("aoSizeLabel").hidden=!raw;$("aoSize").value=opts.scope||"square";
+      $("aoRegion").hidden=!raw;
+      $("aoSizeLabel").hidden=!raw||opts.converter!==false;$("aoSize").value=opts.converter===false?(opts.scope||"square"):"square";
       $("aoTitle").textContent=raw?"Military grid · reference area":presets[id].name+" · reference area";
       $("aoSystemLabel").textContent=raw?"MGRS":presets[id].zoneCode?"Zone "+presets[id].zoneCode:"";
       $("aoBack").hidden=!opts.pending;
       $("aoInstruction").textContent=raw?"Choose your area.":"Select a highlighted AO square.";
-      selectionLayer.clearLayers();pointLayer.clearLayers();map.invalidateSize();map.setMaxBounds([[-85,-180],[85,180]]);map.setMinZoom(1);
+      selectionLayer.clearLayers();pointLayer.clearLayers();map.invalidateSize();map.setMaxBounds(null);map.setMinZoom(1);map.setMaxZoom(10);
       if(raw){
         if(opts.point)map.setView([opts.point.lat,opts.point.lon],9);else map.setView([15,30],2);
       }else{
         const p=presets[id],b=p.bbox;let area=[[b[0],b[2]],[b[1],b[3]]];
         if(p.anchor){const [lat,lon]=p.anchor,dy=(p.anchorRadiusKm||65)*1.6/111,dx=dy/Math.cos(lat*Math.PI/180);area=[[lat-dy,lon-dx],[lat+dy,lon+dx]];}
         const focus=L.latLngBounds(area);map.fitBounds(focus,{padding:[28,28],maxZoom:9,animate:false});map.setZoom(Math.max(6,map.getZoom()),{animate:false});
-        if(id==="australia")map.setZoom(map.getZoom()+1,{animate:false});
+        const region=L.latLngBounds([[b[0],b[2]],[b[1],b[3]]]);map.setMaxZoom(MapSupport.squareZoom(map));map.setMinZoom(Math.min(map.getMaxZoom(),map.getBoundsZoom(region)));map.setMaxBounds(region);
       }
-      draw();$("aoClose").focus();
+      draw();if(opts.point)select(opts.point.lat,opts.point.lon);$("aoClose").focus();
     }
     return {open(opts={}){
       returnFocus=document.activeElement;

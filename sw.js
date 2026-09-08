@@ -1,7 +1,7 @@
 /* MGR Converter — cache-first service worker. Update version.js to force an update. */
 importScripts("./version.js");
 const CACHE = `mgr-conv-v${self.APP_VERSION}`;
-const ASSETS = ["./","./index.html","./version.js","./proj4.js","./map-context.js","./grid-core.js","./map-support.js","./map-picker.js","./map-picker.css","./point-picker.js","./point-picker.css","./vendor/countries.geojson","./vendor/mgrs.js","./vendor/leaflet.js","./vendor/leaflet.css","./vendor/land.geojson","./manifest.webmanifest","./icons/favicon-32.png","./icons/apple-touch-icon.png","./icons/icon-192.png","./icons/icon-512.png"];
+const ASSETS = ["./","./index.html","./version.js","./proj4.js","./map-context.js","./grid-core.js","./map-support.js","./map-picker.js","./map-picker.css","./point-picker.js","./point-picker.css","./vendor/countries.geojson","./vendor/shoalwater.geojson","./vendor/mgrs.js","./vendor/leaflet.js","./vendor/leaflet.css","./vendor/land.geojson","./manifest.webmanifest","./icons/favicon-32.png","./icons/apple-touch-icon.png","./icons/icon-192.png","./icons/icon-512.png"];
 self.addEventListener("install", e => e.waitUntil(
   caches.open(CACHE)
     .then(c=>c.addAll(ASSETS.map(path=>new Request(new URL(path,self.location.href),{cache:"reload"}))))

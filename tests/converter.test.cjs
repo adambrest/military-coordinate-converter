@@ -25,7 +25,7 @@ function app(saved,realMap=false){
     Object.defineProperty(w.HTMLElement.prototype,'clientWidth',{get(){return w.testWidth||800;}});
     Object.defineProperty(w.HTMLElement.prototype,'clientHeight',{get(){return ['aoMap','pointMap'].includes(this.id)?w.testHeight||480:40;}});
     w.ResizeObserver=class {constructor(callback){w.resizePicker=callback;}observe(){}};
-    w.fetch=async url=>({ok:true,text:async()=>read('version.js'),json:async()=>JSON.parse(read(url==='vendor/countries.geojson'?url:'vendor/land.geojson'))});
+    w.fetch=async url=>({ok:true,text:async()=>read('version.js'),json:async()=>JSON.parse(read(url.startsWith('vendor/')?url:'vendor/land.geojson'))});
     w.eval(read('vendor/leaflet.js'));const createMap=w.L.map;w.L.map=(...args)=>{const map=createMap(...args);if(args[0]==='pointMap')w.pointTestMap=map;else w.testMap=map;return map;};w.eval(read('map-picker.js'));w.eval(read('point-picker.js'));
   }else w.createAOPicker=opts=>{w.pickerHooks=opts;return {open:o=>{w.mapOptions=o;w.document.getElementById('aoOverlay').classList.add('open');}};};
   if(!realMap)w.createPointPicker=opts=>{w.pointPickerHooks=opts;return {open:o=>{w.pointOptions=o;}};};
@@ -294,17 +294,17 @@ test('every visible country square is selectable and selection uses exactly its 
     a.$('#aoApply').click();assert.equal(a.$('#copyBtn').disabled,false,id);a.dom.window.close();
   }
 });
-test('larger Raw WGS 84 zones retain square letters and cannot invent missing ones',()=>{
+test('Settings retains whole-zone selection and requires square letters',async()=>{
   const c=core();assert.match(c.GlobalGrid.parse('1234 5678','31U').error,/square letters/);
   assert.equal(c.GlobalGrid.parse('DQ 4825 1193','31U').prefix,'31UDQ');
   const settings=vm.runInContext('defaultSettings()',c);settings.mgrs.ao='31U';settings.mgrs.sgOmit=true;c.settings=settings;
   assert.match(vm.runInContext('formatPoint(48.8582,2.2945,"mgrs",settings)[0]',c),/^DQ /);
-  const a=app(undefined,true);a.change('#fromSys','mgrs');a.paste('1234 5678');a.$('[data-location="mgrs"]').click();a.change('#aoSize','zone');
+  const a=app(undefined,true);a.change('#fromSys','mgrs');a.$('#tab-set').click();a.$('[data-head="mgrs"]').click();await new Promise(r=>setTimeout(r,20));a.$('#mapbtn_mgrs').click();a.change('#aoSize','zone');
   a.w.testMap.setView([48,2],5,{animate:false});a.change('#aoSize','zone');
   const cells=[];a.w.testMap.eachLayer(l=>{if(l.options?.aoCandidate)cells.push(l);});assert.ok(cells.length);
   const cell=cells.find(l=>l.options.aoCandidate.prefix==='31U');assert.ok(cell);cell.fire('click',{originalEvent:new a.w.MouseEvent('click')});
-  a.$('#aoApply').click();assert.equal(a.state().settings.mgrs.ao,'31U');assert.equal(a.$('#copyBtn').disabled,true);assert.match(a.$('#badPair').textContent,/square letters/);
-  a.paste('DQ 4825 1193');assert.equal(a.$('#copyBtn').disabled,false);a.dom.window.close();
+  a.$('#aoApply').click();assert.equal(a.state().settings.mgrs.ao,'31U');assert.equal(a.$('#copyBtn').disabled,true);
+  a.$('#tab-conv').click();a.paste('DQ 4825 1193');assert.equal(a.$('#copyBtn').disabled,false);a.dom.window.close();
 });
 test('coarse global output supports 100 km references and never becomes blank',()=>{
   const c=core();assert.equal(vm.runInContext('(()=>{const s=defaultSettings();s.mgrs={sgDigits:0,sgOmit:true,ao:"31UDQ"};return formatPoint(48.8582,2.2945,"mgrs",s)[0]})()',c),'31U DQ');
@@ -418,11 +418,11 @@ test('real crosshair picker cancels cleanly and Add & continue adds distinct new
   a.$('#pointOverlay').dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(a.$('#pointOverlay').classList.contains('open'),false);a.dom.window.close();
 });
 
-test('overview delays street tiles until zoom 7 and satellite toggle preserves centre',async()=>{
+test('street layer persists through overview zoom and satellite toggle preserves centre',async()=>{
   const a=app(undefined,true);a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));
   const activeTiles=()=>{const layers=[];a.w.pointTestMap.eachLayer(l=>{if(l instanceof a.w.L.TileLayer)layers.push(l);});return layers;};
-  a.w.pointTestMap.setView([20,100],4,{animate:false});assert.equal(activeTiles().length,0);assert.equal(a.$('#pointMapScale'),null);assert.ok(a.$('.country-name'));
-  a.w.pointTestMap.setZoom(7,{animate:false});assert.equal(activeTiles().length,1);assert.match(activeTiles()[0]._url,/openstreetmap/);
+  a.w.pointTestMap.setView([20,100],4,{animate:false});assert.equal(activeTiles().length,1);assert.equal(a.$('#pointMapScale'),null);assert.ok(a.$('.singapore-name'));
+  const streets=activeTiles()[0];a.w.pointTestMap.setZoom(7,{animate:false});assert.equal(activeTiles().length,1);assert.equal(activeTiles()[0],streets);assert.match(streets._url,/openstreetmap/);
   const center=a.w.pointTestMap.getCenter();a.$('#pointSatellite').click();assert.equal(activeTiles().length,1);assert.match(activeTiles()[0]._url,/World_Imagery/);assert.equal(a.w.pointTestMap.getCenter().lat,center.lat);
   activeTiles()[0].fire('tileerror');assert.equal(a.$('#pointNetwork').hidden,false);
   a.$('#pointStreet').click();assert.equal(a.$('#pointNetwork').hidden,true);a.dom.window.close();
@@ -493,12 +493,10 @@ test('region snap is mild, only follows a human drag, and yields on the next dra
   assert.equal(map.getMinZoom(),1);map.setZoom(22,{animate:false});assert.equal(map.getZoom(),22);a.dom.window.close();
 });
 
-test('AO map can leave its initial region and whole-zone guidance explains missing letters',async()=>{
+test('regional AO maps stay regional and converter selection always uses squares',async()=>{
   const a=app(undefined,true);a.change('#fromSys','taiwan');a.$('#regionChip').click();const map=a.w.testMap;
-  assert.equal(map.getMinZoom(),1);map.setView([14,99],4,{animate:false});assert.equal(map.getCenter().lng,99);map.setZoom(22,{animate:false});assert.equal(map.getZoom(),22);
-  a.change('#aoRegion','brunei');await new Promise(r=>setTimeout(r,20));assert.match(a.$('#aoTitle').textContent,/Brunei/);
-  const labels=[...a.w.document.querySelectorAll('.map-point-label')].map(e=>e.textContent);assert.ok(labels.includes('Jalan Aman Camp'));assert.ok(labels.includes('Lakiun Camp'));
-  a.$('#aoClose').click();a.change('#fromSys','mgrs');a.$('#regionChip').click();a.change('#aoSize','zone');await new Promise(r=>setTimeout(r,20));assert.match(a.$('#aoInstruction').textContent,/Keep the square letters/);a.dom.window.close();
+  assert.ok(map.getMinZoom()>1);assert.equal(a.$('#aoRegion').hidden,true);map.setView([14,99],4,{animate:false});assert.ok(map.getCenter().lng>119);map.setZoom(22,{animate:false});assert.ok(map.getZoom()<=9);
+  a.$('#aoClose').click();a.change('#fromSys','mgrs');a.$('#regionChip').click();assert.equal(a.$('#aoRegion').hidden,false);assert.equal(a.$('#aoSizeLabel').hidden,true);a.change('#aoSize','zone');await new Promise(r=>setTimeout(r,20));assert.match(a.$('#aoInstruction').textContent,/100 km grid square/);a.dom.window.close();
 });
 
 test('empty rows cannot multiply through Add row or Enter, and Auto-detect keeps it hidden',()=>{
@@ -532,4 +530,56 @@ test('map entry honours 100 km MGRS precision without treating the square as an 
   a.w.pointPickerHooks.onConfirm({lat:48.8582,lon:2.2945},{zoom:15,layer:'street'});
   assert.match(a.state().rows[0][0].trim(),/^31U DQ$/);assert.equal(a.state().rows[0][1],'');assert.equal(a.state().points.length,1);assert.equal(a.$('#addRow').disabled,false);
   a.$('#selectMap').click();assert.equal(a.w.pointOptions.points.length,1);a.$('#addRow').click();assert.deepEqual(a.state().rows[1],['','','']);a.dom.window.close();
+});
+
+test('empty Auto-detect cannot clear until there is input',()=>{
+  const a=app();assert.equal(a.$('#fromRows .del').disabled,true);a.$('#fromRows .del').click();assert.equal(a.$('#fromSys').value,'auto');
+  a.$('#fromRows .a').value='something';a.$('#fromRows .a').dispatchEvent(new a.w.Event('input'));assert.equal(a.$('#fromRows .del').disabled,false);
+  a.$('#fromRows .del').click();assert.equal(a.$('#fromRows .del').disabled,true);a.dom.window.close();
+});
+
+test('empty Auto-detect ignores hidden names and guards dispatched clear events',()=>{
+  const c=core();const a=app({settings:vm.runInContext('defaultSettings()',c),from:'auto',to:'wgs84',rows:[['','','Saved name'],['','','Another name']]});
+  const rows=a.$('#fromRows').children;assert.equal(rows[0].querySelector('.del').disabled,true);assert.equal(rows[1].querySelector('.del').disabled,true);
+  rows[0].querySelector('.del').dispatchEvent(new a.w.MouseEvent('click',{bubbles:true}));assert.equal(a.$('#fromRows').children.length,2);assert.equal(a.$('#fromRows .nm').value,'Saved name');
+  rows[0].querySelector('.a').value='   ';rows[0].querySelector('.a').dispatchEvent(new a.w.Event('input'));assert.equal(rows[0].querySelector('.del').disabled,true);a.dom.window.close();
+});
+
+test('regional point map constrains navigation and global reopening restores world panning',async()=>{
+  const a=app(undefined,true);a.change('#fromSys','sg');a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));const map=a.w.pointTestMap;
+  assert.equal(a.$('#pointRegion').hidden,true);assert.ok(map.getMinZoom()>1);map.setView([48,2],2,{animate:false,reset:true});assert.ok(map.getCenter().lat<2);assert.ok(map.getCenter().lng>103);
+  a.$('#pointClose').click();a.change('#fromSys','wgs84');a.$('#selectMap').click();assert.equal(a.$('#pointRegion').hidden,false);assert.equal(map.getMinZoom(),1);assert.equal(map.options.maxBounds,null);
+  map.setView([1.35,463.82],5,{animate:false,reset:true});assert.match(a.$('#pointCoordinate').textContent,/103\.820000/);assert.ok(a.$('.singapore-name'));
+  a.$('#pointConfirm').click();assert.ok(Math.abs(a.state().points[0].lon-103.82)<.0001);a.dom.window.close();
+});
+
+test('double tap zooms towards its screen location without a delayed first-tap pan',async()=>{
+  const a=app(undefined,true);a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));const map=a.w.pointTestMap;
+  map.setView([1.35,103.82],12,{animate:false,reset:true});const screen=a.w.L.point(600,180),target=map.containerPointToLatLng(screen),before=map.getCenter();
+  map.fire('click',{latlng:target,containerPoint:screen});map.fire('dblclick',{latlng:target,containerPoint:screen,originalEvent:{}});
+  assert.equal(map.getZoom(),13);assert.ok(map.getCenter().lng>before.lng);assert.ok(map.latLngToContainerPoint(target).distanceTo(screen)<2);
+  const after=map.getCenter();await new Promise(r=>setTimeout(r,350));assert.equal(map.getCenter().lng,after.lng);assert.equal(map.getCenter().lat,after.lat);a.dom.window.close();
+});
+
+test('global AO grid repeats at the date line and selects the wrapped canonical square',async()=>{
+  const a=app(undefined,true);a.change('#fromSys','mgrs');a.$('#regionChip').click();const map=a.w.testMap;
+  map.setView([1,180],6,{animate:false,reset:true});await new Promise(r=>setTimeout(r,30));const candidates=[];map.eachLayer(l=>{if(l.options?.aoCandidate)candidates.push(l);});
+  const wrapped=candidates.find(l=>l.options.aoCandidate.offset===360);assert.ok(wrapped);assert.match(wrapped.options.aoCandidate.prefix,/^1/);
+  const chosen=wrapped.options.aoCandidate;wrapped.fire('click',{originalEvent:new a.w.MouseEvent('click')});a.$('#aoApply').click();assert.equal(a.state().settings.mgrs.ao,chosen.prefix);assert.ok(Math.abs(a.state().lastLocation.lon)<=180);a.dom.window.close();
+});
+
+test('AO zoom keeps square context when rotating a phone into landscape',async()=>{
+  const a=app(undefined,true);a.change('#fromSys','taiwan');a.$('#regionChip').click();const map=a.w.testMap;
+  map.setZoom(22,{animate:false});a.w.testWidth=844;a.w.testHeight=150;a.w.resizePicker();await new Promise(r=>setTimeout(r,20));
+  assert.ok(map.getZoom()<=a.w.MapSupport.squareZoom(map));assert.ok(map.getMinZoom()<=map.getMaxZoom());
+  const size=map.getSize(),center=map.getCenter();const east=map.latLngToContainerPoint([center.lat,center.lng+100/111/Math.cos(center.lat*Math.PI/180)]),origin=map.latLngToContainerPoint(center);
+  assert.ok(east.distanceTo(origin)<Math.min(size.x,size.y));a.dom.window.close();
+});
+
+test('imagery sits above offline land with only a transparent training-area outline',async()=>{
+  const a=app(undefined,true);a.change('#fromSys','australia');a.$('#selectMap').click();await new Promise(r=>setTimeout(r,30));const map=a.w.pointTestMap;
+  assert.ok(Number(map.getPane('offlineLand').style.zIndex)<200);assert.ok(Number(map.getPane('pointCountries').style.zIndex)<200);
+  assert.equal(a.w.MAP_CONTEXT.australia.roads,undefined);assert.equal(a.w.MAP_CONTEXT.thailand.roads,undefined);
+  const boundaries=[];map.eachLayer(l=>{if(l.feature?.properties?.name==='Shoalwater Bay Training Area')boundaries.push(l);});assert.ok(boundaries.length);assert.equal(boundaries[0].options.fill,false);
+  a.$('#pointSatellite').click();let satellite;map.eachLayer(l=>{if(l instanceof a.w.L.TileLayer&&/World_Imagery/.test(l._url))satellite=l;});assert.ok(satellite);a.dom.window.close();
 });

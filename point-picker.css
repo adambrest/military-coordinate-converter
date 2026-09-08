@@ -13,10 +13,8 @@
 #pointPreset{font-size:12px;font-weight:700}#pointCount{margin-left:auto;font-size:11px;color:var(--muted)}
 .point-map-wrap{position:relative;flex:1;min-height:180px;background:#dceef5}
 #pointMap{height:100%;width:100%;font-family:inherit;background:#dceef5}
-.point-crosshair{position:absolute;left:50%;top:50%;width:26px;height:26px;transform:translate(-50%,-50%);z-index:600;pointer-events:none;filter:drop-shadow(0 0 1px white)}
-.point-crosshair:before,.point-crosshair:after{content:"";position:absolute;background:linear-gradient(to right,#374151 0 32%,transparent 32% 68%,#374151 68%);opacity:.85}
-.point-crosshair:before{width:26px;height:1px;top:12.5px;left:0}.point-crosshair:after{width:26px;height:1px;top:12.5px;left:0;transform:rotate(90deg)}
-.point-crosshair i{display:none}
+.point-crosshair{position:absolute;left:50%;top:50%;width:32px;height:32px;transform:translate(-50%,-50%);z-index:600;pointer-events:none;shape-rendering:crispEdges;fill:none;stroke-linecap:butt}
+.crosshair-edge{stroke:#111827;stroke-width:4}.crosshair-core{stroke:#fff;stroke-width:2}
 .country-name{color:#334155;font:600 11px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-align:center;text-shadow:0 1px 2px white,0 -1px 2px white;white-space:normal;pointer-events:none}
 .chosen-point-label{font:600 11px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;width:max-content;max-width:180px;white-space:normal;overflow-wrap:anywhere}
 .point-footer{padding:12px 18px 16px;border-top:1px solid var(--line)}
@@ -30,6 +28,8 @@
 
 .row-actions .addrow,.row-actions .select-map{align-self:auto;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--accent);padding:8px 12px;font-family:inherit;font-size:12px;font-weight:600;line-height:1.4;min-height:36px;margin:0}
 .row-actions button:disabled{opacity:.4;cursor:default}
+.del:disabled{visibility:hidden;pointer-events:none}.map-region[hidden]{display:none}
+.singapore-name{font-weight:700;color:#1e293b;background:rgba(255,255,255,.85);border-radius:4px;width:80px!important;margin-left:-40px!important;padding:2px 0}
 .map-region{max-width:100%;min-width:0;padding:7px;border:1px solid var(--line);border-radius:7px;background:var(--panel2);color:var(--text);font:inherit;font-size:12px}
 .dialog-heading{display:flex;justify-content:space-between;align-items:start;gap:12px}.dialog-heading h3{margin-top:0}.dialog-close{border:0;background:var(--panel2);border-radius:8px;font-size:24px;width:38px;height:38px;flex-shrink:0;cursor:pointer}
 #boundaryOverlay{z-index:2100}#boundaryDetail{font-size:14px;line-height:1.5}
