@@ -485,11 +485,14 @@ test('offline and failed connectivity disable map entry, recovery restores it',a
   Object.defineProperty(a.w.navigator,'onLine',{configurable:true,value:false});a.w.dispatchEvent(new a.w.Event('offline'));a.change('#fromSys','taiwan');a.$('#regionChip').click();assert.equal(a.w.mapOptions.preset,'taiwan');a.dom.window.close();
 });
 
-test('region snap is mild, only follows a human drag, and yields on the next drag',async()=>{
+test('the point map never snaps to a region; only the dropdown moves the camera',async()=>{
   const a=app(undefined,true);a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));const map=a.w.pointTestMap;
   map.setView([14.02,99.3],6,{animate:false});assert.equal(map.getCenter().lng,99.3);
-  map.fire('dragstart');map.setView([14.01,99.28],6,{animate:false});assert.equal(map.getCenter().lng,99.24459);
-  map.fire('dragstart');map.setView([14.03,99.31],6,{animate:false,reset:true});assert.equal(map.getCenter().lng,99.31);
+  // Releasing a drag beside a landmark must leave the camera where the hand left it.
+  map.fire('dragstart');map.setView([14.01,99.28],6,{animate:false});
+  assert.ok(Math.abs(map.getCenter().lng-99.28)<0.03,'the map pulled itself towards a region');
+  map.fire('dragstart');map.setView([14.03,99.31],6,{animate:false,reset:true});
+  assert.ok(Math.abs(map.getCenter().lng-99.31)<0.03,'the map pulled itself towards a region');
   map.fire('dragstart');map.setView([1.351,103.821],15,{animate:false});assert.equal(map.getCenter().lng,103.821);
   a.change('#pointRegion','brunei');assert.equal(map.getCenter().lng,114.75);assert.equal(map.getZoom(),9);
   assert.equal(map.getMinZoom(),1);map.setZoom(22,{animate:false});assert.equal(map.getZoom(),19);a.dom.window.close();
@@ -928,5 +931,46 @@ test('satellite coverage checks viewport tiles and drops unavailable zoom levels
 test('coverage errors are not interpreted as available imagery',async()=>{
   const a=app(undefined,false,false);
   await assert.rejects(a.w.MapSupport.imageryZoom(48,2,390,500,async()=>({ok:true,json:async()=>({error:{code:500}})})),/coverage/);
+  a.dom.window.close();
+});
+
+test('switching between country grids keeps the digits and turns the output into coordinates',()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','sg');a.paste('3000 3000');
+  a.change('#fromSys','taiwan');
+  assert.equal(a.state().from,'taiwan');
+  // The digits are grid digits either way, so they stay exactly as typed.
+  assert.equal(a.$('#fromRows .a').value,'3000');assert.equal(a.$('#fromRows .b').value,'3000');
+  assert.equal(a.state().to,'wgs84','a grid input must not convert into another grid');
+  a.dom.window.close();
+});
+test('coordinates inside a country grid are rewritten into that grid',()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','wgs84');a.paste('1.35, 103.82');
+  a.change('#fromSys','sg');
+  assert.equal(a.state().from,'sg');
+  assert.match(a.$('#fromRows .a').value,/^\d+$/,'coordinates should become grid digits');
+  assert.equal(a.state().to,'wgs84');
+  a.dom.window.close();
+});
+test('coordinates outside a country grid offer to clear rather than being reinterpreted',()=>{
+  const a=app(undefined,false,true);
+  a.change('#fromSys','wgs84');a.paste('48.85, 2.29');
+  a.change('#fromSys','sg');
+  assert.equal(a.$('#switchOverlay').classList.contains('open'),true,'an out-of-range switch must ask first');
+  assert.equal(a.state().from,'wgs84','the switch must not land while the question is open');
+  a.$('#switchClear').click();
+  assert.equal(a.state().from,'sg');assert.equal(a.$('#fromRows .a').value,'');
+  a.dom.window.close();
+});
+test('tile prefetch covers both layers around a point',async()=>{
+  const a=app(undefined,false,false);
+  const urls=a.w.MapSupport.tileUrls(1.35,103.82,[11],1);
+  assert.equal(urls.length,18);
+  assert.ok(urls.some(u=>u.includes('tile.openstreetmap.org/11/')),'street tiles missing');
+  assert.ok(urls.some(u=>u.includes('World_Imagery/MapServer/tile/11/')),'satellite tiles missing');
+  const seen=[];
+  const stored=await a.w.MapSupport.prefetchTiles({lat:1.35,lon:103.82},{zooms:[11],radius:0,request:async u=>{seen.push(u);return {ok:true};}});
+  assert.equal(stored,2);assert.equal(seen.length,2);
   a.dom.window.close();
 });

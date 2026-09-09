@@ -1,7 +1,7 @@
 /* Crosshair point selection. Only visible street/satellite tiles are requested. */
 (function(root){
   "use strict";
-  root.createPointPicker=function({preview,onConfirm}){
+  root.createPointPicker=function({preview,onConfirm,onViewChange}){
     const $=id=>document.getElementById(id),overlay=$("pointOverlay");
     const STREET_ZOOM=7;
     let map,countries,labels,markers,streets,satellite,options={},returnFocus,frame,stableCenter,limitCenter;
@@ -20,23 +20,22 @@
       $("pointNetwork").textContent="Map imagery is unavailable here. Try the other layer or check your connection.";
     }
     function checkCoverage(){
-      clearTimeout(coverageTimer);
       if(!map||!overlay.classList.contains("open"))return;
       if(mode!=="satellite"){
-        coverageToken++;coverageKey="";coveragePending=false;coverageFailed=false;
+        clearTimeout(coverageTimer);coverageToken++;coverageKey="";coveragePending=false;coverageFailed=false;
         map.setMaxZoom(DETAIL_ZOOM);return;
       }
       const p=center(),size=map.getSize(),pixel=map.project([p.lat,p.lon],19);
       const key=[Math.floor(pixel.x),Math.floor(pixel.y),size.x,size.y].join(',');
       if(key===coverageKey)return;
-      coverageKey=key;const token=++coverageToken;coveragePending=true;coverageFailed=false;
-      // Keep street context visible until the provider confirms satellite coverage.
+      clearTimeout(coverageTimer);coverageKey=key;const token=++coverageToken;coveragePending=true;coverageFailed=false;
+      // Coverage changes the zoom ceiling, never the selected basemap.
       layers();
       coverageTimer=setTimeout(async()=>{
         try{
           const zoom=await MapSupport.imageryZoom(p.lat,p.lon,size.x,size.y,url=>fetch(url,{signal:AbortSignal.timeout(5000)}));
           if(token!==coverageToken||mode!=="satellite")return;
-          coveragePending=false;satellite.options.maxNativeZoom=zoom;map.setMaxZoom(zoom);layers();
+          coveragePending=false;map.setMaxZoom(zoom);layers();
         }catch(_){
           if(token!==coverageToken)return;
           coveragePending=false;coverageFailed=true;coverageKey="";layers();
@@ -47,7 +46,7 @@
       const zoom=map.getZoom(),broad=zoom<STREET_ZOOM;
       // Keep the same tile layer throughout pinch zoom; the offline country
       // geometry stays underneath while new tiles load.
-      toggle(streets,mode==="street"||coveragePending||coverageFailed);toggle(satellite,mode==="satellite"&&!coveragePending&&!coverageFailed);
+      toggle(streets,mode==="street");toggle(satellite,mode==="satellite");
       const worlds=MapSupport.worlds(map),key=worlds.join(',');
       if(countryGeometry&&worldKey!==key){countries.clearLayers();for(const offset of worlds)countries.addData(MapSupport.repeatGeometry(countryGeometry,offset));worldKey=key;}
       toggle(labels,broad);labels.clearLayers();
@@ -89,7 +88,7 @@
       map.createPane("offlineLand").style.zIndex="160";
       MapSupport.context(map);
       MapSupport.trainingArea(map);
-      MapSupport.navigation(map,$("pointRegion"));
+      MapSupport.navigation(map,$("pointRegion"),null,{snap:false});
       limitCenter=MapSupport.limitCenter(map);
       countries=L.geoJSON(null,{pane:"pointCountries",interactive:false,style:{color:"#90a5b5",weight:.8,fillColor:"#f2f0e9",fillOpacity:1}}).addTo(map);
       map.attributionControl.addAttribution('<a href="https://www.naturalearthdata.com/">Natural Earth</a>');
@@ -123,6 +122,7 @@
       if(root.ResizeObserver)new ResizeObserver(resize).observe($("pointMap"));else root.addEventListener("resize",resize);
     }
     function close(){
+      if(map)onViewChange?.({...center(),zoom:map.getZoom(),layer:mode,presetId:options.presetId});
       cancelTap?.();clearTimeout(coverageTimer);coverageToken++;coverageKey="";map?.stop();overlay.classList.remove("open");cancelAnimationFrame(frame);
       for(const [el,inert] of background)el.inert=inert;
       background=[];returnFocus?.focus();
@@ -133,7 +133,7 @@
       busy=true;update();
       try{
         map.stop();
-        const point=center();let result=onConfirm(point,{zoom:map.getZoom(),layer:mode});
+        const point=center();let result=onConfirm(point,{zoom:map.getZoom(),layer:mode,presetId:options.presetId});
         if(result?.then)result=await result;
         if(result?.canceled)return;
         if(result?.error){failure=result.error;return;}

@@ -7,6 +7,9 @@
 <title>Military Coordinate Converter</title>
 <meta name="description" content="Convert latitude/longitude, global WGS 84 MGRS and country military grids.">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin>
+<link rel="preconnect" href="https://services.arcgisonline.com" crossorigin>
+<link rel="dns-prefetch" href="https://ipapi.co">
 <link rel="stylesheet" href="vendor/leaflet.css">
 <link rel="stylesheet" href="map-picker.css">
 <link rel="stylesheet" href="point-picker.css">
@@ -144,16 +147,20 @@
 
   /* settings accordion */
   .preset{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:hidden}
-  .preset-head{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff;border:none;padding:12px 14px;cursor:pointer;font-size:14px;font-weight:700;color:var(--text)}
+  .preset-heading{display:flex;align-items:center;background:#fff;min-height:52px}
+  .preset-head{flex:1;min-width:0;display:flex;align-items:center;gap:12px;background:transparent;border:none;padding:15px 16px;cursor:pointer;font-size:14px;font-weight:700;color:var(--text);text-align:left}
   .preset-head:hover{background:var(--panel2)}
-  .preset-heading{display:flex;align-items:center;background:#fff}
-  .preset-heading .preset-head{flex:1;min-width:0;width:auto}
-  .preset-heading .setting-action{flex:none;margin-right:12px}
-  .preset.disabled .preset-heading{background:var(--panel2)}
-  .preset.disabled .preset-head{background:transparent;color:var(--muted)}
+  .preset-toggle{flex:0 0 36px;width:36px;height:22px;border:0;border-radius:11px;padding:0;margin:0 16px 0 12px;background:#cbd5e1;position:relative;cursor:pointer;transition:background .15s}
+  .preset-toggle::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;background:white;border-radius:50%;box-shadow:0 1px 3px #0002;transition:transform .15s}
+  .preset-toggle[aria-checked="true"]{background:var(--accent)}
+  .preset-toggle[aria-checked="true"]::after{transform:translateX(14px)}
+  .preset-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+  .preset.disabled .preset-heading{background:#f8fafc}
+  .preset.disabled .preset-head{color:var(--muted)}
   .preset.open .preset-heading{border-bottom:1px solid var(--line)}
   .pname{display:flex;align-items:center;gap:8px}
-  .chev{color:var(--muted);font-size:12px}
+  .chev{flex:0 0 6px;width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);color:var(--muted);transition:transform .15s}
+  .preset.open .chev{transform:rotate(45deg)}
   .tagu{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--warn);border:1px solid var(--warn);border-radius:5px;padding:1px 5px}
   .preset-body{display:none;padding:12px 14px}
   .preset.open .preset-body{display:block}
@@ -277,6 +284,10 @@
       <div class="point-map-wrap"><div id="pointMap" tabindex="0" aria-label="Point map. Arrow keys move the crosshair location; plus and minus zoom; Enter adds the point."></div><svg class="point-crosshair" aria-hidden="true" viewBox="0 0 32 32"><path class="crosshair-edge" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/><path class="crosshair-core" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/></svg></div>
       <div class="point-footer"><div id="pointCoordinate"></div><div id="pointFormatPreview" aria-live="polite"></div><p class="point-status" id="pointUnresolved" hidden></p><p class="point-status" id="pointNetwork" hidden></p><p class="point-status" id="pointAdded" role="status"></p><div class="point-actions"><button class="setting-action" id="pointContinue">Add and add another</button><button class="setting-action primary" id="pointConfirm">Add</button></div></div>
     </div>
+  </div>
+
+  <div class="overlay" id="switchOverlay" role="dialog" aria-modal="true" aria-labelledby="switchTitle">
+    <div class="modal"><div class="dialog-heading"><h3 id="switchTitle">These entries do not fit that system</h3><button id="switchClose" class="dialog-close" aria-label="Close notice">&times;</button></div><p id="switchDetail"></p><div class="m-actions"><button id="switchCancel">Keep current system</button><button id="switchClear" class="primary">Clear entries</button></div></div>
   </div>
 
   <div class="overlay" id="boundaryOverlay" role="dialog" aria-modal="true" aria-labelledby="boundaryTitle">
@@ -971,13 +982,34 @@
       // An incomplete pre-existing row must not open another modal over this picker.
       pointOptions={...pointOptions,...current};save();return current;
     }
-    const pointPicker=createPointPicker({preview:mapPointPreview,onConfirm:addMapPoint});
+    // Resolved lazily so the page never reaches the network before the map is wanted.
+    let locationGuess;
+    const guessLocation=()=>{
+      try{return (locationGuess||=MapSupport.approximateLocation()).current();}
+      catch(_){return {lat:1.35,lon:103.82,zoom:10};}
+    };
+    const pointPicker=createPointPicker({preview:mapPointPreview,onConfirm:addMapPoint,onViewChange:view=>{state.pointMapView=view;save();}});
+    // Warm the guess before the click so the first open already has it.
+    for(const event of ["pointerenter","focus"])$("#selectMap").addEventListener(event,guessLocation,{once:true,passive:true});
+    // With a worker to cache them, fetch the tiles around the guessed area while
+    // the page is idle, so the first map open draws from disk rather than the net.
+    if("serviceWorker" in navigator){
+      const whenIdle=globalThis.requestIdleCallback||(run=>setTimeout(run,1500));
+      whenIdle(()=>{
+        (locationGuess||=MapSupport.approximateLocation()).ready.then(point=>{
+          MapSupport.prefetchTiles(point);
+          // Knowing the ceiling up front stops the first satellite switch stalling.
+          MapSupport.imageryZoom(point.lat,point.lon,800,480).catch(()=>{});
+        }).catch(()=>{});
+      });
+    }
     $("#selectMap").addEventListener("click",()=>{
       readRows();const current=existingMapPoints(),id=state.from==="auto"?"wgs84":state.from,p=PRESETS[id];
-      const last=current.points.at(-1)||state.pointMapView||state.lastLocation;
+      const savedView=state.pointMapView;
+      const last=current.points.at(-1)||(savedView?.presetId===id?savedView:null);
       const previous=last&&(!p.bbox||presetContains(id,last.lat,last.lon))?last:null;
-      const fallback=p.anchor?{lat:p.anchor[0],lon:p.anchor[1]}:p.bbox?{lat:(p.bbox[0]+p.bbox[1])/2,lon:(p.bbox[2]+p.bbox[3])/2}:{lat:1.35,lon:103.82};
-      pointOptions={...current,presetId:id,presetLabel:p.name,bounds:p.bbox?[[p.bbox[0],p.bbox[2]],[p.bbox[1],p.bbox[3]]]:null,detailZoom:DETAIL_ZOOM,center:previous||fallback,zoom:(previous?state.pointMapView?.zoom:0)||(previous?15:COUNTRY_PRESETS.includes(id)?9:4),layer:state.pointMapView?.layer||"street"};
+      const fallback=p.anchor?{lat:p.anchor[0],lon:p.anchor[1]}:p.bbox?{lat:(p.bbox[0]+p.bbox[1])/2,lon:(p.bbox[2]+p.bbox[3])/2}:guessLocation();
+      pointOptions={...current,presetId:id,presetLabel:p.name,bounds:p.bbox?[[p.bbox[0],p.bbox[2]],[p.bbox[1],p.bbox[3]]]:null,detailZoom:DETAIL_ZOOM,center:previous||fallback,zoom:(previous?state.pointMapView?.zoom:0)||(previous?15:COUNTRY_PRESETS.includes(id)?9:fallback.zoom||4),layer:state.pointMapView?.layer||"street"};
       pointPicker.open(pointOptions);
     });
 
@@ -1067,7 +1099,7 @@
       const system=state.pendingGrid?.system||(state.explicitInput&&preset?preset:undefined);
       state.pendingGrid={text,i,system};state.aoConfirmed=false;
       text.trim().split(/\r?\n/).forEach((line,k)=>{const g=splitGrid(line);if(g.error)return;while(state.rows.length<=i+k)state.rows.push(["","",""]);state.rows[i+k]=[g.e,g.n,state.rows[i+k][2]||""];});
-      if(state.militaryEnabled&&["wgs84","auto"].includes(state.from)){state.from="mgrs";$("#fromSys").value="mgrs";}
+      if(state.militaryEnabled&&["wgs84","auto"].includes(state.from)){state.from="mgrs";$("#fromSys").value="mgrs";pickOutput(state.from,[]);}
       renderFrom();save();
       const g=splitGrid(text.trim().split(/\r?\n/)[0]);
       picker.open({pending:{text,i},pick:g.error?null:g,point:state.lastLocation,preset,system});
@@ -1273,7 +1305,8 @@
         else detect("Paste a coordinate to get started.");
         return;
       }
-      if(state.from===state.to){ detect(""); setBottomError("Not sure what you're trying to do here."); return; }
+      // A system cannot convert into itself, so move the output aside and carry on.
+      if(state.from===state.to){ pickOutput(state.from,[]); renderTo(); }
       if(state.pendingGrid){
         const i=state.pendingGrid.i,r=state.rows[i];
         // Typing a prefix resolves the row; only still-placeless digits need the chooser.
@@ -1400,21 +1433,95 @@
       setBottomError(bad?"Two country grids can't be converted — choose a global output.":countryError);
       return bad||!!countryError;
     }
-    $("#fromSys").addEventListener("change",()=>{
-      readRows();
-      const hasInput=state.rows.some(r=>r.some(v=>String(v).trim()));
-      state.from=$("#fromSys").value;
-      if(state.from==="mgrs")state.from=state.settings.mgrs.format||"mgrs";
+    let switchReply;
+    function askSwitch(detail,reply){
+      const overlay=$("#switchOverlay"),focus=document.activeElement;
+      const others=[...document.querySelectorAll("body > header,body > main,.overlay.open")].filter(el=>el!==overlay).map(el=>[el,el.inert]);
+      for(const [el] of others)el.inert=true;
+      $("#switchDetail").textContent=detail;
+      overlay.classList.add("open");$("#switchClear").focus();
+      switchReply=clear=>{overlay.classList.remove("open");for(const [el,inert] of others)el.inert=inert;switchReply=null;focus?.focus();reply(clear);};
+    }
+    $("#switchClose").addEventListener("click",()=>switchReply?.(false));
+    $("#switchCancel").addEventListener("click",()=>switchReply?.(false));
+    $("#switchClear").addEventListener("click",()=>switchReply?.(true));
+    $("#switchOverlay").addEventListener("keydown",e=>{
+      if(e.key==="Escape"){e.preventDefault();e.stopPropagation();switchReply?.(false);}
+      if(e.key==="Tab"){e.preventDefault();(document.activeElement===$("#switchClear")?$("#switchCancel"):$("#switchClear")).focus();}
+    });
+    // The work is always grid to coordinates or coordinates to grid, so the two
+    // sides hold opposite kinds and never point a system at itself.
+    function pickOutput(from,points){
+      if(from==="auto")return;
+      const fromGrid=PRESETS[from].kind!=="latlong";
+      if(fromGrid&&state.to!=="wgs84"){state.to="wgs84";state.explicitOutput=false;}
+      else if(!fromGrid&&state.to==="wgs84"){
+        state.to=suggestedGrid(points,COUNTRY_PRESETS.filter(presetEnabled))||(presetEnabled("mgrs")?"mgrs":COUNTRY_PRESETS.find(presetEnabled)||"wgs84");
+        state.explicitOutput=false;
+      }
+    }
+    // Digits that still have no home get the same chooser Convert would raise.
+    function promptArea(target){
+      const p=PRESETS[target];
+      if(!p||!p.large||p.lead)return false;
+      const i=state.rows.findIndex(r=>(r[0]||r[1])&&parseCells(target,r[0],r[1],state.settings).error==="pick-square");
+      if(i<0)return false;
+      showSquarePicker(target,{e:state.rows[i][0],n:state.rows[i][1]});
+      return true;
+    }
+    function finishFrom(target,points){
+      state.from=target;
       state.explicitInput=true;
       delete state.pendingGrid;
       state.aoConfirmed=false;
-      if(PRESETS[state.from].kind!=="latlong"){ lastGridFrom=state.from; state.lastGridFrom=state.from; }
+      if(PRESETS[target].kind!=="latlong"){ lastGridFrom=target; state.lastGridFrom=target; }
       state.points=[]; stale=false;
+      pickOutput(target,points);
       renderFrom(); renderTo(); updatePairState();
-      detect(hasInput?"Input kept — review it for the selected coordinate system.":"",hasInput?"warn":"");
       seedOutputArea();updateRegionChips();
       save();
-      // Ask for an AO when a short reference needs one; map entry already supplies a location.
+    }
+    $("#fromSys").addEventListener("change",()=>{
+      readRows();
+      const previous=state.from,chosen=$("#fromSys").value;
+      const target=chosen==="mgrs"?(state.settings.mgrs.format||"mgrs"):chosen;
+      if(target===previous){syncFormat("from");return;}
+      const hasInput=state.rows.some(r=>r.some(v=>String(v).trim()));
+      if(!hasInput){finishFrom(target,[]);detect("");return;}
+      const {points,unresolved}=existingMapPoints();
+      const revert=()=>{$("#fromSys").value=GLOBAL_FORMATS.includes(previous)?"mgrs":previous;};
+      const clearEntries=()=>{state.rows=[["","",""]];finishFrom(target,[]);detect("");};
+      const name=id=>PRESETS[id].name.replace(" MGR","");
+      const gridToGrid=previous!=="auto"&&PRESETS[previous].kind!=="latlong"&&PRESETS[target].kind!=="latlong";
+      // Grid digits stay grid digits. Reading them against another grid is the
+      // point of the switch, so keep them and ask where they belong.
+      if(gridToGrid){
+        finishFrom(target,[]);
+        detect("Digits kept — now read as "+name(target)+".","warn");
+        promptArea(target);
+        return;
+      }
+      if(unresolved||!points.length){
+        // Nothing resolved to a position, so there is nothing to rewrite.
+        finishFrom(target,[]);
+        detect("Input kept — review it for "+name(target)+".","warn");
+        promptArea(target);
+        return;
+      }
+      if(COUNTRY_PRESETS.includes(target)){
+        const outside=points.filter(p=>!presetContains(target,p.lat,p.lon));
+        if(outside.length){
+          askSwitch((outside.length===points.length?"These coordinates are":outside.length+" of these coordinates are")+" outside the "+name(target)+" area, so they cannot be written as "+name(target)+" references.",
+            clear=>clear?clearEntries():revert());
+          return;
+        }
+      }
+      // Coordinates becoming a grid keep their ground position: rewrite the digits.
+      fillArea(points,target);
+      try{state.rows=points.map(p=>[...formatPoint(p.lat,p.lon,target,state.settings,p.digits),p.name||""]);}
+      catch(error){detect(error.message,"warn");finishFrom(target,points);return;}
+      finishFrom(target,points);
+      detect("Entries rewritten as "+name(target)+".");
     });
     $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value;if(state.to==="mgrs")state.to=state.settings.mgrs.format||"mgrs";state.explicitOutput=true;seedOutputArea();updatePairState();if(rowsHaveContent())convert();else renderTo();save(); });
     $("#fromFormat").addEventListener("change",()=>{
@@ -1555,8 +1662,8 @@
         const p=PRESETS[id], open=(openPreset===id);
         const {basis,specs}=p;
         html+=`<div class="preset${open?" open":""}${presetEnabled(id)?"":" disabled"}" data-id="${id}">`;
-        html+=`<div class="preset-heading"><button class="preset-head" data-head="${id}"><span class="pname">${id==="mgrs"?"Military grid":p.name}${p.unverified?' <span class="tagu">unverified</span>':''}</span><span class="chev">${open?"▾":"▸"}</span></button>`;
-        if(id!=="wgs84")html+=`<button type="button" class="setting-action" ${id==="mgrs"?'id="militaryToggle"':""} data-toggle="${id}" aria-pressed="${presetEnabled(id)}">${presetEnabled(id)?"Disable":"Enable"}</button>`;
+        html+=`<div class="preset-heading"><button class="preset-head" data-head="${id}"><span class="chev" aria-hidden="true"></span><span class="pname">${id==="mgrs"?"Military grid":p.name}${p.unverified?' <span class="tagu">unverified</span>':''}</span></button>`;
+        if(id!=="wgs84")html+=`<button type="button" class="preset-toggle" role="switch" aria-label="${p.name}" aria-checked="${presetEnabled(id)}" ${id==="mgrs"?'id="militaryToggle"':""} data-toggle="${id}" aria-pressed="${presetEnabled(id)}"></button>`;
         html+=`</div><div class="preset-body">`;
         if(!presetEnabled(id)){html+=`<p class="note">Enable ${p.name} to show it in the converter and reference chooser.</p></div></div>`;return;}
         html+=`<div class="basis">${basis}</div>`;

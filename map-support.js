@@ -7,6 +7,84 @@
     {id:'australia',name:'Australia · Shoalwater Bay',lat:-22.65,lon:150.35,zoom:9},
     {id:'brunei',name:'Brunei',lat:4.65,lon:114.75,zoom:9}
   ];
+  const TIMEZONE_VIEWS={
+    'Asia/Singapore':[1.35,103.82], 'Asia/Kuala_Lumpur':[3.14,101.69],
+    'Asia/Kuching':[1.55,110.34], 'Asia/Brunei':[4.90,114.94],
+    'Asia/Bangkok':[13.76,100.50], 'Asia/Taipei':[25.03,121.56],
+    'Asia/Hong_Kong':[22.32,114.17], 'Asia/Tokyo':[35.68,139.69],
+    'Australia/Brisbane':[-27.47,153.03], 'Australia/Sydney':[-33.87,151.21],
+    'Australia/Melbourne':[-37.81,144.96], 'Australia/Perth':[-31.95,115.86],
+    'Europe/London':[51.51,-0.13], 'America/New_York':[40.71,-74.01],
+    'America/Los_Angeles':[34.05,-118.24]
+  };
+  function baseView(timezone=Intl.DateTimeFormat().resolvedOptions().timeZone){
+    const point=TIMEZONE_VIEWS[timezone];
+    return point?{lat:point[0],lon:point[1],zoom:10}:{lat:20,lon:0,zoom:2};
+  }
+  function approximateLocation(){
+    const key='map-base-location-v1';
+    let guess={lat:20,lon:0,zoom:2};
+    try{
+      const timezone=Intl.DateTimeFormat().resolvedOptions().timeZone;
+      guess=baseView(timezone);
+    }catch(_){}
+    const settled=p=>({current:()=>p,ready:Promise.resolve(p)});
+    const valid=p=>p&&Number.isFinite(p.lat)&&Number.isFinite(p.lon)&&Math.abs(p.lat)<=85&&Math.abs(p.lon)<=180;
+    try{const saved=JSON.parse(sessionStorage.getItem(key));if(valid(saved)&&Date.now()-saved.time<21600000)return settled(saved);}catch(_){}
+    // The IP answer is the accurate one and is preferred whenever it arrives; the
+    // timezone view stands in meanwhile so the map never waits on the network.
+    if(typeof fetch!=='function'||globalThis.navigator?.onLine===false)return settled(guess);
+    // Only coarse coordinates are retained. No IP address or fingerprint is stored.
+    const ready=Promise.resolve().then(()=>{
+      const controller=typeof AbortController==='function'?new AbortController():null;
+      // The timer is always cleared so a pending lookup cannot hold the page open.
+      const timer=controller?setTimeout(()=>controller.abort(),2000):0;
+      const options={credentials:'omit',referrerPolicy:'no-referrer'};
+      if(controller)options.signal=controller.signal;
+      return fetch('https://ipapi.co/json/',options).finally(()=>clearTimeout(timer));
+    })
+      .then(r=>{if(!r.ok)throw Error();return r.json();})
+      .then(data=>{const p={lat:data.latitude,lon:data.longitude};if(!valid(p))return guess;
+        guess={lat:Math.round(p.lat*100)/100,lon:Math.round(p.lon*100)/100,zoom:10,time:Date.now()};
+        try{sessionStorage.setItem(key,JSON.stringify(guess));}catch(_){}return guess;
+      }).catch(()=>guess);
+    return {current:()=>guess,ready};
+  }
+  // Tiles covering a small box around a point, at the zooms the pickers open on.
+  function tileUrls(lat,lon,zooms,radius){
+    const urls=[];
+    for(const z of zooms){
+      const count=2**z;
+      const cx=Math.floor((longitude(lon)+180)/360*count);
+      const radians=Math.max(-85,Math.min(85,lat))*Math.PI/180;
+      const cy=Math.floor((1-Math.asinh(Math.tan(radians))/Math.PI)/2*count);
+      for(let dx=-radius;dx<=radius;dx++)for(let dy=-radius;dy<=radius;dy++){
+        const x=((cx+dx)%count+count)%count,y=cy+dy;
+        if(y<0||y>=count)continue;
+        urls.push('https://tile.openstreetmap.org/'+z+'/'+x+'/'+y+'.png');
+        urls.push(imageryService+'/tile/'+z+'/'+y+'/'+x);
+      }
+    }
+    return urls;
+  }
+  // Warms the service worker tile cache so the pickers open on ready imagery.
+  // Metered and very slow connections are left alone.
+  async function prefetchTiles(point,options){
+    const {zooms=[9,11,13],radius=1,concurrency=4,request=globalThis.fetch}=options||{};
+    if(typeof request!=='function'||!point)return 0;
+    const connection=globalThis.navigator?.connection;
+    if(connection?.saveData||/(^|-)2g$/.test(connection?.effectiveType||''))return 0;
+    const urls=tileUrls(point.lat,point.lon,zooms,radius);
+    let index=0,stored=0;
+    const worker=async()=>{
+      while(index<urls.length){
+        const url=urls[index++];
+        try{await request(url,{mode:'no-cors',credentials:'omit'});stored++;}catch(_){}
+      }
+    };
+    await Promise.all(Array.from({length:Math.min(concurrency,urls.length)},worker));
+    return stored;
+  }
   function marker(map,p,onClick){
     const label=document.createElement('span');label.textContent=p.name||'Point '+p.number;
     const pin=L.circleMarker([p.lat,p.lon],{radius:6,color:'#fff',weight:1.5,fillColor:'#2563eb',fillOpacity:1,interactive:!!onClick})
@@ -25,7 +103,7 @@
     const update=()=>{if(map.getZoom()>=8){if(!map.hasLayer(pins))pins.addTo(map);}else if(map.hasLayer(pins))map.removeLayer(pins);};
     map.on('zoomend',update);return {update};
   }
-  function navigation(map,select,onRegion){
+  function navigation(map,select,onRegion,{snap=true}={}){
     select.replaceChildren(new Option('Jump to…',''),...regions.map(r=>new Option(r.name,r.id)));
     const snapped=new Set();let dragged=false;
     select.addEventListener('change',()=>{const r=regions.find(r=>r.id===select.value);if(r){snapped.add(r.id);onRegion?.(r);map.setView([r.lat,r.lon],r.zoom,{animate:false,reset:true});}select.value='';});
@@ -34,7 +112,7 @@
     map.on('dragstart',()=>{map.stop();dragged=true;});
     map.on('zoomstart',()=>{dragged=false;});
     map.on('moveend',()=>{
-      if(!dragged)return;dragged=false;if(select.hidden)return;
+      if(!dragged)return;dragged=false;if(!snap)return;if(select.hidden)return;
       const z=map.getZoom();if(z<4||z>8)return;
       const center=map.latLngToContainerPoint(map.getCenter());
       const r=regions.filter(r=>!snapped.has(r.id)).map(r=>({r,d:map.latLngToContainerPoint([r.lat,r.lon]).distanceTo(center)})).sort((a,b)=>a.d-b.d)[0];
@@ -140,5 +218,5 @@
     map.on('zoomend',update);
     map.attributionControl.addAttribution('© <a href="https://spatial-gis.information.qld.gov.au/arcgis/rest/services/Location/Places/FeatureServer/17">State of Queensland</a>');
   }
-  root.MapSupport={regions,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,imageryZoom,imageryService,trainingArea};
+  root.MapSupport={regions,baseView,approximateLocation,tileUrls,prefetchTiles,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,imageryZoom,imageryService,trainingArea};
 })(globalThis);
