@@ -87,6 +87,10 @@
   .exportbar button{flex:1 1 0;min-height:42px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--text);font-size:13px;font-weight:700;cursor:pointer}
   .exportbar button.maps{background:var(--ok);color:#fff;border-color:var(--ok)}
   .exportbar button:disabled{opacity:.4;pointer-events:none}
+  .history{display:inline-flex;gap:4px;margin-left:auto}
+  .histbtn{min-width:34px;min-height:34px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text);font-size:15px;line-height:1;cursor:pointer}
+  .histbtn:hover:not(:disabled){background:var(--panel2)}
+  .histbtn:disabled{color:#cbd5e1;cursor:default}
   .addrow{align-self:flex-start;margin-top:4px;background:none;border:none;color:var(--accent);font-weight:600;font-size:13px;cursor:pointer;padding:6px 4px}
 
   /* settings */
@@ -213,7 +217,7 @@
           <div class="regionchip" id="regionChip" hidden></div>
           <div class="tbl"><div class="thead" id="fromHead"></div><div id="fromRows"></div></div>
           <div class="detect" id="detect"></div>
-          <div class="row-actions"><button class="addrow" id="addRow">+ Add row</button><button class="select-map" id="selectMap" type="button">Select from map</button></div>
+          <div class="row-actions"><button class="addrow" id="addRow">+ Add row</button><button class="select-map" id="selectMap" type="button">Select from map</button><span class="history"><button class="histbtn" id="undoBtn" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>&#8630;</button><button class="histbtn" id="redoBtn" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>&#8631;</button></span></div>
         </div>
 
         <!-- CONVERT / SWAP -->
@@ -284,10 +288,6 @@
       <div class="point-map-wrap"><div id="pointMap" tabindex="0" aria-label="Point map. Arrow keys move the crosshair location; plus and minus zoom; Enter adds the point."></div><svg class="point-crosshair" aria-hidden="true" viewBox="0 0 32 32"><path class="crosshair-edge" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/><path class="crosshair-core" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/></svg></div>
       <div class="point-footer"><div id="pointCoordinate"></div><div id="pointFormatPreview" aria-live="polite"></div><p class="point-status" id="pointUnresolved" hidden></p><p class="point-status" id="pointNetwork" hidden></p><p class="point-status" id="pointAdded" role="status"></p><div class="point-actions"><button class="setting-action" id="pointContinue">Add and add another</button><button class="setting-action primary" id="pointConfirm">Add</button></div></div>
     </div>
-  </div>
-
-  <div class="overlay" id="switchOverlay" role="dialog" aria-modal="true" aria-labelledby="switchTitle">
-    <div class="modal"><div class="dialog-heading"><h3 id="switchTitle">These entries do not fit that system</h3><button id="switchClose" class="dialog-close" aria-label="Close notice">&times;</button></div><p id="switchDetail"></p><div class="m-actions"><button id="switchCancel">Keep current system</button><button id="switchClear" class="primary">Clear entries</button></div></div>
   </div>
 
   <div class="overlay" id="boundaryOverlay" role="dialog" aria-modal="true" aria-labelledby="boundaryTitle">
@@ -709,9 +709,17 @@
     // Try meter and shortened full references against the preset footprint.
     // Northing width varies by latitude (notably southern Thailand).
     if(/^\d+$/.test(a)&&/^\d+$/.test(b)){
+      const readings=[];
       for(const digits of [5,4,3]){
         const step=10**(5-digits),point=toWGSfromProj(na*step,nb*step,projectionFor(presetId,S));
-        if(presetContains(presetId,point.lat,point.lon))return {...point,digits};
+        if(presetContains(presetId,point.lat,point.lon))readings.push({...point,digits});
+      }
+      if(readings.length){
+        // Meters first, but say so when a coarser width lands in the country too
+        // rather than settling it silently on the reader's behalf.
+        const chosen=readings[0];
+        if(readings.length>1)chosen.ambiguous=readings.map(r=>r.digits);
+        return chosen;
       }
     }
     return toWGSfromProj(na,nb,projectionFor(presetId,S));
@@ -765,8 +773,15 @@
       try{
         const j=JSON.parse(localStorage.getItem(STORAGE));
         if(j&&j.settings){
-          j.settings={...defaultSettings(),...j.settings};
+          // Merge per preset so a newly added default reaches saved settings
+          // instead of being hidden by the stored object replacing it wholesale.
+          const defaults=defaultSettings(),saved=j.settings||{};
+          j.settings={};
+          for(const id of new Set([...Object.keys(defaults),...Object.keys(saved)]))
+            j.settings[id]={...(defaults[id]||{}),...(saved[id]||{})};
           delete j.settings.australia.datum;
+          // Military grids became opt-in; existing installs start with them off.
+          if(j.militaryVersion!==3){j.militaryEnabled=false;j.militaryVersion=3;}
           if(!GLOBAL_FORMATS.includes(j.settings.mgrs.format))j.settings.mgrs.format="mgrs";
           if(!PRESETS[j.to]||(!j.militaryEnabled&&GLOBAL_FORMATS.includes(j.to))||j.disabledPresets?.includes(j.to))j.to="wgs84";
           // Never restore computed output across engine versions.
@@ -1322,7 +1337,7 @@
         });
         if(unresolved>=0){openCountryChooser(state.rows[unresolved][0]+" "+state.rows[unresolved][1],unresolved);return;}
       }
-      const pts=[]; let bad=false, needPick=null, firstError=""; const detectedOrders=new Set();
+      const pts=[]; let bad=false, needPick=null, firstError="", ambiguous=null; const detectedOrders=new Set();
       const rowsEl=$("#fromRows").children;
       state.rows.forEach((r,i)=>{
         const rowEl=rowsEl[i]; const A=rowEl.querySelector(".a"), B=rowEl.querySelector(".b");
@@ -1333,11 +1348,18 @@
         if(res.error){ if(res.empty && !r[2].trim()) return; bad=true;firstError=firstError||res.error; if(res.badA!==false)A.classList.add("bad"); if(res.badB!==false)B.classList.add("bad"); return; }
         if(!Number.isFinite(res.lat)||!Number.isFinite(res.lon)||Math.abs(res.lat)>90||Math.abs(res.lon)>180){bad=true;firstError="Coordinate out of range.";return;}
         if(state.from==="wgs84"&&res.detectedOrder) detectedOrders.add(res.detectedOrder);
+        if(res.ambiguous&&!ambiguous)ambiguous=res.ambiguous;
         pts.push({lat:res.lat,lon:res.lon,name:r[2].trim(),digits:res.digits,cellSize:res.cellSize});
       });
       if(needPick){ showSquarePicker(state.from, needPick); return; }
       if(bad){ detect("");setBottomError(firstError+" Fix the highlighted fields."); return; }
       if(!pts.length){ detect("Enter at least one coordinate.","err"); return; }
+      // Follow the ground: an output country grid the points do not sit in is
+      // corrected to the one that holds them, until the user names a grid itself.
+      if(!state.explicitOutput&&COUNTRY_PRESETS.includes(state.to)){
+        const fit=enabledGrid(pts);
+        if(fit&&fit!==state.to){state.to=fit;syncFormat("to");}
+      }
       const countryError=countryMismatchMessage(state.from,pts)||countryMismatchMessage(state.to,pts);
       if(countryError){
         state.points=[]; stale=false; renderTo(); detect(""); setBottomError(countryError); save(); return;
@@ -1346,7 +1368,8 @@
       const detectedOrder=detectedOrders.size===1?[...detectedOrders][0]:null;
       const orderUpdated=detectedOrder&&state.settings.wgs84.order!==detectedOrder;
       if(orderUpdated){ state.settings.wgs84.order=detectedOrder; renderFrom(); }
-      detect("");
+      const spacing=d=>{const m=10**(5-d);return m>=1000?m/1000+" km":m+" m";};
+      detect(ambiguous?"These digits sit inside "+PRESETS[state.from].name.replace(" MGR","")+" read as "+ambiguous.map(spacing).join(" or ")+". Showing "+spacing(ambiguous[0])+" — set the precision in Settings if that is wrong.":"",ambiguous?"warn":"");
       state.points=pts;
       stale=false;
       renderTo();
@@ -1433,21 +1456,31 @@
       setBottomError(bad?"Two country grids can't be converted — choose a global output.":countryError);
       return bad||!!countryError;
     }
-    let switchReply;
-    function askSwitch(detail,reply){
-      const overlay=$("#switchOverlay"),focus=document.activeElement;
-      const others=[...document.querySelectorAll("body > header,body > main,.overlay.open")].filter(el=>el!==overlay).map(el=>[el,el.inert]);
-      for(const [el] of others)el.inert=true;
-      $("#switchDetail").textContent=detail;
-      overlay.classList.add("open");$("#switchClear").focus();
-      switchReply=clear=>{overlay.classList.remove("open");for(const [el,inert] of others)el.inert=inert;switchReply=null;focus?.focus();reply(clear);};
+    // Changing the input system clears the entries rather than rereading the same
+    // digits as another place. Undo puts them back.
+    const history={past:[],future:[]};
+    const HISTORY_KEYS=["rows","from","to","points","settings","lastGridFrom","militaryEnabled","disabledPresets","explicitInput","explicitOutput"];
+    function snapshot(){const kept={};for(const key of HISTORY_KEYS)kept[key]=state[key];return JSON.stringify(kept);}
+    function remember(){history.past.push(snapshot());if(history.past.length>50)history.past.shift();history.future.length=0;updateHistoryButtons();}
+    function updateHistoryButtons(){$("#undoBtn").disabled=!history.past.length;$("#redoBtn").disabled=!history.future.length;}
+    function restore(json){
+      const kept=JSON.parse(json);
+      for(const key of HISTORY_KEYS)if(kept[key]===undefined)delete state[key];else state[key]=kept[key];
+      lastGridFrom=state.lastGridFrom||lastGridFrom;
+      delete state.pendingGrid;state.aoConfirmed=false;stale=false;
+      renderFrom();renderTo();updatePairState();updateRegionChips();detect("");setBottomError("");save();updateHistoryButtons();
     }
-    $("#switchClose").addEventListener("click",()=>switchReply?.(false));
-    $("#switchCancel").addEventListener("click",()=>switchReply?.(false));
-    $("#switchClear").addEventListener("click",()=>switchReply?.(true));
-    $("#switchOverlay").addEventListener("keydown",e=>{
-      if(e.key==="Escape"){e.preventDefault();e.stopPropagation();switchReply?.(false);}
-      if(e.key==="Tab"){e.preventDefault();(document.activeElement===$("#switchClear")?$("#switchCancel"):$("#switchClear")).focus();}
+    function undo(){if(!history.past.length)return;history.future.push(snapshot());restore(history.past.pop());}
+    function redo(){if(!history.future.length)return;history.past.push(snapshot());restore(history.future.pop());}
+    $("#undoBtn").addEventListener("click",undo);
+    $("#redoBtn").addEventListener("click",redo);
+    document.addEventListener("keydown",e=>{
+      if(!(e.metaKey||e.ctrlKey)||e.key.toLowerCase()!=="z")return;
+      if(document.querySelector(".overlay.open"))return;
+      const el=document.activeElement;
+      // Leave the browser's own text undo alone while a field is being edited.
+      if(el&&/^(INPUT|TEXTAREA)$/.test(el.tagName)&&!el.readOnly)return;
+      e.preventDefault();(e.shiftKey?redo:undo)();
     });
     // The work is always grid to coordinates or coordinates to grid, so the two
     // sides hold opposite kinds and never point a system at itself.
@@ -1459,15 +1492,6 @@
         state.to=suggestedGrid(points,COUNTRY_PRESETS.filter(presetEnabled))||(presetEnabled("mgrs")?"mgrs":COUNTRY_PRESETS.find(presetEnabled)||"wgs84");
         state.explicitOutput=false;
       }
-    }
-    // Digits that still have no home get the same chooser Convert would raise.
-    function promptArea(target){
-      const p=PRESETS[target];
-      if(!p||!p.large||p.lead)return false;
-      const i=state.rows.findIndex(r=>(r[0]||r[1])&&parseCells(target,r[0],r[1],state.settings).error==="pick-square");
-      if(i<0)return false;
-      showSquarePicker(target,{e:state.rows[i][0],n:state.rows[i][1]});
-      return true;
     }
     function finishFrom(target,points){
       state.from=target;
@@ -1486,42 +1510,11 @@
       const previous=state.from,chosen=$("#fromSys").value;
       const target=chosen==="mgrs"?(state.settings.mgrs.format||"mgrs"):chosen;
       if(target===previous){syncFormat("from");return;}
-      const hasInput=state.rows.some(r=>r.some(v=>String(v).trim()));
-      if(!hasInput){finishFrom(target,[]);detect("");return;}
-      const {points,unresolved}=existingMapPoints();
-      const revert=()=>{$("#fromSys").value=GLOBAL_FORMATS.includes(previous)?"mgrs":previous;};
-      const clearEntries=()=>{state.rows=[["","",""]];finishFrom(target,[]);detect("");};
-      const name=id=>PRESETS[id].name.replace(" MGR","");
-      const gridToGrid=previous!=="auto"&&PRESETS[previous].kind!=="latlong"&&PRESETS[target].kind!=="latlong";
-      // Grid digits stay grid digits. Reading them against another grid is the
-      // point of the switch, so keep them and ask where they belong.
-      if(gridToGrid){
-        finishFrom(target,[]);
-        detect("Digits kept — now read as "+name(target)+".","warn");
-        promptArea(target);
-        return;
-      }
-      if(unresolved||!points.length){
-        // Nothing resolved to a position, so there is nothing to rewrite.
-        finishFrom(target,[]);
-        detect("Input kept — review it for "+name(target)+".","warn");
-        promptArea(target);
-        return;
-      }
-      if(COUNTRY_PRESETS.includes(target)){
-        const outside=points.filter(p=>!presetContains(target,p.lat,p.lon));
-        if(outside.length){
-          askSwitch((outside.length===points.length?"These coordinates are":outside.length+" of these coordinates are")+" outside the "+name(target)+" area, so they cannot be written as "+name(target)+" references.",
-            clear=>clear?clearEntries():revert());
-          return;
-        }
-      }
-      // Coordinates becoming a grid keep their ground position: rewrite the digits.
-      fillArea(points,target);
-      try{state.rows=points.map(p=>[...formatPoint(p.lat,p.lon,target,state.settings,p.digits),p.name||""]);}
-      catch(error){detect(error.message,"warn");finishFrom(target,points);return;}
-      finishFrom(target,points);
-      detect("Entries rewritten as "+name(target)+".");
+      const hadInput=state.rows.some(r=>r.some(v=>String(v).trim()));
+      if(hadInput)remember();
+      state.rows=[["","",""]];
+      finishFrom(target,[]);
+      detect(hadInput?"Entries cleared for "+PRESETS[target].name.replace(" MGR","")+" — undo to bring them back.":"",hadInput?"warn":"");
     });
     $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value;if(state.to==="mgrs")state.to=state.settings.mgrs.format||"mgrs";state.explicitOutput=true;seedOutputArea();updatePairState();if(rowsHaveContent())convert();else renderTo();save(); });
     $("#fromFormat").addEventListener("change",()=>{

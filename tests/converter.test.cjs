@@ -934,34 +934,47 @@ test('coverage errors are not interpreted as available imagery',async()=>{
   a.dom.window.close();
 });
 
-test('switching between country grids keeps the digits and turns the output into coordinates',()=>{
+test('changing the input system clears the entries and undo brings them back',()=>{
   const a=app(undefined,false,false);
   a.change('#fromSys','sg');a.paste('3000 3000');
+  assert.equal(a.$('#fromRows .a').value,'3000');
   a.change('#fromSys','taiwan');
   assert.equal(a.state().from,'taiwan');
-  // The digits are grid digits either way, so they stay exactly as typed.
-  assert.equal(a.$('#fromRows .a').value,'3000');assert.equal(a.$('#fromRows .b').value,'3000');
+  assert.equal(a.$('#fromRows .a').value,'','the digits must not be reread as another grid');
   assert.equal(a.state().to,'wgs84','a grid input must not convert into another grid');
+  assert.equal(a.$('#undoBtn').disabled,false);
+  a.$('#undoBtn').click();
+  assert.equal(a.state().from,'sg');assert.equal(a.$('#fromRows .a').value,'3000');
+  a.$('#redoBtn').click();
+  assert.equal(a.state().from,'taiwan');assert.equal(a.$('#fromRows .a').value,'');
   a.dom.window.close();
 });
-test('coordinates inside a country grid are rewritten into that grid',()=>{
+test('the output grid follows the country the points sit in',()=>{
   const a=app(undefined,false,false);
+  a.change('#toSys','taiwan');
+  // Naming a grid is explicit, so the mismatch has to be reported, not corrected.
   a.change('#fromSys','wgs84');a.paste('1.35, 103.82');
-  a.change('#fromSys','sg');
-  assert.equal(a.state().from,'sg');
-  assert.match(a.$('#fromRows .a').value,/^\d+$/,'coordinates should become grid digits');
-  assert.equal(a.state().to,'wgs84');
-  a.dom.window.close();
+  assert.match(a.$('#badPair').textContent,/Taiwan/);
+  const b=app(undefined,false,false);
+  b.change('#fromSys','wgs84');b.paste('1.35, 103.82');
+  assert.equal(b.state().to,'sg','an unnamed output should follow the points to Singapore');
+  assert.equal(b.$('#badPair').textContent,'');
+  b.dom.window.close();a.dom.window.close();
 });
-test('coordinates outside a country grid offer to clear rather than being reinterpreted',()=>{
-  const a=app(undefined,false,true);
-  a.change('#fromSys','wgs84');a.paste('48.85, 2.29');
-  a.change('#fromSys','sg');
-  assert.equal(a.$('#switchOverlay').classList.contains('open'),true,'an out-of-range switch must ask first');
-  assert.equal(a.state().from,'wgs84','the switch must not land while the question is open');
-  a.$('#switchClear').click();
-  assert.equal(a.state().from,'sg');assert.equal(a.$('#fromRows .a').value,'');
+test('saved settings keep their choices while gaining new defaults, military starts off',()=>{
+  const a=app(undefined,false,false);
+  a.$('#tab-set').click();a.$('[data-toggle="taiwan"]').click();
+  const saved=a.state();
+  saved.settings.sg={sgDigits:5};            // an older install missing sgOmit
+  saved.militaryEnabled=true;delete saved.militaryVersion;
   a.dom.window.close();
+  const b=app(saved,false,false);
+  b.change('#fromSys','wgs84');   // any action persists the merged settings
+  assert.equal(b.state().settings.sg.sgDigits,5,'the stored choice must survive');
+  assert.equal(b.state().settings.sg.sgOmit,true,'a missing default must be filled in');
+  assert.equal(!!b.state().militaryEnabled,false,'military grids start disabled');
+  assert.ok(b.state().disabledPresets.includes('taiwan'),'other preset choices survive');
+  b.dom.window.close();
 });
 test('tile prefetch covers both layers around a point',async()=>{
   const a=app(undefined,false,false);
