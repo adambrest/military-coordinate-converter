@@ -91,7 +91,9 @@
   .histbtn{min-width:34px;min-height:34px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text);font-size:15px;line-height:1;cursor:pointer}
   .histbtn:hover:not(:disabled){background:var(--panel2)}
   .histbtn:disabled{color:#cbd5e1;cursor:default}
-  .note.attention{color:var(--warn)}
+  .seg.locked{opacity:.55}
+  .seg button:disabled{cursor:default}
+  .chk.locked{opacity:.55}
   .addrow{align-self:flex-start;margin-top:4px;background:none;border:none;color:var(--accent);font-weight:600;font-size:13px;cursor:pointer;padding:6px 4px}
 
   /* settings */
@@ -1712,7 +1714,7 @@
     }
     function renderSettings(){
       const S=state.settings; const el=$("#view-set");
-      const seg=(opts,cur,cb)=>{ const id="seg"+Math.random().toString(36).slice(2); setTimeout(()=>{ const g=document.getElementById(id); if(!g)return; g.addEventListener("click",e=>{const b=e.target.closest("button"); if(!b)return; [...g.children].forEach(x=>x.classList.toggle("on",x===b)); cb(b.dataset.v); }); },0); return `<div class="seg" id="${id}">${opts.map(o=>`<button data-v="${o[0]}" class="${String(cur)===String(o[0])?"on":""}">${o[1]}</button>`).join("")}</div>`; };
+      const seg=(opts,cur,cb,locked)=>{ const id="seg"+Math.random().toString(36).slice(2); if(!locked)setTimeout(()=>{ const g=document.getElementById(id); if(!g)return; g.addEventListener("click",e=>{const b=e.target.closest("button"); if(!b)return; [...g.children].forEach(x=>x.classList.toggle("on",x===b)); cb(b.dataset.v); }); },0); return `<div class="seg${locked?" locked":""}" id="${id}">${opts.map(o=>`<button data-v="${o[0]}" ${locked?"disabled":""} class="${String(cur)===String(o[0])?"on":""}">${o[1]}</button>`).join("")}</div>`; };
       // editable controls, limited to what each preset allows
       const controls=(id)=>{
         const p=PRESETS[id], s=S[id]; let h="";
@@ -1754,15 +1756,17 @@
           }
 
           const digits=s.sgDigits??4, meters=10**(5-digits), precision=meters>=1000?meters/1000+" km":meters+" meters";
-          h+=`<section class="settings-section"><h4 class="settings-subhead">Output format</h4>`;
-          h+=`<div class="srow"><span class="k">Precision</span>${seg(id==="mgrs"?[[5,"1 m"],[4,"10 m"],[3,"100 m"],[2,"1 km"],[1,"10 km"],[0,"100 km"]]:[[5,"1 m"],[4,"10 m"],[3,"100 m"]],digits,v=>{s.sgDigits=+v;changed();})}</div>`;
-          h+=`<div class="note precision-note">${precision} · ${digits} digits within each 100 km square</div>`;
-          if(id!=="mgrs"&&p.large&&!s.square)
-            h+=`<div class="note attention">No reference area yet, so references keep their 100 km leading digit and print wider than ${digits}+${digits}. Choose one below to read them at ${precision}.</div>`;
           const canOmit = id==="mgrs"?!!s.ao:!p.large || !!s.square;
+          // Only a country grid without an area widens its digits beyond what the
+          // precision claims. A full MGRS reference always prints exactly its own
+          // digit count, so its precision stays settable.
+          const needsArea = id!=="mgrs" && p.large && !s.square;
+          h+=`<section class="settings-section"><h4 class="settings-subhead">Output format</h4>`;
+          if(needsArea) h+=`<div class="note">Choose a reference area first.</div>`;
+          h+=`<div class="srow"><span class="k">Precision</span>${seg(id==="mgrs"?[[5,"1 m"],[4,"10 m"],[3,"100 m"],[2,"1 km"],[1,"10 km"],[0,"100 km"]]:[[5,"1 m"],[4,"10 m"],[3,"100 m"]],digits,v=>{s.sgDigits=+v;changed();},needsArea)}</div>`;
+          h+=`<div class="note precision-note">${precision} · ${digits} digits within each 100 km square</div>`;
           const omId="om_"+id;
-          h+=`<label class="chk"><input type="checkbox" id="${omId}" ${canOmit&&s.sgOmit!==false?"checked":""} ${canOmit?"":"disabled"}> ${id==="mgrs"?"Omit selected reference-area prefix":"Omit 100 km square prefix"}</label>`;
-          if(!canOmit) h+=`<div class="note">Select a reference area first.</div>`;
+          h+=`<label class="chk${canOmit?"":" locked"}"><input type="checkbox" id="${omId}" ${canOmit&&s.sgOmit!==false?"checked":""} ${canOmit?"":"disabled"}> ${id==="mgrs"?"Omit selected reference-area prefix":"Omit 100 km square prefix"}</label>`;
           setTimeout(()=>{ const c=document.getElementById(omId); if(c) c.addEventListener("change",e=>{ s.sgOmit=e.target.checked; changed(); }); },0);
           if(id==="mgrs")h+=`<div class="note">Full references include zone, band and square letters. Prefixes are required when points cross the selected grid boundary.</div>`;
           const example=examplePoint(id,S);

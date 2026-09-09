@@ -1103,3 +1103,25 @@ test('a resolved mobile map link is read like any other',()=>{
   const ap=vm.runInContext('extractMapCoordinate("https://maps.apple.com/place?coordinate=1.384349,103.984754&name=Changi%20Golf%20Club&map=h")',c);
   assert.ok(Math.abs(ap.lat-1.384349)<1e-6&&Math.abs(ap.lon-103.984754)<1e-6);
 });
+
+test('output format stays locked until a reference area is chosen',()=>{
+  const a=app(undefined,false,false);
+  a.$('#tab-set').click();
+  const body=a.$('.preset[data-id="thailand"] .preset-body');
+  assert.match(body.textContent,/Choose a reference area first/);
+  assert.ok([...body.querySelectorAll('.seg button')].every(b=>b.disabled),'precision must be locked');
+  assert.equal(body.querySelector('.chk input').disabled,true,'omission must be locked');
+  assert.equal(body.textContent.includes('No reference area yet'),false,'the old nudge is gone');
+  a.dom.window.close();
+  // Converting inside one square fills the area in, which unlocks the section.
+  const b=app(undefined,false,false);
+  b.change('#fromSys','wgs84');b.paste('14.00287, 99.24459');
+  b.change('#toSys','thailand');
+  assert.ok(b.state().settings.thailand.square);
+  b.$('#tab-set').click();
+  const open=b.$('.preset[data-id="thailand"] .preset-body');
+  assert.doesNotMatch(open.textContent,/Choose a reference area first/);
+  assert.ok([...open.querySelectorAll('.seg button')].some(x=>!x.disabled),'precision must be settable');
+  assert.equal(open.querySelector('.chk input').disabled,false);
+  b.dom.window.close();
+});
