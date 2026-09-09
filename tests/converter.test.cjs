@@ -1061,3 +1061,45 @@ test('the country outlines hold the places the presets name',()=>{
   ]) assert.equal(inside(lat,lon,au),want,name);
   a.dom.window.close();
 });
+
+test('plus codes decode to the cell they name',()=>{
+  const c=core();
+  // Hand-computed from the Open Location Code specification.
+  for(const [code,lat,lon] of [['8FVC2222+22',47.0000625,8.0000625],['7FG49QCJ+2V',20.3700625,2.7821875],['7FG49QCJ+2VX',20.3701125,2.782234375]]){
+    const r=vm.runInContext('decodePlusCode("'+code+'")',c);
+    assert.ok(Math.abs(r.lat-lat)<1e-9&&Math.abs(r.lon-lon)<1e-9,code+' decoded to '+r.lat+','+r.lon);
+  }
+  assert.equal(vm.runInContext('decodePlusCode("nonsense")',c),null);
+  // A ten digit code names a cell about 14 m across, so a round trip lands inside it.
+  for(const [lat,lon] of [[1.3849163,103.9806071],[-33.87,151.21],[51.5,-0.13],[78.2,15.6]]){
+    const code=vm.runInContext('encodePlusCode('+lat+','+lon+',10)',c);
+    const back=vm.runInContext('decodePlusCode("'+code+'")',c);
+    const metres=Math.hypot((back.lat-lat)*110570,(back.lon-lon)*111320*Math.cos(lat*Math.PI/180));
+    assert.ok(metres<10,'round trip off by '+metres.toFixed(1)+' m');
+  }
+});
+test('a pasted plus code converts, and a short one uses the nearest known point',()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','wgs84');a.paste('6PH59XMJ+X6');
+  const point=a.state().points[0];
+  assert.ok(Math.abs(point.lat-1.38494)<0.001&&Math.abs(point.lon-103.98056)<0.001,'full plus code: '+point.lat+','+point.lon);
+  // With that position known, the short form of the same place resolves to it.
+  const b=app(a.state(),false,false);
+  b.change('#fromSys','wgs84');b.paste('9XMJ+X6');
+  const near=b.state().points[0];
+  assert.ok(Math.abs(near.lat-1.38494)<0.001&&Math.abs(near.lon-103.98056)<0.001,'short plus code: '+near.lat+','+near.lon);
+  b.dom.window.close();a.dom.window.close();
+});
+test('a short map link explains what to do instead of failing silently',()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','wgs84');a.paste('https://maps.app.goo.gl/oxBekKUgBWZMeVJ89?g_st=ic');
+  assert.match(a.$('#badPair').textContent,/short map link|Open it/i);
+  a.dom.window.close();
+});
+test('a resolved mobile map link is read like any other',()=>{
+  const c=core();
+  const g=vm.runInContext('extractMapCoordinate("https://maps.google.com?q=1.3849163,103.9806071&entry=gps")',c);
+  assert.ok(Math.abs(g.lat-1.3849163)<1e-6&&Math.abs(g.lon-103.9806071)<1e-6);
+  const ap=vm.runInContext('extractMapCoordinate("https://maps.apple.com/place?coordinate=1.384349,103.984754&name=Changi%20Golf%20Club&map=h")',c);
+  assert.ok(Math.abs(ap.lat-1.384349)<1e-6&&Math.abs(ap.lon-103.984754)<1e-6);
+});

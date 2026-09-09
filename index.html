@@ -595,13 +595,89 @@
         }
       }
     }
-    if(sawMapLink) return {error:sawShortLink?"short map link has no embedded coordinates":"map link has no readable coordinates",mapLink:true};
+    if(sawMapLink) return {error:sawShortLink?"A short map link holds no coordinates and cannot be opened from here. Open it, then paste the address it lands on — or paste the plus code Maps shows for the place.":"map link has no readable coordinates",mapLink:true};
     return null;
   }
+  /* ---- Open Location Code (Google plus codes) ---- */
+  // Decoded on the device; a full code needs nothing else, a short one is placed
+  // against the nearest known point the way Maps places it against your locality.
+  const PLUS_ALPHABET="23456789CFGHJMPQRVWX";
+  let plusReference=null;
+  function setPlusReference(point){ if(point&&isFinite(point.lat)&&isFinite(point.lon))plusReference={lat:point.lat,lon:point.lon}; }
+  function decodePlusCode(code){
+    const clean=String(code).toUpperCase().replace(/\+/g,"").replace(/0+$/,"");
+    // Pairs must be whole; the grid characters after them come one at a time.
+    if(clean.length<2||(clean.length<10&&clean.length%2)) return null;
+    let south=-90,west=-180,latRes=20,lngRes=20;
+    for(let i=0;i<Math.min(clean.length,10);i+=2){
+      if(i>0){latRes/=20;lngRes/=20;}
+      const r=PLUS_ALPHABET.indexOf(clean[i]), c=PLUS_ALPHABET.indexOf(clean[i+1]);
+      if(r<0||c<0) return null;
+      south+=r*latRes; west+=c*lngRes;
+    }
+    let height=latRes,width=lngRes;
+    for(let i=10;i<Math.min(clean.length,15);i++){
+      const digit=PLUS_ALPHABET.indexOf(clean[i]);
+      if(digit<0) return null;
+      height/=5; width/=4;
+      south+=Math.floor(digit/4)*height; west+=(digit%4)*width;
+    }
+    return {lat:south+height/2,lon:west+width/2,height,width};
+  }
+  function encodePlusCode(lat,lon,length){
+    length=length||10;
+    lat=Math.max(-90,Math.min(90-1e-9,lat));
+    lon=((lon+180)%360+360)%360-180;
+    let south=-90,west=-180,latRes=20,lngRes=20,code="";
+    for(let i=0;i<Math.min(length,10);i+=2){
+      if(i>0){latRes/=20;lngRes/=20;}
+      const r=Math.max(0,Math.min(19,Math.floor((lat-south)/latRes)));
+      const c=Math.max(0,Math.min(19,Math.floor((lon-west)/lngRes)));
+      code+=PLUS_ALPHABET[r]+PLUS_ALPHABET[c];
+      south+=r*latRes; west+=c*lngRes;
+    }
+    return code;
+  }
+  // A short code covers one cell of a coarse grid; the answer is the nearest such
+  // cell to the reference, which may be the neighbour on either side.
+  function recoverPlusCode(code,refLat,refLon){
+    const sep=code.indexOf("+"), padding=8-sep;
+    const resolution=Math.pow(20,2-padding/2), half=resolution/2;
+    const prefix=encodePlusCode(refLat,refLon,8).slice(0,padding);
+    const area=decodePlusCode(prefix+code.replace("+",""));
+    if(!area) return null;
+    let {lat,lon}=area;
+    if(refLat+half<lat&&lat-resolution>=-90) lat-=resolution;
+    else if(refLat-half>lat&&lat+resolution<=90) lat+=resolution;
+    if(refLon+half<lon) lon-=resolution;
+    else if(refLon-half>lon) lon+=resolution;
+    return {lat,lon};
+  }
+  function parsePlusCode(text,reference){
+    // A trailing locality ("7Q9G+2M Singapore") is Maps' own phrasing; the code
+    // carries the position once a reference is known, so the name is not needed.
+    const m=String(text).trim().toUpperCase().match(/^([23456789CFGHJMPQRVWX0]{2,8}\+[23456789CFGHJMPQRVWX]{0,7})\b/);
+    if(!m) return null;
+    const code=m[1], sep=code.indexOf("+");
+    if(sep===8&&!code.includes("0")){
+      const area=decodePlusCode(code);
+      return area?{lat:area.lat,lon:area.lon,detected:"Plus code"}:{error:"That plus code could not be read."};
+    }
+    if(sep===8){
+      const area=decodePlusCode(code);
+      return area?{lat:area.lat,lon:area.lon,detected:"Plus code area"}:{error:"That plus code could not be read."};
+    }
+    const point=reference||plusReference;
+    if(!point) return {error:"Short plus codes need a nearby point. Convert a coordinate first, or paste the full code."};
+    const found=recoverPlusCode(code,point.lat,point.lon);
+    return found?{...found,detected:"Short plus code"}:{error:"That plus code could not be read."};
+  }
+
   // ---- lat/long pair parser (paste). preferredOrder: 'latlon'|'lonlat'
-  function parseLatLon(text, preferredOrder){
+  function parseLatLon(text, preferredOrder, reference){
     const raw=String(text).trim(); if(!raw) return {error:"empty"};
     const map=extractMapCoordinate(raw); if(map) return map;
+    const plus=parsePlusCode(raw,reference); if(plus) return plus;
     const norm=raw.replace(/[，]/g,",").replace(/[°º]/g,"°");
     const re=/([NSEW])?\s*([+-]?\d+(?:\.\d+)?)\s*°?\s*(?:(\d+(?:\.\d+)?)\s*['′])?\s*(?:(\d+(?:\.\d+)?)\s*["″])?\s*([NSEW])?/gi;
     const comps=[]; let m;
@@ -844,6 +920,7 @@
       $("#"+side+"FormatWrap").hidden=true;
       chip.hidden=!global;chip.textContent=id==="globalutm"?"UTM · Change in Settings":"MGRS · Change in Settings";
     }
+    setPlusReference(state.lastLocation);
     buildSel($("#fromSys")); buildSel($("#toSys"));
     $("#fromSys").value=state.from; $("#toSys").value=state.to;
 
@@ -1176,6 +1253,7 @@
     function autoArea(points){
       if(!points.length)return;
       state.lastLocation={lat:points[0].lat,lon:points[0].lon};
+      setPlusReference(state.lastLocation);
       fillArea(points,state.to);
     }
     function fillArea(points,id){
@@ -1227,7 +1305,9 @@
       return "Points cross a grid boundary. Full prefixes have been retained.";
     }
     function fullMGR(text){
-      return /^\s*\d{1,2}\s*[C-HJ-NP-X]\s*[A-HJ-NP-Z]{2}/i.test(text)&&!parseProjected(text);
+      // A plus code opens with digits and letters too, but always carries a '+',
+      // which no MGRS reference does.
+      return !/\+/.test(text)&&/^\s*\d{1,2}\s*[C-HJ-NP-X]\s*[A-HJ-NP-Z]{2}/i.test(text)&&!parseProjected(text);
     }
     function splitBatch(text){
       const valid=value=>{
