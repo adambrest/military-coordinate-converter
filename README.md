@@ -20,8 +20,6 @@ Coordinate conversion works offline. Map mode requires internet.
 - Google/Apple Maps links containing coordinates.
 - Copyable results and GPX waypoint export.
 
-## Credits
+## Reproduction
 
-Created by [adambrest](https://github.com/adambrest). Uses Proj4js, mgrs and Leaflet; maps/data from OpenStreetMap contributors, Esri, Vantor, Earthstar Geographics, the GIS User Community, Natural Earth and the Queensland Government.
-
-[Third-party credits](vendor/README.md) · [Reuse permission](LICENSE.md)
+Reproductions must credit the original creator and link to this repository. See [reuse permission](LICENSE.md) and [third-party credits](vendor/README.md).
