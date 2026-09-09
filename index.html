@@ -609,7 +609,7 @@
   // against the nearest known point the way Maps places it against your locality.
   const PLUS_ALPHABET="23456789CFGHJMPQRVWX";
   let plusReference=null;
-  function setPlusReference(point){ if(point&&isFinite(point.lat)&&isFinite(point.lon))plusReference={lat:point.lat,lon:point.lon}; }
+  function setPlusReference(point,label){ if(point&&isFinite(point.lat)&&isFinite(point.lon))plusReference={lat:point.lat,lon:point.lon,label:label||"the last point converted"}; }
   function decodePlusCode(code){
     const clean=String(code).toUpperCase().replace(/\+/g,"").replace(/0+$/,"");
     // Pairs must be whole; the grid characters after them come one at a time.
@@ -704,7 +704,7 @@
     const found=recoverPlusCode(code,point.lat,point.lon);
     if(!found) return {error:"That plus code could not be read."};
     return {...found,detected:"Short plus code",
-      warning:code+" is a short plus code, read from "+(place?place.name:"the last point converted")+". It only lands right if that is within about "+reach+" km — paste the full code to be certain."};
+      warning:code+" is a short plus code, read from "+(place?place.name:(point.label||"the last point converted"))+". It only lands right if that is within about "+reach+" km — paste the full code to be certain."};
   }
 
   // ---- lat/long pair parser (paste). preferredOrder: 'latlon'|'lonlat'
@@ -954,7 +954,8 @@
       $("#"+side+"FormatWrap").hidden=true;
       chip.hidden=!global;chip.textContent=id==="globalutm"?"UTM · Change in Settings":"MGRS · Change in Settings";
     }
-    setPlusReference(state.lastLocation);
+    let convertedThisSession=false;
+    setPlusReference(state.lastLocation,"the last point converted");
     buildSel($("#fromSys")); buildSel($("#toSys"));
     $("#fromSys").value=state.from; $("#toSys").value=state.to;
 
@@ -1144,12 +1145,14 @@
     const pointPicker=createPointPicker({preview:mapPointPreview,onConfirm:addMapPoint,onViewChange:view=>{state.pointMapView=view;save();}});
     // Warm the guess before the click so the first open already has it.
     for(const event of ["pointerenter","focus"])$("#selectMap").addEventListener(event,guessLocation,{once:true,passive:true});
+    if(!convertedThisSession)setPlusReference(guessLocation(),"your approximate location");
     // With a worker to cache them, fetch the tiles around the guessed area while
     // the page is idle, so the first map open draws from disk rather than the net.
     if("serviceWorker" in navigator){
       const whenIdle=globalThis.requestIdleCallback||(run=>setTimeout(run,1500));
       whenIdle(()=>{
         (locationGuess||=MapSupport.approximateLocation()).ready.then(point=>{
+          if(!convertedThisSession)setPlusReference(point,"your approximate location");
           MapSupport.prefetchTiles(point);
           // Knowing the ceiling up front stops the first satellite switch stalling.
           MapSupport.imageryZoom(point.lat,point.lon,800,480).catch(()=>{});
@@ -1299,7 +1302,8 @@
     function autoArea(points){
       if(!points.length)return;
       state.lastLocation={lat:points[0].lat,lon:points[0].lon};
-      setPlusReference(state.lastLocation);
+      convertedThisSession=true;
+      setPlusReference(state.lastLocation,"the last point converted");
       fillArea(points,state.to);
     }
     function fillArea(points,id){

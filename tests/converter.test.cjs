@@ -1182,3 +1182,20 @@ test('a pasted short plus code shows its caveat, a full one does not',()=>{
   assert.ok(Math.abs(b.state().points[0].lat-1.38494)<0.001);
   b.dom.window.close();
 });
+
+test('a short plus code falls back to where the reader appears to be',()=>{
+  // Nothing converted yet, and a stale point saved from an earlier session.
+  const saved={from:'auto',to:'wgs84',rows:[['','','']],points:[],aoSelectionVersion:2,militaryVersion:3,
+    settings:{},lastLocation:{lat:25.03,lon:121.56}};
+  const a=app(JSON.parse(JSON.stringify(saved)),false,false);
+  a.change('#fromSys','wgs84');a.paste('9XJJ+Q64');
+  assert.match(a.$('#detect').textContent,/your approximate location/,'a point saved earlier should not outrank where we are');
+  a.dom.window.close();
+  // Once something has been converted, that becomes the reference instead.
+  const b=app(JSON.parse(JSON.stringify(saved)),false,false);
+  b.change('#fromSys','wgs84');b.paste('1.35, 103.82');
+  b.paste('9XJJ+Q64');
+  assert.match(b.$('#detect').textContent,/the last point converted/);
+  assert.ok(Math.abs(b.state().points[0].lat-1.38)<0.1,'read near the point just converted');
+  b.dom.window.close();
+});
