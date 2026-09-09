@@ -1155,3 +1155,31 @@ test('a short map link explains itself when no endpoint is configured',()=>{
   assert.equal(a.$('#fromRows .a').classList.contains('busy'),false);
   a.dom.window.close();
 });
+
+// The worker runs off the device, so its logic is exercised here directly.
+function resolver(stub){
+  const src=read('worker/resolve-link.js').replace('export default','var __worker =');
+  const ctx=vm.createContext({fetch:(...a)=>stub(...a),Response,Request,Headers,URL,JSON,console});
+  return vm.runInContext(src+';__worker',ctx);
+}
+test('the link resolver follows map shorteners and refuses anything else',async()=>{
+  const hops={
+    'https://maps.app.goo.gl/abc':'https://maps.google.com?q=1.38,103.98',
+    'https://maps.apple/p/xyz':'https://maps.apple.com/place?coordinate=1.38,103.98'
+  };
+  let stub=async(url)=>({status:hops[url]?302:200,headers:{get:k=>k==='location'?(hops[url]||''):null}});
+  const worker=resolver((...a)=>stub(...a));
+  const call=async u=>JSON.parse(await (await worker.fetch(new Request('https://r.test/?url='+encodeURIComponent(u)))).text());
+  // The address comes back normalised, which is what the parser wants anyway.
+  assert.match((await call('https://maps.app.goo.gl/abc')).url,/^https:\/\/maps\.google\.com\/?\?q=1\.38,103\.98$/);
+  assert.match((await call('https://maps.apple/p/xyz')).url,/^https:\/\/maps\.apple\.com\/place\?coordinate=1\.38,103\.98$/);
+  // Anything not a map shortener is refused, so this cannot become an open proxy.
+  assert.match((await call('https://example.com/secret')).error,/Only map links/);
+  assert.match((await call('http://maps.app.goo.gl/abc')).error,/Only https/);
+  assert.match((await call('not a url')).error,/not a URL/);
+  // A link that goes nowhere is reported rather than echoed back.
+  stub=async()=>({status:200,headers:{get:()=>null}});
+  assert.match((await call('https://maps.app.goo.gl/dead')).error,/did not redirect/);
+  const cors=await worker.fetch(new Request('https://r.test/?url=x',{method:'OPTIONS'}));
+  assert.equal(cors.headers.get('access-control-allow-origin'),'*');
+});
