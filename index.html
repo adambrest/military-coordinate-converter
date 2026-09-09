@@ -605,6 +605,14 @@
           const pair=decimalPair(u.searchParams.get(key));
           if(pair) return mapPoint(pair.lat,pair.lon,"Google Maps link");
         }
+        // Searching a bare pair puts the place in the path, as /maps/search/1.38,+103.98,
+        // where no parameter holds it. Read the path back to front so the place beats
+        // whatever the route was filed under.
+        for(const segment of u.pathname.split("/").reverse()){
+          let part=segment; try{part=decodeURIComponent(segment);}catch(_){}
+          const pair=decimalPair(part.replace(/\+/g," "));
+          if(pair) return mapPoint(pair.lat,pair.lon,"Google Maps link");
+        }
         m=decoded.match(new RegExp(`@(${DEC}),(${DEC})(?:[,/]|$)`,"i"));
         if(m){ const p=mapPoint(m[1],m[2],"Google Maps view"); if(p) return p; }
       } else {

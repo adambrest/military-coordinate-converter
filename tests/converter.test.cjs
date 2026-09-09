@@ -1352,3 +1352,21 @@ test('eight digits typed into the easting move half into the northing',async()=>
     'the halves belong in both fields');
   a.dom.window.close();
 });
+
+test('a Google link carrying its place in the path is read',()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','wgs84');
+  // What maps.app.goo.gl/KvNeX7Hrs6owx3vbA resolves to: no q=, no pin, just a path.
+  a.paste('https://www.google.com/maps/search/1.383700,+103.981790?entry=tts&g_ep=EgoyMDI2MDkwMi4wIPu8ASoASAFQAw%3D%3D');
+  const p=a.state().points[0];
+  assert.ok(p&&Math.abs(p.lat-1.3837)<1e-6&&Math.abs(p.lon-103.98179)<1e-6,'missed the place: '+JSON.stringify(p));
+  a.dom.window.close();
+});
+test('a place in the path does not outrank a pin or an explicit query',()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','wgs84');
+  a.paste('https://www.google.com/maps/search/1.0,+103.0?q=1.3849163,103.9806071');
+  const p=a.state().points[0];
+  assert.ok(p&&Math.abs(p.lat-1.3849163)<1e-6,'the explicit query should win, got '+JSON.stringify(p));
+  a.dom.window.close();
+});
