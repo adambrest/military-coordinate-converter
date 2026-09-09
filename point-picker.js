@@ -35,7 +35,17 @@
         try{
           const zoom=await MapSupport.imageryZoom(p.lat,p.lon,size.x,size.y,url=>fetch(url,{signal:AbortSignal.timeout(5000)}));
           if(token!==coverageToken||mode!=="satellite")return;
-          coveragePending=false;map.setMaxZoom(zoom);layers();
+          // The ceiling stops the reader going deeper; this stops the layer asking for
+          // what is not there on the way. Without it Leaflet still believes in native
+          // tiles to 19 and requests them, and Esri answers a hole.
+          coveragePending=false;
+          const before=satellite.options.maxNativeZoom;
+          satellite.options.maxNativeZoom=zoom;map.setMaxZoom(zoom);
+          // Tiles already on screen were chosen under the old ceiling, and Leaflet holds
+          // the depth it picked until a zoom moves it. Re-adding the layer makes it work
+          // the depth out again, so imagery sharpens as soon as coverage says it can.
+          if(before!==zoom&&map.hasLayer(satellite)){satellite.remove();satellite.addTo(map);}
+          layers();
         }catch(_){
           if(token!==coverageToken)return;
           coveragePending=false;coverageFailed=true;coverageKey="";layers();
@@ -94,7 +104,10 @@
       map.attributionControl.addAttribution('<a href="https://www.naturalearthdata.com/">Natural Earth</a>');
       labels=L.layerGroup().addTo(map);markers=L.layerGroup().addTo(map);
       streets=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{minZoom:1,maxNativeZoom:19,maxZoom:22,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'});
-      satellite=L.tileLayer("https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxNativeZoom:19,maxZoom:22,attribution:'Imagery © <a href="https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9">Esri, Vantor, Earthstar Geographics, GIS User Community</a>'});
+      // Starts at the depth imagery reaches almost everywhere, and coverage raises it
+      // where there is more. Guessing high the other way asks Esri for tiles it does
+      // not have, and a hole is worse to look at than a softened one.
+      satellite=L.tileLayer("https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxNativeZoom:18,maxZoom:22,attribution:'Imagery © <a href="https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9">Esri, Vantor, Earthstar Geographics, GIS User Community</a>'});
       // Imagery must sit above the offline land; borders remain visible at broad zoom.
       satellite.setZIndex(220);streets.setZIndex(230);
       for(const layer of [streets,satellite]){

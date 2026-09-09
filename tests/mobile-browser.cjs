@@ -19,7 +19,16 @@ const server=http.createServer((req,res)=>{
   try{
    const context=await browser.newContext({...devices[device],serviceWorkers:'block'}),page=await context.newPage();
    await page.route('**/beacon.min.js',route=>route.fulfill({contentType:'text/javascript',body:''}));
+   // The opening view asks a deployed worker where it is. Tests answer for it, so they
+   // neither depend on that deployment nor have to appear in its list of origins.
+   await page.route('**/where',route=>route.fulfill({
+     json:{lat:1.35,lon:103.82,country:'SG',timezone:'Asia/Singapore'},
+     headers:{'access-control-allow-origin':'*'}
+   }));
    const errors=[];page.on('pageerror',e=>errors.push(e.message));
+   // Every depth of satellite imagery the page actually asks Esri for.
+   const imageryZooms=[];
+   page.on('request',r=>{const m=r.url().match(/World_Imagery\/MapServer\/tile\/(\d+)\//);if(m)imageryZooms.push(Number(m[1]));});
    await page.addInitScript(()=>{addEventListener('DOMContentLoaded',()=>{const create=L.map;L.map=(...args)=>{const map=create(...args);if(args[0]==='pointMap')window.testMap=map;return map;};});});
    if(!process.env.LIVE_IMAGERY)await page.route('**/tilemap/**',route=>{
     const [,z,row,col,w,h]=route.request().url().match(/tilemap\/(\d+)\/(\d+)\/(\d+)\/(\d+)\/(\d+)/).map(Number);
@@ -65,9 +74,15 @@ const server=http.createServer((req,res)=>{
    await page.waitForFunction(()=>testMap.getMaxZoom()===18,{},{timeout:20000});
    await page.waitForTimeout(1000);
    assert.equal(await page.evaluate(()=>testMap.getZoom()),18);
-   assert.ok(await page.evaluate(()=>{let active=false;testMap.eachLayer(l=>{if(l._url?.includes('World_Imagery'))active=l.options.maxNativeZoom===18;});return active;}));
+   assert.ok(await page.evaluate(()=>{let active=false;testMap.eachLayer(l=>{if(l._url?.includes('World_Imagery'))active=l.options.maxNativeZoom===18;});return active;}),
+     'the layer must know the depth imagery reaches, not just the map');
+   // The ceiling is only worth having if nothing asks past it: Esri answers a hole
+   // for imagery it does not hold, and a hole is what the reader would be looking at.
+   const tooDeep=[...new Set(imageryZooms.filter(z=>z>18))];
+   assert.deepEqual(tooDeep,[],'imagery was requested deeper than coverage reaches: '+tooDeep);
    await page.screenshot({path:`/tmp/saf-${name}-satellite.png`});
    await page.locator('#pointStreet').click();assert.equal(await page.evaluate(()=>testMap.getMaxZoom()),19);
+   if(errors.length)console.error('PAGE ERRORS:',errors);
    assert.deepEqual(errors,[]);
    console.log(`${name} ${device}: touch timing, stationary single tap, anchored zoom, collapsed toggles and satellite coverage passed`);
   }finally{await browser.close();}
