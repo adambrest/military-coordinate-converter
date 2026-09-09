@@ -1441,6 +1441,27 @@
         else detect("Paste a coordinate to get started.");
         return;
       }
+      // A grid reference is as often typed as one run of digits as it is entered in
+      // two fields, and pasting one has always divided it. Typing earns the same
+      // reading: 12345678 is a four-plus-four, not an easting with no northing.
+      if(PRESETS[state.from]&&PRESETS[state.from].kind!=="latlong"){
+        let regrouped=false,runError="",runRow=-1;
+        state.rows.forEach((r,i)=>{
+          if(r[1].trim()||!/^\d+$/.test(r[0].trim()))return;
+          const g=splitGrid(r[0].trim());
+          // An odd run cannot be halved, and saying so beats complaining that a
+          // northing which was never separate is not a number.
+          if(g.error){if(!runError){runError=g.error;runRow=i;}return;}
+          state.rows[i]=[g.e,g.n,r[2]];regrouped=true;
+        });
+        if(regrouped)renderFrom();
+        if(runError&&!regrouped){
+          const cell=$("#fromRows").children[runRow]?.querySelector(".a");
+          if(cell)cell.classList.add("bad");
+          detect("");setBottomError(runError.charAt(0).toUpperCase()+runError.slice(1)+". Enter a matching easting and northing, e.g. 1234 5678.");
+          return;
+        }
+      }
       // A system cannot convert into itself, so move the output aside and carry on.
       if(state.from===state.to){ pickOutput(state.from,[]); renderTo(); }
       if(state.pendingGrid){

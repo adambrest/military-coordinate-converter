@@ -1276,3 +1276,27 @@ test('nothing but a short link ever waits on the network',()=>{
   }
   a.dom.window.close();
 });
+
+test('a grid reference typed as one run of digits is read as easting and northing',()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','thailand');
+  const row=a.$('#fromRows').children[0];
+  const A=row.querySelector('.a');
+  // Typed, not pasted: the paste path has always split this, the typing path did not.
+  A.value='12345678';A.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+  a.$('#convertBtn').click();
+  const cells=[...a.$('#fromRows').children[0].querySelectorAll('.a,.b')].map(c=>c.value);
+  assert.deepEqual(cells.slice(0,2),['1234','5678'],'the run should have been halved, got '+JSON.stringify(cells));
+  a.dom.window.close();
+});
+test('a run of digits that cannot be halved says so',()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','thailand');
+  const A=a.$('#fromRows').children[0].querySelector('.a');
+  A.value='1234567';A.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+  a.$('#convertBtn').click();
+  const shown=(a.$('#bottomError')||a.$('#badPair')).textContent+a.$('#detect').textContent;
+  assert.match(shown,/odd number of digits/i,'unhelpful message: '+JSON.stringify(shown));
+  assert.doesNotMatch(shown,/not a number/i,'it should not blame a northing that was never separate');
+  a.dom.window.close();
+});
