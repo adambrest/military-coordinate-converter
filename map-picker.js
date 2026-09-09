@@ -1,7 +1,7 @@
 /* Shared map picker: basemap, projected AO grids and approximate camp landmarks. */
 (function(root){
   "use strict";
-  root.createAOPicker=function({presets,contains,projection,plausible,presetEnabled=()=>true,onSelect}){
+  root.createAOPicker=function({presets,contains,projection,plausible,presetEnabled=()=>true,onSelect,onCancel}){
     const $=id=>document.getElementById(id);
     let map,grid,selectionLayer,pointLayer,selection,options={},returnFocus,frame,stableCenter,limitCenter,cancelTap;
     const landmarks=[];
@@ -211,7 +211,9 @@
       ($("locationOverlay").querySelector("[data-location]:not(:disabled):not([hidden])")||$("locationClose")).focus();
     }
     $("locationOverlay").querySelectorAll("[data-location]").forEach(button=>button.addEventListener("click",()=>choose(button.dataset.location)));
-    const closeLocations=()=>{$("locationOverlay").classList.remove("open");returnFocus?.focus();};
+    // Turning the chooser down is an answer too: the caller has to hear it, or the
+    // reference it was waiting on stays pending and Convert only asks again.
+    const closeLocations=()=>{$("locationOverlay").classList.remove("open");returnFocus?.focus();onCancel?.();};
     $("locationClose").addEventListener("click",closeLocations);
     $("locationOverlay").addEventListener("keydown",e=>{if(e.key==="Escape")closeLocations();
       if(e.key==="Tab"){const nodes=$("locationOverlay").querySelectorAll("button:not(:disabled):not([hidden])"),first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}

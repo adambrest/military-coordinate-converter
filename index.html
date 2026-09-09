@@ -931,10 +931,20 @@
           // Let the click finish first; it may already convert or change the input system.
           setTimeout(()=>{
             if(!A.isConnected||!A.value.trim())return;
-            onPaste({clipboardData:{getData:()=>A.value},preventDefault(){}},i,A,B);
+            quietChooser=true;
+            try{onPaste({clipboardData:{getData:()=>A.value},preventDefault(){}},i,A,B);}finally{quietChooser=false;}
             if(!state.pendingGrid&&nextField&&nextIndex!==null)$("#fromRows").children[nextIndex]?.querySelector(nextField)?.focus();
           },0);
         });
+        // A two-field row earns the same reading: eight digits typed into the easting
+        // are a four-plus-four, and the northing is where the second half belongs.
+        else A.addEventListener("blur",()=>setTimeout(()=>{
+          if(!A.isConnected||B.value.trim()||!/^\d+$/.test(A.value.trim()))return;
+          const g=splitGrid(A.value.trim());
+          if(g.error)return;
+          A.value=g.e;B.value=g.n;
+          readRows();state.points=[];stale=false;renderTo();setBottomError("");save();
+        },0));
         // Enter starts a new row and focuses it
         [A,B,NM].forEach(inp=>inp.addEventListener("keydown",e=>{
           if(e.key==="Enter"){
@@ -1139,6 +1149,13 @@
     function llCells(lat,lon){ const S=state.settings.wgs84; const la=fmtLat(lat,S), lo=fmtLon(lon,S); return S.order==="lonlat"?[lo,la]:[la,lo]; }
     const picker=createAOPicker({
       presetEnabled,presets:PRESETS,contains:presetContains,projection:id=>projectionFor(id,state.settings),plausible:gridPlausible,
+      // Declining leaves the digits alone but clears what they were waiting on, so
+      // Convert is not reduced to reopening a chooser that was just turned down.
+      onCancel(){
+        if(!state.pendingGrid)return;
+        delete state.pendingGrid;save();
+        detect("Convert will ask again, or set the input system yourself to skip the question.","warn");
+      },
       onSelect(chosen,opts){
         const id=chosen.id, s=state.settings[id];
         if(id==="mgrs")s.ao=chosen.prefix;else assignSquare(id,chosen.e,chosen.n);
@@ -1199,6 +1216,9 @@
       if(match&&match!==inputId)return match;
       return inputId==="wgs84"?(state.settings.mgrs.format||"mgrs"):"wgs84";
     }
+    // Leaving a field is not a request for a modal. The digits are still taken in
+    // and remembered; the chooser waits until Convert actually asks for a place.
+    let quietChooser=false;
     function openCountryChooser(text,i){
       state.points=[];stale=false;renderTo();
       const preset=COUNTRY_PRESETS.includes(state.from)?state.from:null;
@@ -1208,6 +1228,7 @@
       if(state.militaryEnabled&&["wgs84","auto"].includes(state.from)){state.from="mgrs";$("#fromSys").value="mgrs";pickOutput(state.from,[]);}
       renderFrom();save();
       const g=splitGrid(text.trim().split(/\r?\n/)[0]);
+      if(quietChooser){detect("These digits could be several grids. Press Convert to choose one.","warn");return;}
       picker.open({pending:{text,i},pick:g.error?null:g,point:state.lastLocation,preset,system});
     }
     function openSquareBrowser(id,afterPick){

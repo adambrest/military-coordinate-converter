@@ -1311,3 +1311,44 @@ test('a link that lands on a Google consent wall is followed to the place behind
     'the place behind the wall was missed: '+JSON.stringify(point));
   a.dom.window.close();
 });
+
+// --- leaving a field ------------------------------------------------------
+const blur=(a,sel='#fromRows .a')=>a.$(sel).dispatchEvent(new a.w.Event('blur'));
+test('leaving a field takes the digits in without throwing a chooser in the way',async()=>{
+  const a=app(undefined,false,false);
+  let opened=0;
+  a.w.pickerHooks&&(a.w.pickerHooks=a.w.pickerHooks);
+  const A=a.$('#fromRows .a');
+  A.value='74353727';A.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+  const before=a.w.mapOptions;
+  blur(a);
+  await new Promise(r=>setTimeout(r,20));
+  assert.equal(a.w.mapOptions,before,'blur must not open the chooser over the page');
+  assert.match(a.$('#detect').textContent,/Press Convert/,'it should say what to do instead');
+  // Convert is the moment the question is actually asked.
+  a.$('#convertBtn').click();
+  assert.notEqual(a.w.mapOptions,before,'Convert should open the chooser');
+  a.dom.window.close();
+});
+test('turning the chooser down does not leave Convert asking the same question',async()=>{
+  const a=app(undefined,false,false);
+  const A=a.$('#fromRows .a');
+  A.value='74353727';A.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+  a.$('#convertBtn').click();
+  assert.ok(a.state().pendingGrid,'the row should be waiting on a grid');
+  a.w.pickerHooks.onCancel();
+  assert.equal(a.state().pendingGrid,undefined,'declining must clear what the row was waiting on');
+  assert.equal(a.$('#fromRows .a').value.replace(/\s/g,''),'74353727','the digits must survive being declined');
+  a.dom.window.close();
+});
+test('eight digits typed into the easting move half into the northing',async()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','thailand');
+  const A=a.$('#fromRows .a'),B=a.$('#fromRows .b');
+  A.value='74353727';A.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+  blur(a);
+  await new Promise(r=>setTimeout(r,20));
+  assert.deepEqual([a.$('#fromRows .a').value,a.$('#fromRows .b').value],['7435','3727'],
+    'the halves belong in both fields');
+  a.dom.window.close();
+});
