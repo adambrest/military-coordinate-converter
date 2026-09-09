@@ -987,3 +987,26 @@ test('tile prefetch covers both layers around a point',async()=>{
   assert.equal(stored,2);assert.equal(seen.length,2);
   a.dom.window.close();
 });
+
+test('swap recomputes the other side instead of leaving it blank',()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','wgs84');a.paste('1.35, 103.82');
+  assert.equal(a.$('#copyBtn').disabled,false);
+  a.$('#swapBtn').click();
+  assert.equal(a.state().from,'sg');assert.equal(a.state().to,'wgs84');
+  assert.equal(a.$('#copyBtn').disabled,false,'swap must not leave the output uncomputed');
+  assert.ok(a.$('#toRows .a').value,'the output should hold a value straight after swapping');
+  a.$('#undoBtn').click();
+  assert.equal(a.state().from,'wgs84','undo should step back over a swap');
+  a.dom.window.close();
+});
+test('a reference area omits the 100 km prefix so the digits match the stated precision',()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','wgs84');a.paste('14.00287, 99.24459');
+  a.change('#toSys','thailand');
+  assert.ok(a.state().settings.thailand.square,'converting inside one square should fill the area in');
+  assert.equal(a.state().settings.thailand.sgOmit,true,'an area implies its prefix, so omission turns on');
+  assert.equal(a.$('#toRows .a').value.length,4,'4 digits per axis at the default 10 m');
+  assert.equal(a.$('#toRows .b').value.length,4);
+  a.dom.window.close();
+});

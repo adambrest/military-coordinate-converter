@@ -91,6 +91,7 @@
   .histbtn{min-width:34px;min-height:34px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text);font-size:15px;line-height:1;cursor:pointer}
   .histbtn:hover:not(:disabled){background:var(--panel2)}
   .histbtn:disabled{color:#cbd5e1;cursor:default}
+  .note.attention{color:var(--warn)}
   .addrow{align-self:flex-start;margin-top:4px;background:none;border:none;color:var(--accent);font-weight:600;font-size:13px;cursor:pointer;padding:6px 4px}
 
   /* settings */
@@ -1050,11 +1051,13 @@
       onSelect(chosen,opts){
         const id=chosen.id, s=state.settings[id];
         if(id==="mgrs")s.ao=chosen.prefix;else s.square=[chosen.e,chosen.n];
+        // With an area chosen the 100 km prefix is implied, so drop it and let the
+        // digit count match the precision the settings advertise.
+        if(id!=="mgrs")s.sgOmit=true;
         state.lastLocation={lat:chosen.lat,lon:chosen.lon};
         state.aoConfirmed=true;
         if(opts.pending){
           delete state.pendingGrid;
-          if(id!=="mgrs")s.sgOmit=true;
           state.from=id;state.to="wgs84";state.points=[];
           $("#fromSys").value=id;$("#toSys").value="wgs84";
           const rows=opts.pending.text.trim().split(/\r?\n/).filter(Boolean).map(line=>splitGrid(line));
@@ -1129,7 +1132,7 @@
       picker.open({system:id,preset:id,pick,point:state.lastLocation,side:"from",afterPick:convert});
     }
     function zoneCodeLabel(p,e,n){return (p.zoneCode||p.name.replace(" MGR",""))+" · E"+e+" N"+n;}
-    function assignSquare(id,e,n){state.settings[id].square=[+e,+n];}
+    function assignSquare(id,e,n){const s=(state.settings[id]||={});s.square=[+e,+n];s.sgOmit=true;}
     // A preset with a fixed footprint already says where its references are, so the
     // output's reference area can be filled in before anything has been converted.
     function presetAnchorPoint(id){
@@ -1435,6 +1438,7 @@
 
     /* ---- swap ---- */
     $("#swapBtn").addEventListener("click",()=>{
+      readRows();remember();
       const nf=state.to, nt=state.from==="auto"?"wgs84":state.from;
       // move converted results into FROM (as new-from = old-to system)
       const pts=state.points||[];
@@ -1443,6 +1447,9 @@
       $("#fromSys").value=nf; $("#toSys").value=nt;
       if(pts.length){ state.rows=pts.map(p=>{ const [a,b]=formatPoint(p.lat,p.lon,nf,state.settings,p.digits); return [a,b,p.name||""]; }); }
       state.points=[]; renderFrom(); renderTo(); updatePairState(); detect(""); save();
+      // The other side was computed a moment ago, so recompute it rather than
+      // handing back an empty column and asking for Convert again.
+      if(pts.length&&!pairInvalid())convert();
     });
 
     // Any dropdown combination is allowed (so the user can freely re-pick from/to); only the Convert
@@ -1635,6 +1642,8 @@
           h+=`<section class="settings-section"><h4 class="settings-subhead">Output format</h4>`;
           h+=`<div class="srow"><span class="k">Precision</span>${seg(id==="mgrs"?[[5,"1 m"],[4,"10 m"],[3,"100 m"],[2,"1 km"],[1,"10 km"],[0,"100 km"]]:[[5,"1 m"],[4,"10 m"],[3,"100 m"]],digits,v=>{s.sgDigits=+v;changed();})}</div>`;
           h+=`<div class="note precision-note">${precision} · ${digits} digits within each 100 km square</div>`;
+          if(id!=="mgrs"&&p.large&&!s.square)
+            h+=`<div class="note attention">No reference area yet, so references keep their 100 km leading digit and print wider than ${digits}+${digits}. Choose one below to read them at ${precision}.</div>`;
           const canOmit = id==="mgrs"?!!s.ao:!p.large || !!s.square;
           const omId="om_"+id;
           h+=`<label class="chk"><input type="checkbox" id="${omId}" ${canOmit&&s.sgOmit!==false?"checked":""} ${canOmit?"":"disabled"}> ${id==="mgrs"?"Omit selected reference-area prefix":"Omit 100 km square prefix"}</label>`;
