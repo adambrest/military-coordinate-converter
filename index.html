@@ -1141,16 +1141,20 @@
     // Check the app endpoint through the network, bypassing the offline shell.
     let connectionCheck=0;
     async function checkMapConnection(){
-      // Both elements are looked up before the wait: the document may be gone by
-      // the time it finishes, and writing to a detached node harms nothing.
+      // Looked up before the wait, because the check outlives the page it started
+      // on: a torn-down document has no querySelector left to call.
       const token=++connectionCheck,button=$("#selectMap"),note=$("#mapOffline");
       // A tooltip says nothing on a phone, so the reason sits under the button.
-      const setMapAvailable=online=>{button.disabled=!online;button.title=online?"":"Internet connection required";note.hidden=online;};
+      // A superseded check, or one whose page has gone, has nothing left to say.
+      const setMapAvailable=online=>{
+        if(token!==connectionCheck||!button.isConnected)return;
+        button.disabled=!online;button.title=online?"":"Internet connection required";note.hidden=online;
+      };
       if(navigator.onLine===false){setMapAvailable(false);return;}
       if(typeof fetch!=="function")return;
       const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),5000);
-      try{const r=await fetch("version.js?connectivity="+Date.now(),{cache:"no-store",signal:controller.signal});const online=r.ok&&/APP_VERSION\s*=/.test(await r.text());if(token===connectionCheck)setMapAvailable(online);}
-      catch(_){if(token===connectionCheck)setMapAvailable(false);}
+      try{const r=await fetch("version.js?connectivity="+Date.now(),{cache:"no-store",signal:controller.signal});setMapAvailable(r.ok&&/APP_VERSION\s*=/.test(await r.text()));}
+      catch(_){setMapAvailable(false);}
       finally{clearTimeout(timer);}
     }
     addEventListener("online",checkMapConnection);addEventListener("offline",checkMapConnection);
