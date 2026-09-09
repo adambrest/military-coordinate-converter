@@ -659,24 +659,52 @@
     else if(refLon-half>lon) lon+=resolution;
     return {lat,lon};
   }
+  // Places this app already carries. There is no geocoder offline, so a trailing
+  // locality only helps when it names something here.
+  function knownPlaces(){
+    const list=[];
+    for(const p of Object.values(PRESETS)){
+      if(p.bbox) list.push({name:(p.name||"").replace(/\s+MGR$/,""),broad:true,
+        lat:p.anchor?p.anchor[0]:(p.bbox[0]+p.bbox[1])/2,
+        lon:p.anchor?p.anchor[1]:(p.bbox[2]+p.bbox[3])/2});
+      for(const l of (p.context&&p.context.landmarks)||[]) list.push({name:l.name,lat:l.lat,lon:l.lon});
+    }
+    return list;
+  }
+  function localityPoint(text){
+    if(!text) return null;
+    const hay=" "+String(text).toUpperCase()+" ";
+    // A named landmark beats a whole country: at these ranges the difference
+    // between a town and a country's middle decides the answer.
+    let best=null;
+    for(const place of knownPlaces()){
+      const name=(place.name||"").toUpperCase();
+      if(!name||!hay.includes(name)) continue;
+      if(!best||(best.broad&&!place.broad)||(!!best.broad===!!place.broad&&name.length>best.name.length)) best=place;
+    }
+    return best;
+  }
   function parsePlusCode(text,reference){
-    // A trailing locality ("7Q9G+2M Singapore") is Maps' own phrasing; the code
-    // carries the position once a reference is known, so the name is not needed.
-    const m=String(text).trim().toUpperCase().match(/^([23456789CFGHJMPQRVWX0]{2,8}\+[23456789CFGHJMPQRVWX]{0,7})\b/);
+    // Maps writes a trailing locality ("7Q9G+2M Singapore"); it is kept, because
+    // for a short code it is the only clue to which part of the world is meant.
+    const m=String(text).trim().match(/^([23456789CFGHJMPQRVWX0]{2,8}\+[23456789CFGHJMPQRVWX]{0,7})(?![0-9A-Z+])\s*(.*)$/i);
     if(!m) return null;
-    const code=m[1], sep=code.indexOf("+");
-    if(sep===8&&!code.includes("0")){
+    const code=m[1].toUpperCase(), locality=(m[2]||"").trim(), sep=code.indexOf("+");
+    if(sep===8){
       const area=decodePlusCode(code);
       return area?{lat:area.lat,lon:area.lon,detected:"Plus code"}:{error:"That plus code could not be read."};
     }
-    if(sep===8){
-      const area=decodePlusCode(code);
-      return area?{lat:area.lat,lon:area.lon,detected:"Plus code area"}:{error:"That plus code could not be read."};
-    }
-    const point=reference||plusReference;
-    if(!point) return {error:"Short plus codes need a nearby point. Convert a coordinate first, or paste the full code."};
+    // A short code names its cell relative to somewhere else, and resolves to the
+    // nearest such cell. A reference further away than half a cell silently yields
+    // a different, equally confident place, so the reference used is reported.
+    const reach=Math.round(Math.pow(20,2-(8-sep)/2)*111/2);
+    const place=localityPoint(locality);
+    const point=place||reference||plusReference;
+    if(!point) return {error:"A short plus code is measured from somewhere nearby. Convert a coordinate first, or paste the full code."};
     const found=recoverPlusCode(code,point.lat,point.lon);
-    return found?{...found,detected:"Short plus code"}:{error:"That plus code could not be read."};
+    if(!found) return {error:"That plus code could not be read."};
+    return {...found,detected:"Short plus code",
+      warning:code+" is a short plus code, read from "+(place?place.name:"the last point converted")+". It only lands right if that is within about "+reach+" km — paste the full code to be certain."};
   }
 
   // ---- lat/long pair parser (paste). preferredOrder: 'latlon'|'lonlat'
@@ -1398,7 +1426,10 @@
         autoArea(points);state.aoConfirmed=true;
         if(target==="mgrs"&&!state.settings.mgrs.ao)state.settings.mgrs.ao=points[0].prefix;
       }
-      state.points=[];stale=false;renderFrom();updatePairState();renderTo();flashRows(i,parsed.length);convert();save();
+      state.points=[];stale=false;renderFrom();updatePairState();renderTo();flashRows(i,parsed.length);convert();
+      const pasted=[...new Set(parsed.map(r=>r.point&&r.point.warning).filter(Boolean))];
+      if(pasted.length){const d=$("#detect");d.textContent=[d.textContent,...pasted].filter(Boolean).join(" ");d.className="detect warn";}
+      save();
     }
     function flashRows(start,count){
       const rows=$("#fromRows").children;
@@ -1466,7 +1497,7 @@
         });
         if(unresolved>=0){openCountryChooser(state.rows[unresolved][0]+" "+state.rows[unresolved][1],unresolved);return;}
       }
-      const pts=[]; let bad=false, needPick=null, firstError="", ambiguous=null; const detectedOrders=new Set();
+      const pts=[]; let bad=false, needPick=null, firstError="", ambiguous=null; const detectedOrders=new Set(), parseNotes=new Set();
       const rowsEl=$("#fromRows").children;
       state.rows.forEach((r,i)=>{
         const rowEl=rowsEl[i]; const A=rowEl.querySelector(".a"), B=rowEl.querySelector(".b");
@@ -1478,6 +1509,7 @@
         if(!Number.isFinite(res.lat)||!Number.isFinite(res.lon)||Math.abs(res.lat)>90||Math.abs(res.lon)>180){bad=true;firstError="Coordinate out of range.";return;}
         if(state.from==="wgs84"&&res.detectedOrder) detectedOrders.add(res.detectedOrder);
         if(res.ambiguous&&!ambiguous)ambiguous=res.ambiguous;
+        if(res.warning)parseNotes.add(res.warning);
         pts.push({lat:res.lat,lon:res.lon,name:r[2].trim(),digits:res.digits,cellSize:res.cellSize});
       });
       if(needPick){ showSquarePicker(state.from, needPick); return; }
@@ -1498,7 +1530,7 @@
       const orderUpdated=detectedOrder&&state.settings.wgs84.order!==detectedOrder;
       if(orderUpdated){ state.settings.wgs84.order=detectedOrder; renderFrom(); }
       const spacing=d=>{const m=10**(5-d);return m>=1000?m/1000+" km":m+" m";};
-      const notes=[];
+      const notes=[...parseNotes];
       if(ambiguous)notes.push("These digits sit inside "+PRESETS[state.from].name.replace(" MGR","")+" read as "+ambiguous.map(spacing).join(" or ")+". Showing "+spacing(ambiguous[0])+" — set the precision in Settings if that is wrong.");
       // The reference is still valid here; it just is not over the country itself.
       const offshore=COUNTRY_PRESETS.includes(state.to)?pts.filter(p=>!presetLikely(state.to,p.lat,p.lon)):[];

@@ -1146,3 +1146,39 @@ test('a newly placed reference area starts at the common 4+4',async()=>{
   assert.equal(b.state().settings.thailand.sgDigits,5);
   b.dom.window.close();
 });
+
+test('a short plus code says which point it was read from',()=>{
+  const c=core();
+  const far={lat:25.03,lon:121.56};   // Taipei: deliberately nowhere near
+  const run=(t,ref)=>vm.runInContext('parsePlusCode('+JSON.stringify(t)+','+JSON.stringify(ref===undefined?far:ref)+')',c);
+  // A trailing locality we recognise overrides an unrelated reference.
+  const sg=run('9XMJ+X6 Singapore');
+  assert.ok(Math.abs(sg.lat-1.38494)<0.001&&Math.abs(sg.lon-103.98056)<0.001,'locality ignored: '+sg.lat+','+sg.lon);
+  assert.match(sg.warning,/read from Singapore/);
+  // A named landmark is a better reference than the country holding it.
+  assert.match(run('7Q9G+2M Sai Yok, Thailand').warning,/read from Sai Yok/);
+  // Without a locality it falls back, and says so rather than looking certain.
+  const bare=run('9XJJ+Q64');
+  assert.match(bare.warning,/read from the last point converted/);
+  assert.match(bare.warning,/56 km/);
+  // A full code needs no reference and carries no such caveat.
+  const full=run('6PH59XMJ+X6');
+  assert.equal(full.warning,undefined);
+  assert.ok(Math.abs(full.lat-1.38494)<0.001);
+  // Trailing locality text must never reach the coordinate itself.
+  const withPlace=run('M2JF+5M2 Ayer Tawar, Johor, Malaysia');
+  assert.ok(Number.isFinite(withPlace.lat)&&Number.isFinite(withPlace.lon));
+});
+test('a pasted short plus code shows its caveat, a full one does not',()=>{
+  const saved={from:'auto',to:'wgs84',rows:[['','','']],points:[],aoSelectionVersion:2,militaryVersion:3,
+    settings:{},lastLocation:{lat:1.35,lon:103.82}};
+  const a=app(JSON.parse(JSON.stringify(saved)),false,false);
+  a.change('#fromSys','wgs84');a.paste('9XJJ+Q64');
+  assert.match(a.$('#detect').textContent,/short plus code/,'the caveat must reach the reader');
+  a.dom.window.close();
+  const b=app(JSON.parse(JSON.stringify(saved)),false,false);
+  b.change('#fromSys','wgs84');b.paste('6PH59XMJ+X6');
+  assert.doesNotMatch(b.$('#detect').textContent,/short plus code/,'a full code is exact');
+  assert.ok(Math.abs(b.state().points[0].lat-1.38494)<0.001);
+  b.dom.window.close();
+});
