@@ -1119,3 +1119,39 @@ test('a newly placed reference area starts at the common 4+4',async()=>{
   b.dom.window.close();
 });
 
+
+test('a short map link resolves through the endpoint when one is configured',async()=>{
+  const withResolver=html.replace('const LINK_RESOLVER = "";','const LINK_RESOLVER = "https://resolver.test/go";');
+  const dom=new JSDOM(withResolver.replace(/<script[\s\S]*?<\/script>/g,''),{url:'https://example.test/',runScripts:'outside-only',pretendToBeVisual:true});
+  const w=dom.window;
+  for(const f of ['version.js','proj4.js','vendor/mgrs.js','grid-core.js','map-context.js','map-support.js'])w.eval(read(f));
+  w.createAOPicker=o=>({open:()=>{}});w.createPointPicker=o=>({open:()=>{}});
+  let asked=null;
+  w.fetch=async(url)=>{
+    if(String(url).startsWith('https://resolver.test/go')){
+      asked=String(url);
+      return {ok:true,json:async()=>({url:'https://maps.google.com?q=1.3849163,103.9806071&entry=gps'})};
+    }
+    return {ok:true,text:async()=>read('version.js')};
+  };
+  w.eval(withResolver.match(/<script>\s*([\s\S]*?)<\/script>/)[1]);
+  const $=s=>w.document.querySelector(s);
+  const paste=t=>{const e=new w.Event('paste',{bubbles:true,cancelable:true});Object.defineProperty(e,'clipboardData',{value:{getData:()=>t}});$('#fromRows').children[0].querySelector('.a').dispatchEvent(e);};
+  $('#fromSys').value='wgs84';$('#fromSys').dispatchEvent(new w.Event('change',{bubbles:true}));
+  paste('https://maps.app.goo.gl/oxBekKUgBWZMeVJ89?g_st=ic');
+  assert.match($('#detect').textContent,/Following the link/,'the reader should see it working');
+  assert.equal($('#fromRows .a').classList.contains('busy'),true,'the cell should show it is busy');
+  await new Promise(r=>setTimeout(r,20));
+  assert.ok(asked&&asked.includes(encodeURIComponent('https://maps.app.goo.gl/oxBekKUgBWZMeVJ89?g_st=ic')),'the link must be sent whole: '+asked);
+  const point=JSON.parse(w.localStorage.getItem('mgrconv-v1')).points[0];
+  assert.ok(Math.abs(point.lat-1.3849163)<1e-6&&Math.abs(point.lon-103.9806071)<1e-6,'resolved to '+point.lat+','+point.lon);
+  assert.equal($('#fromRows .a').classList.contains('busy'),false,'the busy state must clear');
+  w.close();
+});
+test('a short map link explains itself when no endpoint is configured',()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','wgs84');a.paste('https://maps.app.goo.gl/oxBekKUgBWZMeVJ89?g_st=ic');
+  assert.match(a.$('#badPair').textContent,/Open it, then paste/);
+  assert.equal(a.$('#fromRows .a').classList.contains('busy'),false);
+  a.dom.window.close();
+});

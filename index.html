@@ -92,6 +92,8 @@
   .histbtn:hover:not(:disabled){background:var(--panel2)}
   .histbtn:disabled{color:#cbd5e1;cursor:default}
   .map-offline{margin:2px 0 0;font-size:12px;color:var(--muted)}
+  @keyframes cellbusy{to{background-position:200% 0}}
+  .cell.busy{background-image:linear-gradient(90deg,transparent 0%,var(--panel2) 40%,transparent 80%);background-size:200% 100%;animation:cellbusy 1.1s linear infinite}
   .select-map:disabled{opacity:.5;cursor:default}
   .note.required{font-weight:700;font-size:13px;color:var(--text);background:var(--panel2);border-left:3px solid var(--warn);border-radius:0 7px 7px 0;padding:9px 11px;margin:2px 0 8px}
   .seg.locked{opacity:.55}
@@ -385,6 +387,11 @@
   // Street detail ceiling. Satellite availability is queried at the map location.
   const DETAIL_ZOOM = 19;
   const GLOBAL_FORMATS = ["mgrs","globalutm"];
+  // A browser may request a short map link but is not allowed to read where it
+  // leads, so following it needs one hop through a service. Put the address of a
+  // deployed worker/resolve-link.js here to have short links resolve themselves;
+  // left blank, they simply explain what to do instead.
+  const LINK_RESOLVER = "";
   const EXAMPLE_POINT = {lat:1.2964704,lon:103.8210085};
   function globalExample(id,S){return formatPoint(EXAMPLE_POINT.lat,EXAMPLE_POINT.lon,id,S||defaultSettings()).join(" ").replace(/^(\d{1,2}[C-HJ-NP-X])([A-HJ-NP-Z]{2})/,"$1 $2");}
   // A point inside the grid square a preset is currently working in, so its example
@@ -565,7 +572,7 @@
   function extractMapCoordinate(text){
     const clean=String(text).replace(/\\&/g,"&").replace(/&amp;/gi,"&");
     const urls=clean.match(/https?:\/\/[^\s<>"\]]+/gi)||[];
-    let sawMapLink=false, sawShortLink=false;
+    let sawMapLink=false, sawShortLink=false, shortLinkUrl="";
     for(let token of urls){
       token=token.replace(/[),.;]+$/g,"");
       let u; try{ u=new URL(token); }catch(_){ continue; }
@@ -575,7 +582,7 @@
       const googleShort=host==="maps.app.goo.gl"||(host==="goo.gl"&&u.pathname.startsWith("/maps"));
       const apple=host==="maps.apple.com"||host.endsWith(".maps.apple.com");
       const appleShort=host==="maps.apple"||host.endsWith(".maps.apple");
-      if(googleShort||appleShort){ sawMapLink=true; sawShortLink=true; continue; }
+      if(googleShort||appleShort){ sawMapLink=true; sawShortLink=true; shortLinkUrl=shortLinkUrl||token; continue; }
       if(!google&&!apple) continue;
       sawMapLink=true;
       if(google){
@@ -601,7 +608,7 @@
         }
       }
     }
-    if(sawMapLink) return {error:sawShortLink?"A short map link holds no coordinates and cannot be opened from here. Open it, then paste the address it lands on — or paste the plus code Maps shows for the place.":"map link has no readable coordinates",mapLink:true};
+    if(sawMapLink) return {error:sawShortLink?"A short map link holds no coordinates. Open it, then paste the address it lands on.":"map link has no readable coordinates",mapLink:true,shortLink:sawShortLink,link:sawShortLink?shortLinkUrl:""};
     return null;
   }
   // ---- lat/long pair parser (paste). preferredOrder: 'latlon'|'lonlat'
@@ -1271,6 +1278,26 @@
         return result;
       });
     }
+    let resolving=0;
+    async function resolveShortLink(link,i,rowText){
+      const token=++resolving, cell=$("#fromRows").children[i]?.querySelector(".a");
+      detect("Following the link…","warn");
+      if(cell)cell.classList.add("busy");
+      try{
+        const r=await fetch(LINK_RESOLVER+(LINK_RESOLVER.includes("?")?"&":"?")+"url="+encodeURIComponent(link),{signal:AbortSignal.timeout(8000)});
+        const data=await r.json();
+        if(token!==resolving)return;
+        if(!data.url)throw Error(data.error||"That link could not be followed.");
+        // Hand the address it landed on back to the ordinary paste path.
+        onPaste({clipboardData:{getData:()=>rowText.replace(link,data.url)},preventDefault(){}},i);
+      }catch(error){
+        if(token!==resolving)return;
+        detect("");
+        setBottomError(error.name==="TimeoutError"?"The link took too long to follow. Open it and paste the address it lands on.":"That link could not be followed. Open it and paste the address it lands on.");
+      }finally{
+        if(token===resolving){const c=$("#fromRows").children[i]?.querySelector(".a");if(c)c.classList.remove("busy");}
+      }
+    }
     function onPaste(e,i,A,B){
       const text=(e.clipboardData||window.clipboardData).getData("text");
       if(!text)return;
@@ -1297,7 +1324,10 @@
         return p.error?p:{cells:llCells(p.lat,p.lon),point:p};
       });
       if(parsed.some(p=>p.error)){
-        e.preventDefault();state.rows[i]=[text,"",state.rows[i]?.[2]||""];state.points=[];renderFrom();renderTo();setBottomError(parsed.find(p=>p.error).error);save();return;
+        e.preventDefault();state.rows[i]=[text,"",state.rows[i]?.[2]||""];state.points=[];renderFrom();renderTo();
+        const failed=parsed.find(p=>p.error);
+        if(failed.shortLink&&failed.link&&LINK_RESOLVER&&typeof fetch==="function"){resolveShortLink(failed.link,i,text);save();return;}
+        setBottomError(failed.error);save();return;
       }
       if(!parsed.length)return;
       e.preventDefault();
