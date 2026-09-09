@@ -30,8 +30,10 @@ async function trimTiles(cache){
 self.addEventListener("fetch", e => {
   const req=e.request; if(req.method!=="GET") return;
   const url=new URL(req.url);
-  if(url.origin!==self.location.origin){ if(TILE_HOSTS.includes(url.hostname)) e.respondWith(tile(req)); return; }
+  // A reachability probe must never be answered from a cache, wherever it is
+  // addressed, or it reports the network is up while the device is in a tunnel.
   if(url.searchParams.has("connectivity")){ e.respondWith(fetch(req,{cache:"no-store"})); return; }
+  if(url.origin!==self.location.origin){ if(TILE_HOSTS.includes(url.hostname)) e.respondWith(tile(req)); return; }
   if(req.mode==="navigate"){
     e.respondWith(fetch(req,{cache:"no-store"}).then(res=>{ if(res&&res.ok){ const c=res.clone(); caches.open(CACHE).then(x=>x.put(req,c)); } return res; }).catch(()=>caches.match(req).then(hit=>hit||caches.match("./index.html"))));
     return;

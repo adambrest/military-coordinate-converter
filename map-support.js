@@ -21,12 +21,14 @@
     const point=TIMEZONE_VIEWS[timezone];
     return point?{lat:point[0],lon:point[1],zoom:10}:{lat:20,lon:0,zoom:2};
   }
-  function approximateLocation(){
+  function approximateLocation(options){
     const key='map-base-location-v1';
+    const helper=(options&&options.helper)||'';
+    let deviceZone='';
     let guess={lat:20,lon:0,zoom:2};
     try{
-      const timezone=Intl.DateTimeFormat().resolvedOptions().timeZone;
-      guess=baseView(timezone);
+      deviceZone=Intl.DateTimeFormat().resolvedOptions().timeZone;
+      guess=baseView(deviceZone);
     }catch(_){}
     const settled=p=>({current:()=>p,ready:Promise.resolve(p)});
     const valid=p=>p&&Number.isFinite(p.lat)&&Number.isFinite(p.lon)&&Math.abs(p.lat)<=85&&Math.abs(p.lon)<=180;
@@ -34,17 +36,27 @@
     // The IP answer is the accurate one and is preferred whenever it arrives; the
     // timezone view stands in meanwhile so the map never waits on the network.
     if(typeof fetch!=='function'||globalThis.navigator?.onLine===false)return settled(guess);
+    // Our own endpoint when there is one: it answers from the nearest edge rather
+    // than across the world, and asking it means no third party is told anything.
+    const source=helper
+      ?{url:helper.replace(/\/$/,'')+'/where',read:d=>({lat:d.lat,lon:d.lon,zone:d.timezone})}
+      :{url:'https://ipapi.co/json/',read:d=>({lat:d.latitude,lon:d.longitude,zone:d.timezone})};
     // Only coarse coordinates are retained. No IP address or fingerprint is stored.
     const ready=Promise.resolve().then(()=>{
       const controller=typeof AbortController==='function'?new AbortController():null;
       // The timer is always cleared so a pending lookup cannot hold the page open.
       const timer=controller?setTimeout(()=>controller.abort(),2000):0;
-      const options={credentials:'omit',referrerPolicy:'no-referrer'};
-      if(controller)options.signal=controller.signal;
-      return fetch('https://ipapi.co/json/',options).finally(()=>clearTimeout(timer));
+      const options2={credentials:'omit',referrerPolicy:'no-referrer'};
+      if(controller)options2.signal=controller.signal;
+      return fetch(source.url,options2).finally(()=>clearTimeout(timer));
     })
       .then(r=>{if(!r.ok)throw Error();return r.json();})
-      .then(data=>{const p={lat:data.latitude,lon:data.longitude};if(!valid(p))return guess;
+      .then(data=>{const answer=source.read(data)||{};const p={lat:answer.lat,lon:answer.lon};if(!valid(p))return guess;
+        // An address says where the network leaves the internet, which on a mobile
+        // carrier can be another country entirely; the device clock says where its
+        // owner believes they are. When the two disagree the clock is the safer of
+        // the pair, so the map stays put rather than jumping abroad.
+        if(answer.zone&&deviceZone&&answer.zone!==deviceZone)return guess;
         guess={lat:Math.round(p.lat*100)/100,lon:Math.round(p.lon*100)/100,zoom:10,time:Date.now()};
         try{sessionStorage.setItem(key,JSON.stringify(guess));}catch(_){}return guess;
       }).catch(()=>guess);

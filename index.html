@@ -387,11 +387,13 @@
   // Street detail ceiling. Satellite availability is queried at the map location.
   const DETAIL_ZOOM = 19;
   const GLOBAL_FORMATS = ["mgrs","globalutm"];
-  // A browser may request a short map link but is not allowed to read where it
-  // leads, so following it needs one hop through a service. Put the address of a
-  // deployed worker/resolve-link.js here to have short links resolve themselves;
-  // left blank, they simply explain what to do instead.
-  const LINK_RESOLVER = "";
+  // Two things a browser cannot do for itself: read where a short map link leads,
+  // and say roughly where it is without asking permission. Put the address of a
+  // deployed worker/resolve-link.js here and both start working. Left blank,
+  // short links explain what to do by hand and the opening view falls back to the
+  // device timezone, which is how the app ships.
+  const MAP_HELPER = "";
+  const LINK_RESOLVER = MAP_HELPER ? MAP_HELPER.replace(/\/$/,"") + "/resolve" : "";
   const EXAMPLE_POINT = {lat:1.2964704,lon:103.8210085};
   function globalExample(id,S){return formatPoint(EXAMPLE_POINT.lat,EXAMPLE_POINT.lon,id,S||defaultSettings()).join(" ").replace(/^(\d{1,2}[C-HJ-NP-X])([A-HJ-NP-Z]{2})/,"$1 $2");}
   // A point inside the grid square a preset is currently working in, so its example
@@ -1040,7 +1042,7 @@
     // Resolved lazily so the page never reaches the network before the map is wanted.
     let locationGuess;
     const guessLocation=()=>{
-      try{return (locationGuess||=MapSupport.approximateLocation()).current();}
+      try{return (locationGuess||=MapSupport.approximateLocation({helper:MAP_HELPER})).current();}
       catch(_){return {lat:1.35,lon:103.82,zoom:10};}
     };
     const pointPicker=createPointPicker({preview:mapPointPreview,onConfirm:addMapPoint,onViewChange:view=>{state.pointMapView=view;save();}});
@@ -1051,7 +1053,7 @@
     if("serviceWorker" in navigator){
       const whenIdle=globalThis.requestIdleCallback||(run=>setTimeout(run,1500));
       whenIdle(()=>{
-        (locationGuess||=MapSupport.approximateLocation()).ready.then(point=>{
+        (locationGuess||=MapSupport.approximateLocation({helper:MAP_HELPER})).ready.then(point=>{
           MapSupport.prefetchTiles(point);
           // Knowing the ceiling up front stops the first satellite switch stalling.
           MapSupport.imageryZoom(point.lat,point.lon,800,480).catch(()=>{});
@@ -1069,25 +1071,62 @@
     });
 
     // Check the app endpoint through the network, bypassing the offline shell.
-    let connectionCheck=0;
+    let connectionCheck=0,tilesReachable=null,probing=false;
     async function checkMapConnection(){
       // Looked up before the wait, because the check outlives the page it started
       // on: a torn-down document has no querySelector left to call.
       const token=++connectionCheck,button=$("#selectMap"),note=$("#mapOffline");
+      const OFFLINE_NOTE="Select from map needs an internet connection.";
       // A tooltip says nothing on a phone, so the reason sits under the button.
       // A superseded check, or one whose page has gone, has nothing left to say.
       const setMapAvailable=online=>{
         if(token!==connectionCheck||!button.isConnected)return;
         button.disabled=!online;button.title=online?"":"Internet connection required";note.hidden=online;
+        if(!online)note.textContent=OFFLINE_NOTE;
       };
       if(navigator.onLine===false){setMapAvailable(false);return;}
       if(typeof fetch!=="function")return;
       const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),5000);
-      try{const r=await fetch("version.js?connectivity="+Date.now(),{cache:"no-store",signal:controller.signal});setMapAvailable(r.ok&&/APP_VERSION\s*=/.test(await r.text()));}
-      catch(_){setMapAvailable(false);}
+      let reachable=false;
+      try{const r=await fetch("version.js?connectivity="+Date.now(),{cache:"no-store",signal:controller.signal});reachable=r.ok&&/APP_VERSION\s*=/.test(await r.text());}
+      catch(_){reachable=false;}
       finally{clearTimeout(timer);}
+      if(!reachable){setMapAvailable(false);return;}
+      setMapAvailable(tilesReachable!==false);
+      // Past this point the page may already be gone, and an image needs a document
+      // to be made in, so nothing below may run for a check that has been overtaken.
+      if(token!==connectionCheck||!button.isConnected)return;
+      // Reaching our own files only proves the network is up. A network can allow
+      // this page and still block the tile services, which is common enough on a
+      // managed connection, and the map would then open blank with nothing to say.
+      // So ask for a real tile too — but in the background, because the button has
+      // already earned its place and waiting on an image would only hold it shut.
+      if(tilesReachable===null&&!probing){
+        probing=true;
+        probeTiles().then(ok=>{
+          probing=false;tilesReachable=ok;
+          if(ok||token!==connectionCheck||!button.isConnected)return;
+          setMapAvailable(false);note.textContent="Map imagery cannot be reached on this network.";
+        });
+      }
     }
-    addEventListener("online",checkMapConnection);addEventListener("offline",checkMapConnection);
+    // The load and error events fire regardless of origin, which a fetch for a
+    // tile cannot manage, so an image is the only way to ask this question.
+    function probeTiles(){
+      return new Promise(done=>{
+        if(typeof Image!=="function")return done(true);
+        let img;
+        // A torn-down page has no document to make an image in, and an unanswerable
+        // question is better left unanswered than counted as a network failure.
+        try{img=new Image();}catch(_){return done(true);}
+        const finish=answer=>{clearTimeout(timer);img.onload=img.onerror=null;done(answer);};
+        const timer=setTimeout(()=>finish(false),5000);
+        img.onload=()=>finish(true);img.onerror=()=>finish(false);
+        img.src="https://tile.openstreetmap.org/0/0/0.png?connectivity="+Date.now();
+      });
+    }
+    addEventListener("online",()=>{tilesReachable=null;checkMapConnection();});
+    addEventListener("offline",checkMapConnection);
     addEventListener("focus",checkMapConnection);checkMapConnection();
     setInterval(()=>{if(document.visibilityState==="visible")checkMapConnection();},30000);
 

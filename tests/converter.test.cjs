@@ -1121,14 +1121,14 @@ test('a newly placed reference area starts at the common 4+4',async()=>{
 
 
 test('a short map link resolves through the endpoint when one is configured',async()=>{
-  const withResolver=html.replace('const LINK_RESOLVER = "";','const LINK_RESOLVER = "https://resolver.test/go";');
+  const withResolver=html.replace('const MAP_HELPER = "";','const MAP_HELPER = "https://resolver.test/go";');
   const dom=new JSDOM(withResolver.replace(/<script[\s\S]*?<\/script>/g,''),{url:'https://example.test/',runScripts:'outside-only',pretendToBeVisual:true});
   const w=dom.window;
   for(const f of ['version.js','proj4.js','vendor/mgrs.js','grid-core.js','map-context.js','map-support.js'])w.eval(read(f));
   w.createAOPicker=o=>({open:()=>{}});w.createPointPicker=o=>({open:()=>{}});
   let asked=null;
   w.fetch=async(url)=>{
-    if(String(url).startsWith('https://resolver.test/go')){
+    if(String(url).startsWith('https://resolver.test/go/resolve')){
       asked=String(url);
       return {ok:true,json:async()=>({url:'https://maps.google.com?q=1.3849163,103.9806071&entry=gps'})};
     }
@@ -1203,4 +1203,48 @@ test('the link resolver will not be pointed at somewhere of the caller\'s choosi
   assert.equal(out.url,'https://internal.example/admin','the destination is still reported to the reader');
   assert.deepEqual(visited,['https://www.google.com/url?q=https://internal.example/admin'],
     'only the shortener may be fetched, never what it points at');
+});
+
+// --- opening view ---------------------------------------------------------
+function located(zone,answer,helper){
+  const a=app(undefined,false,false);
+  const w=a.w;
+  w.sessionStorage.clear();
+  w.Intl={DateTimeFormat:()=>({resolvedOptions:()=>({timeZone:zone})})};
+  const asked=[];
+  w.fetch=async url=>{asked.push(String(url));return {ok:true,json:async()=>answer};};
+  return {a,asked,guess:w.MapSupport.approximateLocation({helper})};
+}
+test('the opening view is asked of our own endpoint when there is one',async()=>{
+  const {a,asked,guess}=located('Asia/Singapore',{lat:1.29,lon:103.85,timezone:'Asia/Singapore'},'https://helper.test');
+  const point=await guess.ready;
+  assert.deepEqual(asked,['https://helper.test/where'],'no third party should be asked: '+asked);
+  assert.ok(Math.abs(point.lat-1.29)<1e-9&&Math.abs(point.lon-103.85)<1e-9,'opened at '+point.lat+','+point.lon);
+  a.dom.window.close();
+});
+test('an address that disagrees with the clock does not move the map abroad',async()=>{
+  // The carrier leaves the internet in Brunei while the phone is set to Singapore.
+  const {a,guess}=located('Asia/Singapore',{lat:4.90,lon:114.94,timezone:'Asia/Brunei'},'https://helper.test');
+  const point=await guess.ready;
+  assert.ok(Math.abs(point.lat-1.35)<0.01&&Math.abs(point.lon-103.82)<0.01,
+    'the clock should have won, but the map opened at '+point.lat+','+point.lon);
+  a.dom.window.close();
+});
+test('with no endpoint the opening view still falls back to the old lookup',async()=>{
+  const {a,asked,guess}=located('Asia/Bangkok',{latitude:13.76,longitude:100.50,timezone:'Asia/Bangkok'},'');
+  const point=await guess.ready;
+  assert.deepEqual(asked,['https://ipapi.co/json/']);
+  assert.ok(Math.abs(point.lat-13.76)<1e-9,'opened at '+point.lat);
+  a.dom.window.close();
+});
+test('the endpoint reports where a request came from, coarsely',async()=>{
+  const worker=resolver(async()=>({status:200,headers:{get:()=>null}}));
+  const request=new Request('https://r.test/where');
+  Object.defineProperty(request,'cf',{value:{latitude:'1.2896723',longitude:'103.8501',country:'SG',timezone:'Asia/Singapore'}});
+  const out=JSON.parse(await (await worker.fetch(request)).text());
+  // Rounded before it is sent: the map only needs to know which town to open over.
+  assert.deepEqual(out,{lat:1.29,lon:103.85,country:'SG',timezone:'Asia/Singapore'});
+  const blank=new Request('https://r.test/where');
+  Object.defineProperty(blank,'cf',{value:{}});
+  assert.deepEqual(JSON.parse(await (await worker.fetch(blank)).text()),{lat:null,lon:null,country:null,timezone:null});
 });
