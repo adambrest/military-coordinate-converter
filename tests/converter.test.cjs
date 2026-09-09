@@ -1370,3 +1370,39 @@ test('a place in the path does not outrank a pin or an explicit query',()=>{
   assert.ok(p&&Math.abs(p.lat-1.3849163)<1e-6,'the explicit query should win, got '+JSON.stringify(p));
   a.dom.window.close();
 });
+
+// --- the output follows the ground ----------------------------------------
+const typePair=(a,lat,lon)=>{
+  const row=a.$('#fromRows').children[0];
+  for(const [sel,v] of [['.a',lat],['.b',lon]]){
+    const c=row.querySelector(sel);c.value=v;c.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+  }
+};
+test('typing a coordinate in a country offers that country grid, as pasting does',()=>{
+  for(const [lat,lon,expected] of [['1.383700','103.981790','sg'],['14.00287','99.24459','thailand'],['4.65','114.75','brunei']]){
+    const a=app(undefined,false,false);
+    a.change('#fromSys','wgs84');
+    typePair(a,lat,lon);
+    a.$('#convertBtn').click();
+    assert.equal(a.state().to,expected,lat+','+lon+' should convert into '+expected+', not coordinates');
+    a.dom.window.close();
+  }
+});
+test('a coordinate no grid covers stays an honest reformat',()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','wgs84');
+  typePair(a,'0.0','0.0');
+  a.$('#convertBtn').click();
+  assert.equal(a.state().to,'wgs84','nothing holds this point, so coordinates out is the honest answer');
+  a.dom.window.close();
+});
+test('an output the reader named is not revised behind their back',()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','wgs84');
+  a.change('#toSys','wgs84');          // said, in as many words: coordinates out
+  typePair(a,'1.383700','103.981790');
+  a.$('#convertBtn').click();
+  assert.equal(a.state().to,'wgs84','a stated output must survive a Singapore coordinate');
+  assert.equal(a.state().explicitOutput,true);
+  a.dom.window.close();
+});

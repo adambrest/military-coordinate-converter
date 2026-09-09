@@ -1532,8 +1532,11 @@
       if(bad){ detect("");setBottomError(firstError+" Fix the highlighted fields."); return; }
       if(!pts.length){ detect("Enter at least one coordinate.","err"); return; }
       // Follow the ground: an output country grid the points do not sit in is
-      // corrected to the one that holds them, until the user names a grid itself.
-      if(!state.explicitOutput&&COUNTRY_PRESETS.includes(state.to)){
+      // corrected to the one that holds them, and coordinates in a country that
+      // has a grid are offered it. Pasting has always done this; typing the same
+      // pair left the reader converting coordinates into coordinates. Naming an
+      // output settles the question for good.
+      if(!state.explicitOutput&&(COUNTRY_PRESETS.includes(state.to)||(state.to==="wgs84"&&PRESETS[state.from].kind==="latlong"))){
         const fit=enabledGrid(pts);
         if(fit&&fit!==state.to){state.to=fit;syncFormat("to");}
       }
@@ -1674,7 +1677,7 @@
       if(from==="auto")return;
       const fromGrid=PRESETS[from].kind!=="latlong";
       if(fromGrid&&state.to!=="wgs84"){state.to="wgs84";state.explicitOutput=false;}
-      else if(!fromGrid&&state.to==="wgs84"){
+      else if(!fromGrid&&state.to==="wgs84"&&!state.explicitOutput){
         // Only a grid the points actually fall in, never merely the first one
         // enabled. With nothing fitting, coordinates out is an honest reformat.
         const fit=suggestedGrid(points,COUNTRY_PRESETS.filter(presetEnabled))||(presetEnabled("mgrs")?"mgrs":null);
