@@ -8,14 +8,18 @@ const root=path.join(__dirname,'..');
 const read=f=>fs.readFileSync(path.join(root,f),'utf8');
 const html=read('index.html');
 const inline=html.match(/<script>\s*([\s\S]*?)<\/script>/)[1];
+// The shipped endpoint is a deployment detail, so every test states the one it means.
+const withHelper=(value,source=html)=>source.replace(/const MAP_HELPER = "[^"]*";/,'const MAP_HELPER = "'+value+'";');
 function core(){
   const ctx=vm.createContext({console,URL});
   for(const f of ['proj4.js','vendor/mgrs.js','grid-core.js','map-context.js'])vm.runInContext(read(f),ctx);
   vm.runInContext(inline.split('  /* ============================ UI / state')[0],ctx);
   return ctx;
 }
-function app(saved,realMap=false,militaryEnabled=true){
-  const dom=new JSDOM(html.replace(/<script[\s\S]*?<\/script>/g,''),{url:'https://example.test/',runScripts:'outside-only',pretendToBeVisual:true});
+function app(saved,realMap=false,militaryEnabled=true,helper){
+  const page=helper===undefined?html:withHelper(helper);
+  const script=page.match(/<script>\s*([\s\S]*?)<\/script>/)[1];
+  const dom=new JSDOM(page.replace(/<script[\s\S]*?<\/script>/g,''),{url:'https://example.test/',runScripts:'outside-only',pretendToBeVisual:true});
   const w=dom.window;
   if(saved)w.localStorage.setItem('mgrconv-v1',JSON.stringify(saved));
   for(const f of ['version.js','proj4.js','vendor/mgrs.js','grid-core.js','map-context.js','map-support.js'])w.eval(read(f));
@@ -29,7 +33,7 @@ function app(saved,realMap=false,militaryEnabled=true){
     w.eval(read('vendor/leaflet.js'));const createMap=w.L.map;w.L.map=(...args)=>{const map=createMap(...args);if(args[0]==='pointMap')w.pointTestMap=map;else w.testMap=map;return map;};w.eval(read('map-picker.js'));w.eval(read('point-picker.js'));
   }else w.createAOPicker=opts=>{w.pickerHooks=opts;return {open:o=>{w.mapOptions=o;w.document.getElementById('aoOverlay').classList.add('open');}};};
   if(!realMap)w.createPointPicker=opts=>{w.pointPickerHooks=opts;return {open:o=>{w.pointOptions=o;}};};
-  w.eval(inline);
+  w.eval(script);
   // Existing global-grid scenarios opt in through the same Settings control as users.
   if(militaryEnabled){w.document.querySelector('#tab-set').click();const toggle=w.document.querySelector('#militaryToggle');if(toggle.getAttribute('aria-pressed')==='false')toggle.click();w.document.querySelector('#tab-conv').click();}
   const $=s=>w.document.querySelector(s);
@@ -1121,7 +1125,7 @@ test('a newly placed reference area starts at the common 4+4',async()=>{
 
 
 test('a short map link resolves through the endpoint when one is configured',async()=>{
-  const withResolver=html.replace('const MAP_HELPER = "";','const MAP_HELPER = "https://resolver.test/go";');
+  const withResolver=withHelper('https://resolver.test/go');
   const dom=new JSDOM(withResolver.replace(/<script[\s\S]*?<\/script>/g,''),{url:'https://example.test/',runScripts:'outside-only',pretendToBeVisual:true});
   const w=dom.window;
   for(const f of ['version.js','proj4.js','vendor/mgrs.js','grid-core.js','map-context.js','map-support.js'])w.eval(read(f));
@@ -1149,7 +1153,7 @@ test('a short map link resolves through the endpoint when one is configured',asy
   w.close();
 });
 test('a short map link explains itself when no endpoint is configured',()=>{
-  const a=app(undefined,false,false);
+  const a=app(undefined,false,false,'');
   a.change('#fromSys','wgs84');a.paste('https://maps.app.goo.gl/oxBekKUgBWZMeVJ89?g_st=ic');
   assert.match(a.$('#badPair').textContent,/Open it, then paste/);
   assert.equal(a.$('#fromRows .a').classList.contains('busy'),false);
@@ -1247,4 +1251,28 @@ test('the endpoint reports where a request came from, coarsely',async()=>{
   const blank=new Request('https://r.test/where');
   Object.defineProperty(blank,'cf',{value:{}});
   assert.deepEqual(JSON.parse(await (await worker.fetch(blank)).text()),{lat:null,lon:null,country:null,timezone:null});
+});
+
+// Only a short link has anything to gain from the endpoint. Everything else must
+// read locally and appear at once, whether or not an endpoint is configured.
+test('nothing but a short link ever waits on the network',()=>{
+  const a=app(undefined,false,false);
+  const asked=[];
+  a.w.fetch=async url=>{asked.push(String(url));return {ok:true,text:async()=>read('version.js'),json:async()=>({})};};
+  a.change('#fromSys','wgs84');
+  const local=[
+    ['a long Google link','https://www.google.com/maps?q=1.3849163,103.9806071&entry=gps'],
+    ['a Google place URL','https://www.google.com/maps/place/X/@1.29,103.85,17z/data=!3m1!4b1!4m2!3d1.2963!4d103.8502'],
+    ['an Apple link','https://maps.apple.com/place?coordinate=1.384349,103.984754&name=Changi'],
+    ['a plain pair','1.3849163, 103.9806071'],
+    ['a grid reference','48N 372000 153000']
+  ];
+  for(const [what,text] of local){
+    asked.length=0;
+    a.paste(text);
+    // Read on the spot: the row is filled before any promise could have settled.
+    assert.equal(a.$('#fromRows .a').classList.contains('busy'),false,what+' should not be waiting');
+    assert.deepEqual(asked.filter(u=>u.includes('map-link-resolver')),[],what+' asked the endpoint: '+asked);
+  }
+  a.dom.window.close();
 });

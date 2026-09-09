@@ -392,7 +392,7 @@
   // deployed worker/resolve-link.js here and both start working. Left blank,
   // short links explain what to do by hand and the opening view falls back to the
   // device timezone, which is how the app ships.
-  const MAP_HELPER = "";
+  const MAP_HELPER = "https://map-link-resolver.adambrest.workers.dev";
   const LINK_RESOLVER = MAP_HELPER ? MAP_HELPER.replace(/\/$/,"") + "/resolve" : "";
   const EXAMPLE_POINT = {lat:1.2964704,lon:103.8210085};
   function globalExample(id,S){return formatPoint(EXAMPLE_POINT.lat,EXAMPLE_POINT.lon,id,S||defaultSettings()).join(" ").replace(/^(\d{1,2}[C-HJ-NP-X])([A-HJ-NP-Z]{2})/,"$1 $2");}
