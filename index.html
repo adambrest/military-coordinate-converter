@@ -588,6 +588,11 @@
       if(!google&&!apple) continue;
       sawMapLink=true;
       if(google){
+        // Google answers an unfamiliar address with a consent or captcha page and
+        // parks the real destination in continue=. Following that costs nothing and
+        // saves the reader a link that resolved to a wall rather than a place.
+        const via=u.searchParams.get("continue");
+        if(via&&urls.length<12&&!urls.includes(via)&&/^https?:\/\//i.test(via))urls.push(via);
         // A place URL can contain pins for related places before the selected place.
         // The last embedded pin is the selected destination and is more specific than the @ camera.
         const pins=[];

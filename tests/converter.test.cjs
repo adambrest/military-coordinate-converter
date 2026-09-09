@@ -1300,3 +1300,14 @@ test('a run of digits that cannot be halved says so',()=>{
   assert.doesNotMatch(shown,/not a number/i,'it should not blame a northing that was never separate');
   a.dom.window.close();
 });
+
+test('a link that lands on a Google consent wall is followed to the place behind it',()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','wgs84');
+  // What the resolver hands back when Google rate-limits its address.
+  a.paste('https://www.google.com/sorry/index?continue=https://maps.google.com/maps%3Fq%3D1.3849163,103.9806071%26entry%3Dgps&q=EgQ');
+  const point=a.state().points[0];
+  assert.ok(point&&Math.abs(point.lat-1.3849163)<1e-6&&Math.abs(point.lon-103.9806071)<1e-6,
+    'the place behind the wall was missed: '+JSON.stringify(point));
+  a.dom.window.close();
+});
