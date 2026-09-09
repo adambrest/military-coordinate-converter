@@ -91,6 +91,9 @@
   .histbtn{min-width:34px;min-height:34px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text);font-size:15px;line-height:1;cursor:pointer}
   .histbtn:hover:not(:disabled){background:var(--panel2)}
   .histbtn:disabled{color:#cbd5e1;cursor:default}
+  .map-offline{margin:2px 0 0;font-size:12px;color:var(--muted)}
+  .select-map:disabled{opacity:.5;cursor:default}
+  .note.required{font-weight:700;font-size:13px;color:var(--text);background:var(--panel2);border-left:3px solid var(--warn);border-radius:0 7px 7px 0;padding:9px 11px;margin:2px 0 8px}
   .seg.locked{opacity:.55}
   .seg button:disabled{cursor:default}
   .chk.locked{opacity:.55}
@@ -221,6 +224,7 @@
           <div class="tbl"><div class="thead" id="fromHead"></div><div id="fromRows"></div></div>
           <div class="detect" id="detect"></div>
           <div class="row-actions"><button class="addrow" id="addRow">+ Add row</button><button class="select-map" id="selectMap" type="button">Select from map</button><span class="history"><button class="histbtn" id="undoBtn" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>&#8630;</button><button class="histbtn" id="redoBtn" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>&#8631;</button></span></div>
+          <p class="map-offline" id="mapOffline" hidden>Select from map needs an internet connection.</p>
         </div>
 
         <!-- CONVERT / SWAP -->
@@ -1137,12 +1141,16 @@
     // Check the app endpoint through the network, bypassing the offline shell.
     let connectionCheck=0;
     async function checkMapConnection(){
-      const token=++connectionCheck,button=$("#selectMap");
-      if(navigator.onLine===false){button.disabled=true;button.title="Internet connection required";return;}
+      // Both elements are looked up before the wait: the document may be gone by
+      // the time it finishes, and writing to a detached node harms nothing.
+      const token=++connectionCheck,button=$("#selectMap"),note=$("#mapOffline");
+      // A tooltip says nothing on a phone, so the reason sits under the button.
+      const setMapAvailable=online=>{button.disabled=!online;button.title=online?"":"Internet connection required";note.hidden=online;};
+      if(navigator.onLine===false){setMapAvailable(false);return;}
       if(typeof fetch!=="function")return;
       const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),5000);
-      try{const r=await fetch("version.js?connectivity="+Date.now(),{cache:"no-store",signal:controller.signal});const online=r.ok&&/APP_VERSION\s*=/.test(await r.text());if(token===connectionCheck){button.disabled=!online;button.title=online?"":"Internet connection required";}}
-      catch(_){if(token===connectionCheck){button.disabled=true;button.title="Internet connection required";}}
+      try{const r=await fetch("version.js?connectivity="+Date.now(),{cache:"no-store",signal:controller.signal});const online=r.ok&&/APP_VERSION\s*=/.test(await r.text());if(token===connectionCheck)setMapAvailable(online);}
+      catch(_){if(token===connectionCheck)setMapAvailable(false);}
       finally{clearTimeout(timer);}
     }
     addEventListener("online",checkMapConnection);addEventListener("offline",checkMapConnection);
@@ -1155,10 +1163,7 @@
       presetEnabled,presets:PRESETS,contains:presetContains,projection:id=>projectionFor(id,state.settings),plausible:gridPlausible,
       onSelect(chosen,opts){
         const id=chosen.id, s=state.settings[id];
-        if(id==="mgrs")s.ao=chosen.prefix;else s.square=[chosen.e,chosen.n];
-        // With an area chosen the 100 km prefix is implied, so drop it and let the
-        // digit count match the precision the settings advertise.
-        if(id!=="mgrs")s.sgOmit=true;
+        if(id==="mgrs")s.ao=chosen.prefix;else assignSquare(id,chosen.e,chosen.n);
         state.lastLocation={lat:chosen.lat,lon:chosen.lon};
         state.aoConfirmed=true;
         if(opts.pending){
@@ -1237,7 +1242,14 @@
       picker.open({system:id,preset:id,pick,point:state.lastLocation,side:"from",afterPick:convert});
     }
     function zoneCodeLabel(p,e,n){return (p.zoneCode||p.name.replace(" MGR",""))+" · E"+e+" N"+n;}
-    function assignSquare(id,e,n){const s=(state.settings[id]||={});s.square=[+e,+n];s.sgOmit=true;}
+    // Placing an area implies its prefix, so omission goes on. A first area also
+    // starts at the 4+4, ten metre reference people actually pass around; a later
+    // move of the area leaves a precision the reader has since chosen alone.
+    function assignSquare(id,e,n){
+      const s=(state.settings[id]||={}), first=!s.square;
+      s.square=[+e,+n];s.sgOmit=true;
+      if(first)s.sgDigits=4;
+    }
     // A preset with a fixed footprint already says where its references are, so the
     // output's reference area can be filled in before anything has been converted.
     function presetAnchorPoint(id){
@@ -1762,7 +1774,7 @@
           // digit count, so its precision stays settable.
           const needsArea = id!=="mgrs" && p.large && !s.square;
           h+=`<section class="settings-section"><h4 class="settings-subhead">Output format</h4>`;
-          if(needsArea) h+=`<div class="note">Choose a reference area first.</div>`;
+          if(needsArea) h+=`<div class="note required">Choose a reference area first</div>`;
           h+=`<div class="srow"><span class="k">Precision</span>${seg(id==="mgrs"?[[5,"1 m"],[4,"10 m"],[3,"100 m"],[2,"1 km"],[1,"10 km"],[0,"100 km"]]:[[5,"1 m"],[4,"10 m"],[3,"100 m"]],digits,v=>{s.sgDigits=+v;changed();},needsArea)}</div>`;
           h+=`<div class="note precision-note">${precision} · ${digits} digits within each 100 km square</div>`;
           const omId="om_"+id;

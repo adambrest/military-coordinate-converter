@@ -478,9 +478,11 @@ test('map confirmation checks output boundaries before closing its parent',async
 test('offline and failed connectivity disable map entry, recovery restores it',async()=>{
   const a=app();Object.defineProperty(a.w.navigator,'onLine',{configurable:true,value:false});a.w.dispatchEvent(new a.w.Event('offline'));
   assert.equal(a.$('#selectMap').disabled,true);a.$('#selectMap').click();assert.equal(a.w.pointOptions,undefined);
+  assert.equal(a.$('#mapOffline').hidden,false,'the reason must be visible, not only a tooltip');
   Object.defineProperty(a.w.navigator,'onLine',{configurable:true,value:true});a.w.fetch=async()=>{throw Error('network');};a.w.dispatchEvent(new a.w.Event('online'));await new Promise(r=>setTimeout(r,0));assert.equal(a.$('#selectMap').disabled,true);
   a.w.fetch=async()=>({ok:true,text:async()=>'<html>Sign in to Wi-Fi</html>'});a.w.dispatchEvent(new a.w.Event('online'));await new Promise(r=>setTimeout(r,0));assert.equal(a.$('#selectMap').disabled,true);
   a.w.fetch=async()=>({ok:true,text:async()=>read('version.js')});a.w.dispatchEvent(new a.w.Event('online'));await new Promise(r=>setTimeout(r,0));assert.equal(a.$('#selectMap').disabled,false);
+  assert.equal(a.$('#mapOffline').hidden,true,'the note clears once the map can load');
   // Reference-area selection remains usable with local geometry while offline.
   Object.defineProperty(a.w.navigator,'onLine',{configurable:true,value:false});a.w.dispatchEvent(new a.w.Event('offline'));a.change('#fromSys','taiwan');a.$('#regionChip').click();assert.equal(a.w.mapOptions.preset,'taiwan');a.dom.window.close();
 });
@@ -1123,5 +1125,24 @@ test('output format stays locked until a reference area is chosen',()=>{
   assert.doesNotMatch(open.textContent,/Choose a reference area first/);
   assert.ok([...open.querySelectorAll('.seg button')].some(x=>!x.disabled),'precision must be settable');
   assert.equal(open.querySelector('.chk input').disabled,false);
+  b.dom.window.close();
+});
+
+test('a newly placed reference area starts at the common 4+4',async()=>{
+  // An older install carrying a coarser choice and no area yet.
+  const saved={from:'auto',to:'wgs84',rows:[['','','']],points:[],aoSelectionVersion:2,militaryVersion:3,
+    settings:{thailand:{sgDigits:3,sgOmit:true}}};
+  const b=app(saved,false,false);
+  assert.equal(b.state().settings.thailand.square,undefined);
+  b.change('#fromSys','wgs84');b.paste('14.00287, 99.24459');
+  b.change('#toSys','thailand');
+  assert.ok(b.state().settings.thailand.square,'the area is filled in');
+  assert.equal(b.state().settings.thailand.sgDigits,4,'a first area starts at 10 m');
+  assert.equal(b.$('#toRows .a').value.length,4);
+  // Choosing a precision after that survives the area being moved.
+  b.$('#tab-set').click();
+  await new Promise(r=>setTimeout(r,5));   // the segment handlers attach on a timer
+  b.$('.preset[data-id="thailand"] .seg button[data-v="5"]').click();
+  assert.equal(b.state().settings.thailand.sgDigits,5);
   b.dom.window.close();
 });
