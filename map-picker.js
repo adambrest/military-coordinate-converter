@@ -29,7 +29,7 @@
       try{
         result.prefix=raw?GlobalGrid.parts(lat,lon,0).prefix:"E"+result.e+" N"+result.n;
         if(!raw){
-          const p=presets[id],bb=p.bbox,regions=p.regions||[p.outline||[[bb[2],bb[0]],[bb[3],bb[0]],[bb[3],bb[1]],[bb[2],bb[1]]]];
+          const p=presets[id],bb=p.bbox,regions=p.regions||[p.squareOutline||p.outline||[[bb[2],bb[0]],[bb[3],bb[0]],[bb[3],bb[1]],[bb[2],bb[1]]]];
           if(!regions.some(region=>GlobalGrid.intersects(poly,region)))return null;
         }
         const inputs=picks();
@@ -82,7 +82,8 @@
       layer.on("click",e=>{L.DomEvent.stopPropagation(e);selectCandidate(chosen);});
       layer.on("mouseover",()=>layer.setStyle({fillOpacity:.15}));
       layer.on("mouseout",()=>layer.setStyle({fillOpacity:.05}));
-      layer.bindTooltip(chosen.prefix,{permanent:true,direction:"center",className:"grid-label"});
+      // Stacked labels at country scale are unreadable; the squares still are not.
+      layer.bindTooltip(chosen.prefix,{permanent:!map||map.getZoom()>=6,direction:"center",className:"grid-label"});
     }
     function select(lat,lon){
       const selected=candidates.find(c=>GlobalGrid.inside(MapSupport.longitude(lon),lat,c.polygon));
@@ -94,7 +95,9 @@
       for(let i=0;i<=8;i++){const t=i/8;for(const p of [[b.west+(b.east-b.west)*t,b.south],[b.west+(b.east-b.west)*t,b.north],[b.west,b.south+(b.north-b.south)*t],[b.east,b.south+(b.north-b.south)*t]])samples.push(root.proj4("WGS84",proj,p));}
       const es=samples.map(p=>p[0]),ns=samples.map(p=>p[1]);
       const e0=Math.floor(Math.min(...es)/size)*size,e1=Math.ceil(Math.max(...es)/size)*size,n0=Math.floor(Math.min(...ns)/size)*size,n1=Math.ceil(Math.max(...ns)/size)*size;
-      if((e1-e0)*(n1-n0)/(size*size)>120)return;
+      // The worldwide grid can ask for the entire earth; a country cannot ask for
+      // more than itself, and its whole extent is the view that matters most.
+      if((e1-e0)*(n1-n0)/(size*size)>(id==="mgrs"?120:700))return;
       for(let e=e0;e<e1;e+=size)for(let n=n0;n<n1;n+=size){
         // Only MGRS zone edges clip a square. Country view bounds never change its geometry.
         const poly=GlobalGrid.square(proj,e,n,size,clipBounds);if(poly.length<3)continue;
@@ -110,7 +113,9 @@
         const visible=id===country||(id==="mgrs"&&zoom>=8);
         if(visible){if(!map.hasLayer(marker))marker.addTo(map);marker.openTooltip();}else if(map.hasLayer(marker))map.removeLayer(marker);
       }
-      const broad=wholeZone(),threshold=broad?3:squareThreshold();
+      // A country large enough to need zooming out to see is a country whose squares
+      // have to survive being zoomed out to. Only the worldwide grid still waits.
+      const broad=wholeZone(),threshold=broad?3:(id==="mgrs"?squareThreshold():0);
       $("aoScope").textContent=id==="mgrs"?(broad?"Selecting: grid zone, e.g. 48N":"Selecting: 100 km square, e.g. 48N UG"):"";
       $("aoInstruction").textContent=broad
         ?"Grid zones at this zoom. Zoom in for the 100 km squares that let you omit a prefix."
@@ -238,7 +243,10 @@
         const p=presets[id],b=p.bbox;let area=[[b[0],b[2]],[b[1],b[3]]];
         if(p.anchor){const [lat,lon]=p.anchor,dy=(p.anchorRadiusKm||65)*1.6/111,dx=dy/Math.cos(lat*Math.PI/180);area=[[lat-dy,lon-dx],[lat+dy,lon+dx]];}
         const focus=L.latLngBounds(area);map.fitBounds(focus,{padding:[28,28],maxZoom:9,animate:false});map.setZoom(Math.max(6,map.getZoom()),{animate:false});
-        const region=L.latLngBounds([[b[0],b[2]],[b[1],b[3]]]);map.setMaxZoom(MapSupport.squareZoom(map));map.setMinZoom(Math.min(map.getMaxZoom(),map.getBoundsZoom(region)));limitCenter(region);
+        // Panning is held to where the reader may look, which for a grid that covers
+        // one strip of a large country is wider than where the grid itself is valid.
+        const nav=p.browseBbox||b;
+        const region=L.latLngBounds([[nav[0],nav[2]],[nav[1],nav[3]]]);map.setMaxZoom(MapSupport.squareZoom(map));map.setMinZoom(Math.min(map.getMaxZoom(),map.getBoundsZoom(region)));limitCenter(region);
       }
       draw();if(opts.point)select(opts.point.lat,opts.point.lon);$("aoClose").focus();
     }

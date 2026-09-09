@@ -1174,7 +1174,7 @@ test('the link resolver follows map shorteners and refuses anything else',async(
   let stub=async(url)=>({status:hops[url]?302:200,headers:{get:k=>k==='location'?(hops[url]||''):null}});
   const worker=resolver((...a)=>stub(...a));
   const call=async u=>JSON.parse(await (await worker.fetch(new Request('https://r.test/?url='+encodeURIComponent(u)))).text());
-  // The address comes back normalised, which is what the parser wants anyway.
+  // The address comes back normalized, which is what the parser wants anyway.
   assert.match((await call('https://maps.app.goo.gl/abc')).url,/^https:\/\/maps\.google\.com\/?\?q=1\.38,103\.98$/);
   assert.match((await call('https://maps.apple/p/xyz')).url,/^https:\/\/maps\.apple\.com\/place\?coordinate=1\.38,103\.98$/);
   // Anything not a map shortener is refused, so this cannot become an open proxy.
@@ -1405,4 +1405,27 @@ test('an output the reader named is not revised behind their back',()=>{
   assert.equal(a.state().to,'wgs84','a stated output must survive a Singapore coordinate');
   assert.equal(a.state().explicitOutput,true);
   a.dom.window.close();
+});
+
+test('Australia can be roamed even where its grid does not reach',()=>{
+  const c=core();
+  const p=vm.runInContext('PRESETS.australia',c);
+  const holds=(b,lat,lon)=>lat>=b[0]&&lat<=b[1]&&lon>=b[2]&&lon<=b[3];
+  assert.ok(p.browseBbox,'the preset should say where the reader may look');
+  for(const [place,lat,lon] of [['Perth',-31.95,115.86],['Darwin',-12.46,130.84],['Adelaide',-34.93,138.60],['Brisbane',-27.47,153.03],['Shoalwater Bay',-22.65,150.35]])
+    assert.ok(holds(p.browseBbox,lat,lon),place+' should be reachable on the map');
+  // Looking is not the same as selecting: the grid still only covers zone 56S.
+  assert.equal(holds(p.bbox,-31.95,115.86),false,'Perth must stay outside the grid itself');
+  assert.equal(holds(p.bbox,-22.65,150.35),true,'Shoalwater Bay is inside the grid');
+});
+test('Australia offers reference areas on the coast, not out in the Coral Sea',()=>{
+  const c=core();
+  const inside=vm.runInContext(`(coords=>{
+    const poly=PRESETS.australia.squareOutline;
+    return coords.map(([lat,lon])=>pointInPolygon(lat,lon,poly));
+  })`,c);
+  const land=[['Shoalwater Bay',-22.65,150.35],['Rockhampton',-23.38,150.51],['Brisbane',-27.47,153.03],['Sydney',-33.87,151.21],['inland Queensland',-24.0,148.5]];
+  const sea =[['Coral Sea',-22.0,155.5],['Tasman Sea east of Sydney',-33.9,155.0],['off Fraser Island',-25.0,154.5],['far east of the zone',-30.0,157.5]];
+  for(const [place,lat,lon] of land)assert.equal(inside([[lat,lon]])[0],true,place+' should be offered');
+  for(const [place,lat,lon] of sea)assert.equal(inside([[lat,lon]])[0],false,place+' is open water and must not be offered');
 });

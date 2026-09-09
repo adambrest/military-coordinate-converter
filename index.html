@@ -356,6 +356,18 @@
       // The whole of the preset grid: UTM zone 56S reaches about 500 km either side
       // of 153 deg E, which is the eastern seaboard. The anchor still opens on Shoalwater.
       bbox:[-38.0,-18.0,148.0,158.0], toleranceKm:12, anchor:[-22.65,150.35], anchorRadiusKm:65,
+      // Where the grid is valid and where the reader may look are not the same
+      // question. Zone 56S is a strip down the east coast, but being walled into
+      // it leaves no way to tell the strip apart from the continent behind it.
+      browseBbox:[-44.5,-9.0,112.0,154.5],
+      // Zone 56S runs well out into the Coral and Tasman Seas. Offering a reference
+      // area out there is offering open water, so the squares are held to the coast
+      // this grid actually serves. Only the picker reads this: what the grid accepts
+      // is still the zone, because a reference just offshore is ordinary.
+      squareOutline:[[146.0,-18.0],[147.4,-19.6],[148.7,-20.3],[149.2,-21.15],[149.6,-22.0],[150.5,-22.35],
+        [150.8,-23.2],[151.25,-23.85],[152.0,-24.85],[152.9,-25.3],[153.15,-26.4],[153.43,-27.9],[153.6,-28.65],
+        [153.05,-30.3],[152.9,-31.4],[151.8,-32.9],[151.25,-33.87],[150.9,-34.5],[150.2,-35.7],[149.97,-37.5],
+        [148.0,-37.85],[146.4,-38.9],[145.5,-38.0],[145.0,-34.0],[145.0,-28.0],[145.0,-22.0],[146.0,-18.0]],
       basis:"MGA / UTM Zone 56S.",
       specs:[["Map datums","WGS 84 / GDA2020"],["Map spheroids","WGS 84 / GRS80"],["Grid zone","MGA / UTM 56S"]],
       proj:"+proj=utm +zone=56 +south +datum=WGS84 +units=m" },
@@ -1089,7 +1101,8 @@
       const last=current.points.at(-1)||(savedView?.presetId===id?savedView:null);
       const previous=last&&(!p.bbox||presetContains(id,last.lat,last.lon))?last:null;
       const fallback=p.anchor?{lat:p.anchor[0],lon:p.anchor[1]}:p.bbox?{lat:(p.bbox[0]+p.bbox[1])/2,lon:(p.bbox[2]+p.bbox[3])/2}:guessLocation();
-      pointOptions={...current,presetId:id,presetLabel:p.name,bounds:p.bbox?[[p.bbox[0],p.bbox[2]],[p.bbox[1],p.bbox[3]]]:null,detailZoom:DETAIL_ZOOM,center:previous||fallback,zoom:(previous?state.pointMapView?.zoom:0)||(previous?15:COUNTRY_PRESETS.includes(id)?9:fallback.zoom||4),layer:state.pointMapView?.layer||"street"};
+      const nav=p.browseBbox||p.bbox;
+      pointOptions={...current,presetId:id,presetLabel:p.name,bounds:nav?[[nav[0],nav[2]],[nav[1],nav[3]]]:null,detailZoom:DETAIL_ZOOM,center:previous||fallback,zoom:(previous?state.pointMapView?.zoom:0)||(previous?15:COUNTRY_PRESETS.includes(id)?9:fallback.zoom||4),layer:state.pointMapView?.layer||"street"};
       pointPicker.open(pointOptions);
     });
 
@@ -1250,7 +1263,7 @@
     }
     function zoneCodeLabel(p,e,n){return (p.zoneCode||p.name.replace(" MGR",""))+" · E"+e+" N"+n;}
     // Placing an area implies its prefix, so omission goes on. A first area also
-    // starts at the 4+4, ten metre reference people actually pass around; a later
+    // starts at the 4+4, ten meter reference people actually pass around; a later
     // move of the area leaves a precision the reader has since chosen alone.
     function assignSquare(id,e,n){
       const s=(state.settings[id]||={}), first=!s.square;
