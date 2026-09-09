@@ -1010,3 +1010,54 @@ test('a reference area omits the 100 km prefix so the digits match the stated pr
   assert.equal(a.$('#toRows .b').value.length,4);
   a.dom.window.close();
 });
+
+test('a coordinate inside the bounding box but outside the country is called out',()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','wgs84');a.paste('1.4655, 103.7578');   // Johor Bahru
+  assert.notEqual(a.state().to,'sg','Johor Bahru must not pull Singapore in on its own');
+  a.change('#toSys','sg');   // naming it anyway
+  assert.match(a.$('#detect').textContent,/outside Singapore/,'Johor Bahru sits in the box, not the country');
+  assert.equal(a.$('#copyBtn').disabled,false,'the note must not block the conversion');
+  a.dom.window.close();
+  const b=app(undefined,false,false);
+  b.change('#fromSys','wgs84');b.paste('1.35, 103.82');
+  assert.equal(b.state().to,'sg','a point in Singapore should pick Singapore');
+  assert.equal(b.$('#detect').textContent,'','a point in Singapore needs no note');
+  b.dom.window.close();
+});
+test('an unplaceable coordinate does not switch military grids on by itself',()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','wgs84');a.paste('48.8582, 2.2945');   // Paris
+  assert.equal(!!a.state().militaryEnabled,false,'military grids stay opt-in');
+  assert.equal(a.state().to,'wgs84');
+  a.dom.window.close();
+});
+test('a Singapore reference out in the strait still converts',()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','sg');a.paste('3000 3000');
+  // Valid inside the 100 km square even though it is well off the island.
+  assert.equal(a.$('#copyBtn').disabled,false,'an offshore reference must still convert');
+  a.dom.window.close();
+});
+test('the country outlines hold the places the presets name',()=>{
+  const a=app(undefined,false,false);
+  const inside=(lat,lon,polys)=>polys.some(poly=>{
+    let hit=false;
+    for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+      const xi=poly[i][0],yi=poly[i][1],xj=poly[j][0],yj=poly[j][1];
+      if(((yi>lat)!==(yj>lat))&&lon<(xj-xi)*(lat-yi)/(yj-yi)+xi)hit=!hit;
+    }
+    return hit;
+  });
+  const sg=a.w.MAP_CONTEXT.sg.likely,au=a.w.MAP_CONTEXT.australia.likely;
+  for(const [name,lat,lon,want] of [
+    ['Singapore city',1.35,103.82,true],['Pulau Tekong',1.41,104.05,true],
+    ['Pulau Semakau',1.206,103.766,true],['Tuas',1.32,103.63,true],
+    ['Johor Bahru',1.4655,103.7578,false],['Batam',1.08,104.03,false]
+  ]) assert.equal(inside(lat,lon,sg),want,name);
+  for(const [name,lat,lon,want] of [
+    ['Camp Tilpal',-22.81253,150.13259,true],['Camp Growl',-22.80307,150.33732,true],
+    ['Brisbane',-27.47,153.03,true],['Auckland',-36.85,174.76,false]
+  ]) assert.equal(inside(lat,lon,au),want,name);
+  a.dom.window.close();
+});

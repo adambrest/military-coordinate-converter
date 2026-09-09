@@ -327,19 +327,19 @@
     mgrs:{id:"mgrs",name:"Military grid",kind:"mgrs",large:true,shortGrid:true,
       basis:"Global MGRS and UTM coordinates.",
       specs:[["Map datum","WGS 84"],["Map spheroid","WGS 84"]]},
-    sg:{ id:"sg", name:"Singapore MGR", kind:"grid", epsg:"EPSG:3168", lead:[LEAD_E,LEAD_N], omitDefault:true,
+    sg:{ id:"sg", name:"Singapore MGR", kind:"grid", epsg:"EPSG:3168", lead:[LEAD_E,LEAD_N], omitDefault:true, toleranceKm:0,
       bbox:[1.13,1.48,103.59,104.09],
       basis:"Kertau 1948 / RSO Malaya.",
       specs:[["Map datum","Kertau 1948"],["Map spheroid","Everest 1830 (1967 Definition)"]],
       proj:"+proj=omerc +lat_0=4 +lonc=102.25 +alpha=323.0257905 +gamma=323.130102361111 +k=0.99984 +x_0=804670.24 +y_0=0 +ellps=evrst69 +towgs84=-11,851,5,0,0,0,0 +units=m" },
     taiwan:{ id:"taiwan", name:"Taiwan MGR", kind:"utm", epsg:"UTM51N", zoneCode:"51N", large:true, shortGrid:true, exampleLead:[3,27],
-      bbox:[21.85,25.35,119.9,122.1],
+      bbox:[21.85,25.35,119.9,122.1], toleranceKm:3,
       outline:[[120.10,23.00],[120.05,23.60],[120.15,24.30],[120.55,24.90],[121.00,25.15],[121.60,25.30],[121.90,24.85],[121.55,24.00],[121.30,23.20],[120.90,22.50],[120.70,22.00],[120.45,22.35],[120.22,22.60],[120.10,23.00]],
       basis:"WGS 84 / UTM 51N.",
       specs:[["Map datum","WGS 84"],["Map spheroid","WGS 84"],["Grid zone","UTM 51N"]],
       proj:"+proj=utm +zone=51 +datum=WGS84 +units=m" },
     thailand:{ id:"thailand", name:"Thailand MGR", kind:"utm", epsg:"UTM47N", zoneCode:"47N", large:true, shortGrid:true, exampleLead:[5,15], anchor:[14.00287,99.24459], anchorRadiusKm:55,
-      bbox:[5.5,20.6,97.3,105.7],
+      bbox:[5.5,20.6,97.3,105.7], toleranceKm:3,
       outline:[[100.0,20.4],[101.2,20.3],[102.4,18.0],[104.8,17.9],[105.6,15.3],[104.5,14.4],[105.5,14.2],[102.4,13.6],[100.9,13.4],[100.0,12.6],[99.6,10.4],[100.3,7.4],[101.4,6.5],[99.9,6.7],[98.6,9.8],[98.9,12.6],[97.5,16.5],[98.9,19.8],[100.0,20.4]],
       basis:"WGS 84 / UTM 47N.",
       specs:[["Map datum","WGS 84"],["Map spheroid","WGS 84"],["Grid zone","UTM 47N"]],
@@ -347,11 +347,11 @@
     australia:{ id:"australia", name:"Australia MGR", kind:"utm", epsg:"UTM56S", zoneCode:"56S", large:true, shortGrid:true, exampleLead:[2,74],
       // The whole of the preset grid: UTM zone 56S reaches about 500 km either side
       // of 153 deg E, which is the eastern seaboard. The anchor still opens on Shoalwater.
-      bbox:[-38.0,-18.0,148.0,158.0], anchor:[-22.65,150.35], anchorRadiusKm:65,
+      bbox:[-38.0,-18.0,148.0,158.0], toleranceKm:12, anchor:[-22.65,150.35], anchorRadiusKm:65,
       basis:"MGA / UTM Zone 56S.",
       specs:[["Map datums","WGS 84 / GDA2020"],["Map spheroids","WGS 84 / GRS80"],["Grid zone","MGA / UTM 56S"]],
       proj:"+proj=utm +zone=56 +south +datum=WGS84 +units=m" },
-    brunei:{ id:"brunei", name:"Brunei MGR", kind:"grid", epsg:"BRUNEI", lead:[44,14], omitDefault:true,
+    brunei:{ id:"brunei", name:"Brunei MGR", kind:"grid", epsg:"BRUNEI", lead:[44,14], omitDefault:true, toleranceKm:3,
       bbox:[4.00,5.46,113.99,115.46],
       regions:[
         [[115.146,4.909],[115.170,4.870],[115.207,4.826],[115.273,4.637],[115.267,4.556],[115.273,4.475],[115.309,4.405],[115.361,4.330],[115.324,4.315],[115.275,4.340],[115.221,4.360],[115.113,4.382],[115.092,4.405],[115.068,4.543],[115.027,4.660],[115.023,4.741],[115.030,4.821],[115.086,4.836],[115.131,4.852],[115.116,4.896],[115.146,4.909]],
@@ -372,6 +372,7 @@
   for(const [id,context] of Object.entries(globalThis.MAP_CONTEXT)){
     PRESETS[id].context=context;
     if(context.boundaries)PRESETS[id].regions=context.boundaries;
+    if(context.likely)PRESETS[id].likely=context.likely;
   }
   const PRESET_ORDER = ["wgs84","mgrs","sg","taiwan","thailand","australia","brunei"];
   const COUNTRY_PRESETS = ["sg","taiwan","thailand","australia","brunei"];
@@ -488,9 +489,34 @@
     if(p.outline) return pointInPolygon(lat,lon,p.outline);
     return !!bb;
   }
+  // Distance from a point to a boundary segment, flat-earth near the point. Good
+  // to well under a percent across the few kilometers a margin is ever set to.
+  function segmentKm(lat,lon,a,b){
+    const kx=111.32*Math.max(0.05,Math.cos(lat*Math.PI/180)), ky=110.57;
+    const px=(lon-a[0])*kx, py=(lat-a[1])*ky;
+    const vx=(b[0]-a[0])*kx, vy=(b[1]-a[1])*ky, len=vx*vx+vy*vy;
+    const t=len?Math.max(0,Math.min(1,(px*vx+py*vy)/len)):0;
+    return Math.hypot(px-t*vx,py-t*vy);
+  }
+  function nearPolygon(lat,lon,poly,km){
+    for(let i=0,j=poly.length-1;i<poly.length;j=i++)
+      if(segmentKm(lat,lon,poly[j],poly[i])<=km) return true;
+    return false;
+  }
+  // Whether a coordinate plausibly sits in this country, which is a different and
+  // tighter question than whether a grid reference may be written here: a Singapore
+  // reference can legitimately land in the strait, well off the island.
+  function presetLikely(presetId,lat,lon){
+    const p=PRESETS[presetId];
+    const polys=p.likely||p.regions||(p.outline?[p.outline]:null);
+    if(!polys) return presetContains(presetId,lat,lon);
+    if(polys.some(poly=>pointInPolygon(lat,lon,poly))) return true;
+    const tol=p.toleranceKm||0;
+    return tol>0&&polys.some(poly=>nearPolygon(lat,lon,poly,tol));
+  }
   function suggestedGrid(points,ids=COUNTRY_PRESETS){
     for(const id of ids){
-      if(points.length&&points.every(p=>presetContains(id,p.lat,p.lon))) return id;
+      if(points.length&&points.every(p=>presetLikely(id,p.lat,p.lon))) return id;
     }
     return null;
   }
@@ -1264,7 +1290,9 @@
       delete state.pendingGrid;
       const points=parsed.map(p=>p.point).filter(Boolean);
       if(points.length&&!state.explicitOutput){
-        state.to=target==="mgrs"?"wgs84":enabledGrid(points)||"mgrs";
+        // Falling back to a global grid must not switch military grids on behind
+        // the reader; coordinates are the safe output when no country fits.
+        state.to=target==="mgrs"?"wgs84":enabledGrid(points)||(presetEnabled("mgrs")?"mgrs":"wgs84");
         $("#toSys").value=state.to;
       }
       parsed.forEach((r,k)=>{while(state.rows.length<=i+k)state.rows.push(["","",""]);state.rows[i+k]=[...r.cells,state.rows[i+k][2]||""];});
@@ -1372,7 +1400,12 @@
       const orderUpdated=detectedOrder&&state.settings.wgs84.order!==detectedOrder;
       if(orderUpdated){ state.settings.wgs84.order=detectedOrder; renderFrom(); }
       const spacing=d=>{const m=10**(5-d);return m>=1000?m/1000+" km":m+" m";};
-      detect(ambiguous?"These digits sit inside "+PRESETS[state.from].name.replace(" MGR","")+" read as "+ambiguous.map(spacing).join(" or ")+". Showing "+spacing(ambiguous[0])+" — set the precision in Settings if that is wrong.":"",ambiguous?"warn":"");
+      const notes=[];
+      if(ambiguous)notes.push("These digits sit inside "+PRESETS[state.from].name.replace(" MGR","")+" read as "+ambiguous.map(spacing).join(" or ")+". Showing "+spacing(ambiguous[0])+" — set the precision in Settings if that is wrong.");
+      // The reference is still valid here; it just is not over the country itself.
+      const offshore=COUNTRY_PRESETS.includes(state.to)?pts.filter(p=>!presetLikely(state.to,p.lat,p.lon)):[];
+      if(offshore.length)notes.push((offshore.length===pts.length?"These points sit":offshore.length+" points sit")+" outside "+PRESETS[state.to].name.replace(" MGR","")+" itself, though the grid still covers them.");
+      detect(notes.join(" "),notes.length?"warn":"");
       state.points=pts;
       stale=false;
       renderTo();
@@ -1496,8 +1529,10 @@
       const fromGrid=PRESETS[from].kind!=="latlong";
       if(fromGrid&&state.to!=="wgs84"){state.to="wgs84";state.explicitOutput=false;}
       else if(!fromGrid&&state.to==="wgs84"){
-        state.to=suggestedGrid(points,COUNTRY_PRESETS.filter(presetEnabled))||(presetEnabled("mgrs")?"mgrs":COUNTRY_PRESETS.find(presetEnabled)||"wgs84");
-        state.explicitOutput=false;
+        // Only a grid the points actually fall in, never merely the first one
+        // enabled. With nothing fitting, coordinates out is an honest reformat.
+        const fit=suggestedGrid(points,COUNTRY_PRESETS.filter(presetEnabled))||(presetEnabled("mgrs")?"mgrs":null);
+        if(fit){state.to=fit;state.explicitOutput=false;}
       }
     }
     function finishFrom(target,points){
