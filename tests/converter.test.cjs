@@ -1159,7 +1159,7 @@ test('a short map link explains itself when no endpoint is configured',()=>{
 // The worker runs off the device, so its logic is exercised here directly.
 function resolver(stub){
   const src=read('worker/resolve-link.js').replace('export default','var __worker =');
-  const ctx=vm.createContext({fetch:(...a)=>stub(...a),Response,Request,Headers,URL,JSON,console});
+  const ctx=vm.createContext({fetch:(...a)=>stub(...a),Response,Request,Headers,URL,JSON,console,AbortSignal});
   return vm.runInContext(src+';__worker',ctx);
 }
 test('the link resolver follows map shorteners and refuses anything else',async()=>{
@@ -1180,6 +1180,27 @@ test('the link resolver follows map shorteners and refuses anything else',async(
   // A link that goes nowhere is reported rather than echoed back.
   stub=async()=>({status:200,headers:{get:()=>null}});
   assert.match((await call('https://maps.app.goo.gl/dead')).error,/did not redirect/);
-  const cors=await worker.fetch(new Request('https://r.test/?url=x',{method:'OPTIONS'}));
-  assert.equal(cors.headers.get('access-control-allow-origin'),'*');
+  const site='https://adambrest.github.io';
+  const cors=await worker.fetch(new Request('https://r.test/?url=x',{method:'OPTIONS',headers:{origin:site}}));
+  assert.equal(cors.headers.get('access-control-allow-origin'),site,'the app itself must be answered');
+  const other=await worker.fetch(new Request('https://r.test/?url=x',{headers:{origin:'https://someone-else.test'}}));
+  assert.equal(other.status,403,'another site cannot borrow the endpoint from a browser');
+  assert.equal(other.headers.get('access-control-allow-origin'),null);
+});
+test('the link resolver will not be pointed at somewhere of the caller\'s choosing',async()=>{
+  // A Google open-redirect is the obvious way in: follow it once and the next
+  // fetch would be to any address the caller named. The hop is reported, never
+  // visited, so the worker only ever talks to the shorteners it was given.
+  const visited=[];
+  const worker=resolver(async url=>{
+    visited.push(url);
+    if(url==='https://www.google.com/url?q=https://internal.example/admin')
+      return {status:302,headers:{get:k=>k==='location'?'https://internal.example/admin':null}};
+    return {status:200,headers:{get:()=>null}};
+  });
+  const call=async u=>JSON.parse(await (await worker.fetch(new Request('https://r.test/?url='+encodeURIComponent(u)))).text());
+  const out=await call('https://www.google.com/url?q=https://internal.example/admin');
+  assert.equal(out.url,'https://internal.example/admin','the destination is still reported to the reader');
+  assert.deepEqual(visited,['https://www.google.com/url?q=https://internal.example/admin'],
+    'only the shortener may be fetched, never what it points at');
 });
