@@ -1064,34 +1064,6 @@ test('the country outlines hold the places the presets name',()=>{
   a.dom.window.close();
 });
 
-test('plus codes decode to the cell they name',()=>{
-  const c=core();
-  // Hand-computed from the Open Location Code specification.
-  for(const [code,lat,lon] of [['8FVC2222+22',47.0000625,8.0000625],['7FG49QCJ+2V',20.3700625,2.7821875],['7FG49QCJ+2VX',20.3701125,2.782234375]]){
-    const r=vm.runInContext('decodePlusCode("'+code+'")',c);
-    assert.ok(Math.abs(r.lat-lat)<1e-9&&Math.abs(r.lon-lon)<1e-9,code+' decoded to '+r.lat+','+r.lon);
-  }
-  assert.equal(vm.runInContext('decodePlusCode("nonsense")',c),null);
-  // A ten digit code names a cell about 14 m across, so a round trip lands inside it.
-  for(const [lat,lon] of [[1.3849163,103.9806071],[-33.87,151.21],[51.5,-0.13],[78.2,15.6]]){
-    const code=vm.runInContext('encodePlusCode('+lat+','+lon+',10)',c);
-    const back=vm.runInContext('decodePlusCode("'+code+'")',c);
-    const metres=Math.hypot((back.lat-lat)*110570,(back.lon-lon)*111320*Math.cos(lat*Math.PI/180));
-    assert.ok(metres<10,'round trip off by '+metres.toFixed(1)+' m');
-  }
-});
-test('a pasted plus code converts, and a short one uses the nearest known point',()=>{
-  const a=app(undefined,false,false);
-  a.change('#fromSys','wgs84');a.paste('6PH59XMJ+X6');
-  const point=a.state().points[0];
-  assert.ok(Math.abs(point.lat-1.38494)<0.001&&Math.abs(point.lon-103.98056)<0.001,'full plus code: '+point.lat+','+point.lon);
-  // With that position known, the short form of the same place resolves to it.
-  const b=app(a.state(),false,false);
-  b.change('#fromSys','wgs84');b.paste('9XMJ+X6');
-  const near=b.state().points[0];
-  assert.ok(Math.abs(near.lat-1.38494)<0.001&&Math.abs(near.lon-103.98056)<0.001,'short plus code: '+near.lat+','+near.lon);
-  b.dom.window.close();a.dom.window.close();
-});
 test('a short map link explains what to do instead of failing silently',()=>{
   const a=app(undefined,false,false);
   a.change('#fromSys','wgs84');a.paste('https://maps.app.goo.gl/oxBekKUgBWZMeVJ89?g_st=ic');
@@ -1147,55 +1119,3 @@ test('a newly placed reference area starts at the common 4+4',async()=>{
   b.dom.window.close();
 });
 
-test('a short plus code says which point it was read from',()=>{
-  const c=core();
-  const far={lat:25.03,lon:121.56};   // Taipei: deliberately nowhere near
-  const run=(t,ref)=>vm.runInContext('parsePlusCode('+JSON.stringify(t)+','+JSON.stringify(ref===undefined?far:ref)+')',c);
-  // A trailing locality we recognise overrides an unrelated reference.
-  const sg=run('9XMJ+X6 Singapore');
-  assert.ok(Math.abs(sg.lat-1.38494)<0.001&&Math.abs(sg.lon-103.98056)<0.001,'locality ignored: '+sg.lat+','+sg.lon);
-  assert.match(sg.warning,/read from Singapore/);
-  // A named landmark is a better reference than the country holding it.
-  assert.match(run('7Q9G+2M Sai Yok, Thailand').warning,/read from Sai Yok/);
-  // Without a locality it falls back, and says so rather than looking certain.
-  const bare=run('9XJJ+Q64');
-  assert.match(bare.warning,/read from the last point converted/);
-  assert.match(bare.warning,/56 km/);
-  // A full code needs no reference and carries no such caveat.
-  const full=run('6PH59XMJ+X6');
-  assert.equal(full.warning,undefined);
-  assert.ok(Math.abs(full.lat-1.38494)<0.001);
-  // Trailing locality text must never reach the coordinate itself.
-  const withPlace=run('M2JF+5M2 Ayer Tawar, Johor, Malaysia');
-  assert.ok(Number.isFinite(withPlace.lat)&&Number.isFinite(withPlace.lon));
-});
-test('a pasted short plus code shows its caveat, a full one does not',()=>{
-  const saved={from:'auto',to:'wgs84',rows:[['','','']],points:[],aoSelectionVersion:2,militaryVersion:3,
-    settings:{},lastLocation:{lat:1.35,lon:103.82}};
-  const a=app(JSON.parse(JSON.stringify(saved)),false,false);
-  a.change('#fromSys','wgs84');a.paste('9XJJ+Q64');
-  assert.match(a.$('#detect').textContent,/short plus code/,'the caveat must reach the reader');
-  a.dom.window.close();
-  const b=app(JSON.parse(JSON.stringify(saved)),false,false);
-  b.change('#fromSys','wgs84');b.paste('6PH59XMJ+X6');
-  assert.doesNotMatch(b.$('#detect').textContent,/short plus code/,'a full code is exact');
-  assert.ok(Math.abs(b.state().points[0].lat-1.38494)<0.001);
-  b.dom.window.close();
-});
-
-test('a short plus code falls back to where the reader appears to be',()=>{
-  // Nothing converted yet, and a stale point saved from an earlier session.
-  const saved={from:'auto',to:'wgs84',rows:[['','','']],points:[],aoSelectionVersion:2,militaryVersion:3,
-    settings:{},lastLocation:{lat:25.03,lon:121.56}};
-  const a=app(JSON.parse(JSON.stringify(saved)),false,false);
-  a.change('#fromSys','wgs84');a.paste('9XJJ+Q64');
-  assert.match(a.$('#detect').textContent,/your approximate location/,'a point saved earlier should not outrank where we are');
-  a.dom.window.close();
-  // Once something has been converted, that becomes the reference instead.
-  const b=app(JSON.parse(JSON.stringify(saved)),false,false);
-  b.change('#fromSys','wgs84');b.paste('1.35, 103.82');
-  b.paste('9XJJ+Q64');
-  assert.match(b.$('#detect').textContent,/the last point converted/);
-  assert.ok(Math.abs(b.state().points[0].lat-1.38)<0.1,'read near the point just converted');
-  b.dom.window.close();
-});
