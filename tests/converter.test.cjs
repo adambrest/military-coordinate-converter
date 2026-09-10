@@ -1429,3 +1429,52 @@ test('Australia offers reference areas on the coast, not out in the Coral Sea',(
   for(const [place,lat,lon] of land)assert.equal(inside([[lat,lon]])[0],true,place+' should be offered');
   for(const [place,lat,lon] of sea)assert.equal(inside([[lat,lon]])[0],false,place+' is open water and must not be offered');
 });
+
+test('raw auto-detect digits ask for a country after clearing a confirmed coordinate',async()=>{
+  for(const military of [false,true])for(const leaveFirst of [false,true]){
+    const a=app(undefined,true,military);
+    try{
+      a.paste('1.352083,103.819836');
+      assert.equal(a.state().aoConfirmed,true);
+      a.$('#fromRows .del').click();
+      assert.equal(a.$('#fromSys').value,'auto');
+      const input=a.$('#fromRows .a');input.value='1234567890';
+      input.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+      if(leaveFirst){blur(a);await new Promise(r=>setTimeout(r,20));}
+      a.$('#convertBtn').click();
+      assert.equal(a.$('#locationOverlay').classList.contains('open'),true);
+      assert.equal(a.state().pendingGrid.text.replace(/\s/g,''),'1234567890');
+      assert.equal(a.$('#copyBtn').disabled,true);
+      a.$('#locationClose').click();
+      a.$('#convertBtn').click();
+      assert.equal(a.$('#locationOverlay').classList.contains('open'),true);
+    }finally{a.dom.window.close();}
+  }
+});
+
+test('reference picker can change country before and after confirming an auto-detected grid',()=>{
+  const a=app(undefined,true);
+  try{
+    a.paste('1234567890');
+    a.$('[data-location="taiwan"]').click();
+    assert.equal(a.$('#aoBack').hidden,false);
+    a.$('#aoBack').click();
+    assert.equal(a.$('#locationOverlay').classList.contains('open'),true);
+    assert.equal(a.$('#aoOverlay').classList.contains('open'),false);
+    a.$('[data-location="thailand"]').click();
+    const candidates=[];a.w.testMap.eachLayer(l=>{if(l.options.aoCandidate&&!l.options.aoCandidate.invalid)candidates.push(l);});
+    assert.ok(candidates.length);
+    candidates[0].fire('click');a.$('#aoApply').click();
+    assert.equal(a.state().from,'thailand');
+    const rows=a.state().rows;
+    a.$('#regionChip').click();
+    assert.equal(a.$('#aoBack').hidden,false);
+    a.$('#aoBack').click();a.$('[data-location="taiwan"]').click();
+    assert.match(a.$('#aoTitle').textContent,/Taiwan/);
+    const next=[];a.w.testMap.eachLayer(l=>{if(l.options.aoCandidate&&!l.options.aoCandidate.invalid)next.push(l);});
+    assert.ok(next.length);next[0].fire('click');a.$('#aoApply').click();
+    assert.equal(a.state().from,'taiwan');
+    assert.deepEqual(a.state().rows,rows);
+    assert.equal(a.$('#copyBtn').disabled,false);
+  }finally{a.dom.window.close();}
+});

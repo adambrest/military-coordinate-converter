@@ -233,7 +233,7 @@
       $("aoScope").textContent="";
       $("aoTitle").textContent=raw?"Military grid · reference area":presets[id].name+" · reference area";
       $("aoSystemLabel").textContent=raw?"MGRS":presets[id].zoneCode?"Zone "+presets[id].zoneCode:"";
-      $("aoBack").hidden=!opts.pending;
+      $("aoBack").hidden=!(opts.pending||(opts.side==="from"&&opts.converter!==false));
       $("aoInstruction").textContent=raw?"Choose your area.":"Select a highlighted AO square.";
       selectionLayer.clearLayers();pointLayer.clearLayers();map.invalidateSize();limitCenter(null);map.setMinZoom(1);map.setMaxZoom(10);
       if(raw){

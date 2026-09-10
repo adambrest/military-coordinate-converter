@@ -41,7 +41,24 @@ const server=http.createServer((req,res)=>{
    await toggle.click();assert.equal(await toggle.getAttribute('aria-pressed'),'true');
    assert.equal(await page.locator('[data-id="mgrs"]').evaluate(el=>el.classList.contains('open')),false);
    await page.screenshot({path:`/tmp/saf-${name}-settings.png`});
-   await page.locator('#tab-conv').click();await page.locator('#selectMap').click();
+   await page.locator('#tab-conv').click();
+   // A cleared, previously resolved row must ask for a country without looping.
+   await page.locator('#fromRows .a').fill('1.352083,103.819836');
+   await page.locator('#convertBtn').click();
+   await page.locator('#fromRows .del').click();
+   await page.locator('#fromRows .a').fill('1234567890');
+   await page.locator('#convertBtn').click();
+   await page.locator('#locationOverlay.open').waitFor();
+   await page.locator('[data-location="taiwan"]').click();
+   assert.equal(await page.locator('#aoBack').textContent(),'Change country');
+   await page.locator('#aoBack').click();
+   await page.locator('#locationOverlay.open').waitFor();
+   await page.locator('[data-location="thailand"]').click();
+   await page.screenshot({path:`/tmp/saf-${name}-reference-picker.png`});
+   await page.locator('#aoClose').click();
+   await page.locator('#fromRows .del').click();
+   await page.screenshot({path:`/tmp/saf-${name}-history.png`});
+   await page.locator('#selectMap').click();
    const box=await page.locator('#pointMap').boundingBox(),x=box.x+box.width*.75,y=box.y+box.height*.35;
    const reset=()=>page.evaluate(()=>{testMap.setView([1.35,103.82],12,{animate:false,reset:true});});
    await reset();await page.waitForTimeout(300);

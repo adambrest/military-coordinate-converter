@@ -88,7 +88,8 @@
   .exportbar button.maps{background:var(--ok);color:#fff;border-color:var(--ok)}
   .exportbar button:disabled{opacity:.4;pointer-events:none}
   .history{display:inline-flex;gap:4px;margin-left:auto}
-  .histbtn{min-width:34px;min-height:34px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text);font-size:15px;line-height:1;cursor:pointer}
+  .histbtn{min-width:34px;min-height:34px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text);font-size:15px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+  .histbtn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
   .histbtn:hover:not(:disabled){background:var(--panel2)}
   .histbtn:disabled{color:#cbd5e1;cursor:default}
   .map-offline{margin:2px 0 0;font-size:12px;color:var(--muted)}
@@ -225,7 +226,7 @@
           <div class="regionchip" id="regionChip" hidden></div>
           <div class="tbl"><div class="thead" id="fromHead"></div><div id="fromRows"></div></div>
           <div class="detect" id="detect"></div>
-          <div class="row-actions"><button class="addrow" id="addRow">+ Add row</button><button class="select-map" id="selectMap" type="button">Select from map</button><span class="history"><button class="histbtn" id="undoBtn" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>&#8630;</button><button class="histbtn" id="redoBtn" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>&#8631;</button></span></div>
+          <div class="row-actions"><button class="addrow" id="addRow">+ Add row</button><button class="select-map" id="selectMap" type="button">Select from map</button><span class="history"><button class="histbtn" id="undoBtn" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-5 5 5 5M4 10h10a6 6 0 0 1 6 6v3"/></svg></button><button class="histbtn" id="redoBtn" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 5 5-5 5M20 10H10a6 6 0 0 0-6 6v3"/></svg></button></span></div>
           <p class="map-offline" id="mapOffline" hidden>Select from map needs an internet connection.</p>
         </div>
 
@@ -279,7 +280,7 @@
   <div class="overlay" id="aoOverlay" role="dialog" aria-modal="true" aria-labelledby="aoTitle">
     <div class="modal ao-modal">
       <div class="ao-heading"><div><h3 id="aoTitle">Select your area</h3><p id="aoInstruction">Zoom in, then click your area to select its grid square.</p></div><button id="aoClose" aria-label="Close map">×</button></div>
-      <div class="ao-toolbar"><button id="aoBack" class="setting-action">Change location</button><select id="aoRegion" class="map-region" aria-label="Jump to"></select><span id="aoSystemLabel"></span><span id="aoScope" class="ao-scope" aria-live="polite"></span></div>
+      <div class="ao-toolbar"><button id="aoBack" class="setting-action">Change country</button><select id="aoRegion" class="map-region" aria-label="Jump to"></select><span id="aoSystemLabel"></span><span id="aoScope" class="ao-scope" aria-live="polite"></span></div>
       <div class="ao-map-wrap"><div id="aoMap" aria-label="AO map. Arrow keys pan, plus and minus zoom. Click a grid square to select it." tabindex="0"></div></div>
       <div class="ao-footer">
         <div id="aoSelection" aria-live="polite">No area selected</div>
@@ -1395,7 +1396,8 @@
       if(short){
         e.preventDefault();
         if(PRESETS[state.from].lead)state.aoConfirmed=true;
-        if(!state.aoConfirmed||state.from==="wgs84"||(state.from==="mgrs"&&!state.settings.mgrs.ao)){
+        // Auto-detect has no reference area, even if a previous conversion confirmed one.
+        if(state.from==="auto"||!state.aoConfirmed||state.from==="wgs84"||(state.from==="mgrs"&&!state.settings.mgrs.ao)){
           openCountryChooser(lines.join("\n"),i);return;
         }
       }
@@ -1738,6 +1740,11 @@
       if(rowsHaveContent())convert();else renderTo();save();
     });
     $("#addRow").addEventListener("click",()=>{ readRows(); if(state.from==="auto"||!rowPopulated(state.rows.length-1))return; state.rows.push(newRowAfter(state.rows.length-1)); renderFrom(); save(); });
+    // Keep blur auto-detection from moving Convert between pointer-down and click.
+    // The click reads the field and performs detection itself.
+    $("#convertBtn").addEventListener("pointerdown",e=>{
+      if(document.activeElement?.matches("#fromRows .a"))e.preventDefault();
+    });
     $("#convertBtn").addEventListener("click",convert);
 
     /* ---- exports ---- */
