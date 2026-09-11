@@ -42,6 +42,20 @@ const server=http.createServer((req,res)=>{
    assert.equal(await page.locator('[data-id="mgrs"]').evaluate(el=>el.classList.contains('open')),false);
    await page.screenshot({path:`/tmp/saf-${name}-settings.png`});
    await page.locator('#tab-conv').click();
+   for(const separator of [',','\t','\n']){
+    const text=['https://www.google.com/maps/@1.3867912,103.977382,1229m/data=!3m1!1e3',
+     'google.com/maps/place/1.384841,+103.982841/@1.3867912,103.977382,1229m/data=!3d1.3848414!4d103.9828407',
+     'maps.apple.com/?ll=1.35,103.82'].join(separator);
+    await page.locator('#fromRows .a').evaluate((el,text)=>{
+     const event=new Event('paste',{bubbles:true,cancelable:true});
+     Object.defineProperty(event,'clipboardData',{value:{getData:()=>text}});el.dispatchEvent(event);
+    },text);
+    const points=await page.evaluate(()=>JSON.parse(localStorage.getItem('mgrconv-v1')).points);
+    assert.equal(points.length,3);assert.ok(Math.abs(points[1].lat-1.3848414)<.000001);
+    assert.equal(await page.locator('#copyBtn').isEnabled(),true);
+    while(await page.locator('#fromRows .del').count()>1)await page.locator('#fromRows .del').last().click();
+    await page.locator('#fromRows .del').click();
+   }
    // A cleared, previously resolved row must ask for a country without looping.
    await page.locator('#fromRows .a').fill('1.352083,103.819836');
    await page.locator('#convertBtn').click();

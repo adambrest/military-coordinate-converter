@@ -1560,3 +1560,51 @@ test('coordinates to grid clears all rows and names with working undo and redo',
     assert.equal(a.state().from,'thailand');assert.deepEqual(a.state().rows,[['','','']]);
   }finally{a.dom.window.close();}
 });
+
+const exampleCameraLink='https://www.google.com/maps/@1.3867912,103.977382,1229m/data=!3m1!1e3?entry=ttu&g_ep=EgoyMDI2MDkwOC4wIKXMDSoASAFQAw%3D%3D';
+const examplePlaceLink='google.com/maps/place/1.384841,+103.982841/@1.3867912,103.977382,1229m/data=!3m1!1e3!4m5!3m4!7e2!8m2!3d1.3848414!4d103.9828407?entry=ttu&g_ep=EgoyMDI2MDkwOC4wIKXMDSoASAFQAw%3D%3D';
+test('mixed camera, place and Apple links parse independently with every batch separator',()=>{
+  for(const separator of [',',', ','\t','\n','\r','\r\n']){
+    const a=app();
+    try{
+      a.paste([exampleCameraLink,exampleCameraLink,examplePlaceLink,'maps.apple.com/?ll=1.35,103.82'].join(separator));
+      assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
+      assert.equal(a.state().points.length,4,separator);
+      const expected=[[1.3867912,103.977382],[1.3867912,103.977382],[1.3848414,103.9828407],[1.35,103.82]];
+      a.state().points.forEach((p,i)=>{assert.ok(Math.abs(p.lat-expected[i][0])<.000001);assert.ok(Math.abs(p.lon-expected[i][1])<.000001);});
+    }finally{a.dom.window.close();}
+  }
+});
+
+test('formatted copies of the supplied map links keep one row per link',()=>{
+  const a=app();
+  try{
+    a.paste(`[**${exampleCameraLink}**](${exampleCameraLink})\\&#xA;**&#x20;**[**${exampleCameraLink}**](${exampleCameraLink})\n[**${examplePlaceLink}**](http://${examplePlaceLink.replace(/&/g,'\\&').replace(/_/g,'\\_')})`);
+    assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
+    assert.equal(a.state().points.length,3);assert.ok(Math.abs(a.state().points[2].lat-1.3848414)<.000001);
+  }finally{a.dom.window.close();}
+});
+
+test('bare map hosts are parsed as links before reading URL numbers',()=>{
+  const c=core();
+  for(const [link,lat,lon] of [[examplePlaceLink,1.3848414,103.9828407],['maps.google.com/?q=1.35,103.82',1.35,103.82],['maps.apple.com/?ll=1.36,103.83',1.36,103.83]]){
+    const p=c.parseLatLon(link,'latlon');assert.equal(p.lat,lat);assert.equal(p.lon,lon);
+  }
+});
+
+test('mixed full and shortened Google and Apple links resolve without losing order or duplicates',async()=>{
+  const a=app(undefined,false,true,'https://resolver.test');
+  const asked=[];
+  a.w.fetch=async url=>{
+    const link=new URL(url).searchParams.get('url');asked.push(link);
+    return {ok:true,json:async()=>({url:link.includes('goo.gl')?'https://maps.google.com/?q=1.36,103.83':'https://maps.apple.com/?ll=1.37,103.84'})};
+  };
+  try{
+    a.paste([exampleCameraLink,'maps.app.goo.gl/first','maps.apple/second',examplePlaceLink,'maps.app.goo.gl/first'].join(','));
+    for(let i=0;i<30&&a.$('#copyBtn').disabled;i++)await new Promise(r=>setTimeout(r,10));
+    assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
+    assert.equal(a.state().points.length,5);
+    assert.deepEqual(a.state().points.map(p=>Number(p.lat.toFixed(6))),[1.386791,1.36,1.37,1.384841,1.36]);
+    assert.deepEqual(asked,['https://maps.app.goo.gl/first','https://maps.apple/second','https://maps.app.goo.gl/first']);
+  }finally{a.dom.window.close();}
+});

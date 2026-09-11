@@ -582,10 +582,20 @@
     if(!isFinite(lat)||!isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180) return null;
     return {lat,lon,confidence:"certain",detected,detectedOrder:"latlon"};
   }
+  function normalizeMapText(text){
+    // Rich-text copies may carry Markdown wrappers or escaped separators. Keep
+    // each link destination once, then recognize bare map hosts as URLs too.
+    return String(text)
+      .replace(/\\([&_])/g,"$1").replace(/&amp;/gi,"&")
+      .replace(/\\?&#(?:x0*a|0*10);/gi,"\n").replace(/\\?&#(?:x0*d|0*13);/gi,"\n")
+      .replace(/&nbsp;|&#(?:x20|32);/gi," ")
+      .replace(/\[[^\]]*\]\((https?:\/\/[^\s]+?)\)/gi,"$1").replace(/\*\*/g,"")
+      .replace(/(^|[\s,;|(<])((?:(?:www\.)?google\.[a-z.]+\/maps|maps\.google\.[a-z.]+\/|maps\.app\.goo\.gl\/|goo\.gl\/maps|maps\.apple(?:\.com)?\/))/gi,"$1https://$2");
+  }
   // Extract coordinates from full Google/Apple Maps URLs before the general number parser sees
   // zoom levels, place IDs, or other numeric URL data. Opaque short links cannot be decoded offline.
   function extractMapCoordinate(text){
-    const clean=String(text).replace(/\\&/g,"&").replace(/&amp;/gi,"&");
+    const clean=normalizeMapText(text);
     const urls=clean.match(/https?:\/\/[^\s<>"\]]+/gi)||[];
     let sawMapLink=false, sawShortLink=false, shortLinkUrl="";
     for(let token of urls){
@@ -1364,8 +1374,8 @@
         const grid=splitGrid(value);if(!grid.error&&grid.d>=3)return true;
         return !parseLatLon(value,state.settings.wgs84.order).error;
       };
-      return text.trim().split(/\r?\n/).filter(l=>l.trim()).flatMap(line=>{
-        const tokens=line.replace(/[,;](?=https?:\/\/)/gi," ").match(/https?:\/\/[^\s]+|[^\s,;|]+/gi)||[];
+      return normalizeMapText(text).trim().split(/\r\n?|\n/).filter(l=>l.trim()).flatMap(line=>{
+        const tokens=line.replace(/[,;|](?=https?:\/\/)/gi," ").match(/https?:\/\/[^\s<>"\]]+|[^\s,;|<>]+/gi)||[];
         const result=[];
         for(let start=0;start<tokens.length;){
           if(/^https?:/i.test(tokens[start])){result.push(tokens[start].replace(/[;,]+$/,""));start++;continue;}
@@ -1401,7 +1411,7 @@
       }
     }
     function onPaste(e,i,A,B){
-      const text=(e.clipboardData||window.clipboardData).getData("text");
+      const text=normalizeMapText((e.clipboardData||window.clipboardData).getData("text"));
       if(!text)return;
       readRows();
       const lines=splitBatch(text);
