@@ -162,7 +162,7 @@ test('restored batches can be detected again without losing row names',()=>{
   const b=app(saved);b.$('#convertBtn').click();assert.equal(b.$('#copyBtn').disabled,false,b.$('#badPair').textContent);
   assert.deepEqual(Array.from(b.state().points,p=>p.name),['One','Two']);b.dom.window.close();
 });
-test('global formats are grouped on both sides and preserve the point when changed',()=>{
+test('global output formats preserve the point while input format changes preserve entries',()=>{
   const a=app();assert.equal([...a.$('#fromSys').options].some(o=>o.value==='mercator'||o.value==='globalutm'),false);
   a.paste('1.352083,103.819836');a.change('#toSys','mgrs');
   for(const format of ['globalutm','mgrs']){
@@ -171,10 +171,13 @@ test('global formats are grouped on both sides and preserve the point when chang
   }
   a.change('#toFormat','globalutm');a.$('#swapBtn').click();a.$('#convertBtn').click();
   assert.ok(a.$('#fromRows .prefix').value.includes('48N'));assert.match(a.$('#fromRows .a').value,/^\d+\.\d{3}$/);
+  const rows=a.state().rows;
   for(const format of ['mgrs','globalutm']){
-    a.change('#fromFormat',format);assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
-    assert.ok(Math.abs(a.state().points[0].lat-1.352083)<.0001);assert.equal(a.$('#regionChip').hidden,true);
+    a.change('#fromFormat',format);assert.equal(a.$('#copyBtn').disabled,true);
+    assert.deepEqual(a.state().rows,rows);assert.equal(a.state().points.length,0);
   }
+  a.$('#undoBtn').click();assert.equal(a.state().from,'mgrs');assert.deepEqual(a.state().rows,rows);
+  a.$('#redoBtn').click();assert.equal(a.state().from,'globalutm');assert.deepEqual(a.state().rows,rows);
   a.dom.window.close();
 });
 test('Taiwan shows Pao Li and the square north of Yunlin even with unrelated short digits',()=>{
@@ -940,19 +943,19 @@ test('coverage errors are not interpreted as available imagery',async()=>{
   a.dom.window.close();
 });
 
-test('changing the input system clears the entries and undo brings them back',()=>{
+test('changing a grid input keeps entries and undo restores the previous preset',()=>{
   const a=app(undefined,false,false);
   a.change('#fromSys','sg');a.paste('3000 3000');
   assert.equal(a.$('#fromRows .a').value,'3000');
   a.change('#fromSys','taiwan');
   assert.equal(a.state().from,'taiwan');
-  assert.equal(a.$('#fromRows .a').value,'','the digits must not be reread as another grid');
+  assert.equal(a.$('#fromRows .a').value,'3000','grid corrections must retain the digits');
   assert.equal(a.state().to,'wgs84','a grid input must not convert into another grid');
   assert.equal(a.$('#undoBtn').disabled,false);
   a.$('#undoBtn').click();
   assert.equal(a.state().from,'sg');assert.equal(a.$('#fromRows .a').value,'3000');
   a.$('#redoBtn').click();
-  assert.equal(a.state().from,'taiwan');assert.equal(a.$('#fromRows .a').value,'');
+  assert.equal(a.state().from,'taiwan');assert.equal(a.$('#fromRows .a').value,'3000');
   a.dom.window.close();
 });
 test('the output grid follows the country the points sit in',()=>{
@@ -1476,5 +1479,84 @@ test('reference picker can change country before and after confirming an auto-de
     assert.equal(a.state().from,'taiwan');
     assert.deepEqual(a.state().rows,rows);
     assert.equal(a.$('#copyBtn').disabled,false);
+  }finally{a.dom.window.close();}
+});
+
+test('auto-detect map points choose their country grid and replace a saved reference area',()=>{
+  for(const [id,lat,lon] of [['sg',1.35,103.82],['thailand',14,99.24],['taiwan',24.9,121.05],['australia',-22.71,150.409],['brunei',4.7,114.7]]){
+    const c=core(),settings=vm.runInContext('defaultSettings()',c);
+    settings[id].square=[0,0];settings[id].sgOmit=false;
+    const a=app({settings,to:'mgrs',explicitOutput:true,militaryVersion:3,militaryEnabled:true,aoSelectionVersion:2,rows:[['','','']]});
+    try{
+      assert.equal(a.$('#fromSys').value,'auto');a.$('#selectMap').click();
+      const result=a.w.pointPickerHooks.onConfirm({lat,lon},{zoom:15,layer:'street'});
+      assert.equal(typeof result.then,'undefined','a saved area must not prompt for a boundary');
+      assert.equal(a.state().to,id,id);
+      assert.equal(a.$('#toSys').value,id);
+      assert.equal(a.$('#copyBtn').disabled,false,id);
+      if(['thailand','taiwan','australia'].includes(id)){
+        const q=vm.runInContext(`toProjFromWGS(${lat},${lon},projectionFor('${id}'))`,c);
+        assert.deepEqual(a.state().settings[id].square,[Math.floor(q.E/100000),Math.floor(q.N/100000)]);
+        assert.equal(a.state().settings[id].sgOmit,true);
+        assert.equal(a.$('#regionChipTo').hidden,false);
+      }
+    }finally{a.dom.window.close();}
+  }
+});
+
+test('auto-detect map output respects disabled country grids and refreshes the global square',()=>{
+  const c=core(),settings=vm.runInContext('defaultSettings()',c);settings.mgrs.ao='31UDQ';
+  const a=app({settings,to:'mgrs',militaryVersion:3,militaryEnabled:true,disabledPresets:['sg'],aoSelectionVersion:2,rows:[['','','']]});
+  try{
+    a.$('#selectMap').click();a.w.pointPickerHooks.onConfirm({lat:1.35,lon:103.82},{zoom:15,layer:'street'});
+    assert.equal(a.state().to,'mgrs');
+    assert.equal(a.state().settings.mgrs.ao,c.GlobalGrid.parts(1.35,103.82,0).prefix);
+    assert.equal(a.$('#copyBtn').disabled,false);
+  }finally{a.dom.window.close();}
+});
+
+test('auto-detect map points across reference squares retain full prefixes',async()=>{
+  const a=app();
+  try{
+    a.$('#selectMap').click();
+    a.w.pointPickerHooks.onConfirm({lat:24.9,lon:121.05},{zoom:15,layer:'street'});
+    const pending=a.w.pointPickerHooks.onConfirm({lat:22.065843,lon:120.794543},{zoom:15,layer:'street'});
+    assert.equal(a.$('#boundaryOverlay').classList.contains('open'),true);
+    a.$('#boundaryContinue').click();await pending;
+    assert.equal(a.state().to,'taiwan');assert.equal(a.state().points.length,2);
+    assert.equal(a.state().settings.taiwan.sgOmit,false);
+    assert.equal(a.$('#copyBtn').disabled,false);
+  }finally{a.dom.window.close();}
+});
+
+test('grid input corrections retain every row and name even when switching to coordinates',()=>{
+  for(const previous of ['sg','taiwan','thailand','australia','brunei','mgrs','globalutm']){
+    const a=app();
+    try{
+      a.change('#fromSys',previous==='globalutm'?'mgrs':previous);
+      if(previous==='globalutm')a.change('#fromFormat',previous);
+      a.$('#fromRows .a').value='00123';a.$('#fromRows .b').value='04567';a.$('#fromRows .nm').value='  First point  ';a.$('#fromRows .a').dispatchEvent(new a.w.Event('input',{bubbles:true}));
+      a.$('#addRow').click();
+      const second=a.$('#fromRows').children[1];second.querySelector('.a').value='08901';second.querySelector('.b').value='00234';second.querySelector('.nm').value='Second point';
+      const expected=[['00123','04567','  First point  '],['08901','00234','Second point']];
+      a.change('#fromSys',previous==='taiwan'?'thailand':'taiwan');
+      assert.deepEqual(a.state().rows,expected,previous);assert.equal(a.$('#copyBtn').disabled,true);
+      a.change('#fromSys','wgs84');assert.deepEqual(a.state().rows,expected,previous);
+      assert.equal(a.$('#aoOverlay').classList.contains('open'),false);
+    }finally{a.dom.window.close();}
+  }
+});
+
+test('coordinates to grid clears all rows and names with working undo and redo',()=>{
+  const a=app();
+  try{
+    a.paste('1.35,103.82\n1.36,103.83');
+    a.$('#fromRows .nm').value='First';a.$('#fromRows').children[1].querySelector('.nm').value='Second';
+    const before=a.state().rows;before[0][2]='First';before[1][2]='Second';
+    a.change('#fromSys','thailand');assert.deepEqual(a.state().rows,[['','','']]);
+    assert.equal(a.$('#undoBtn').disabled,false);a.$('#undoBtn').click();
+    assert.equal(a.state().from,'wgs84');assert.deepEqual(a.state().rows,before);
+    assert.equal(a.$('#redoBtn').disabled,false);a.$('#redoBtn').click();
+    assert.equal(a.state().from,'thailand');assert.deepEqual(a.state().rows,[['','','']]);
   }finally{a.dom.window.close();}
 });

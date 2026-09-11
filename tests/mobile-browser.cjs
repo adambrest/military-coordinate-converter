@@ -58,7 +58,36 @@ const server=http.createServer((req,res)=>{
    await page.locator('#aoClose').click();
    await page.locator('#fromRows .del').click();
    await page.screenshot({path:`/tmp/saf-${name}-history.png`});
+   await page.locator('#fromSys').selectOption('sg');
+   await page.locator('#fromRows .a').fill('00123');await page.locator('#fromRows .b').fill('04567');
+   await page.locator('#fromRows .nm').fill('Checkpoint');
+   await page.locator('#fromSys').selectOption('taiwan');
+   assert.equal(await page.locator('#fromRows .a').inputValue(),'00123');
+   assert.equal(await page.locator('#fromRows .nm').inputValue(),'Checkpoint');
+   await page.locator('#fromSys').selectOption('wgs84');
+   assert.equal(await page.locator('#fromRows .b').inputValue(),'04567');
+   await page.locator('#fromSys').selectOption('thailand');
+   assert.equal(await page.locator('#fromRows .a').inputValue(),'');
+   await page.locator('#undoBtn').click();
+   assert.equal(await page.locator('#fromSys').inputValue(),'wgs84');
+   assert.equal(await page.locator('#fromRows .nm').inputValue(),'Checkpoint');
+   await page.locator('#redoBtn').click();
+   assert.equal(await page.locator('#fromSys').inputValue(),'thailand');
+   assert.equal(await page.locator('#fromRows .nm').inputValue(),'');
+   await page.locator('#fromRows .del').click();
    await page.locator('#selectMap').click();
+   for(const [id,lat,lon] of [['sg',1.35,103.82],['thailand',14,99.24]]){
+    await page.evaluate(({lat,lon})=>{testMap.setView([lat,lon],15,{animate:false,reset:true});},{lat,lon});
+    await page.locator('#pointConfirm').click();
+    assert.equal(await page.locator('#toSys').inputValue(),id);
+    assert.equal(await page.locator('#copyBtn').isEnabled(),true);
+    if(id==='thailand'){
+     assert.equal(await page.locator('#regionChipTo').isVisible(),true);
+     assert.match(await page.locator('#regionChipTo').textContent(),/E5 N15/);
+    }
+    await page.locator('#fromRows .del').click();
+    await page.locator('#selectMap').click();
+   }
    const box=await page.locator('#pointMap').boundingBox(),x=box.x+box.width*.75,y=box.y+box.height*.35;
    const reset=()=>page.evaluate(()=>{testMap.setView([1.35,103.82],12,{animate:false,reset:true});});
    await reset();await page.waitForTimeout(300);

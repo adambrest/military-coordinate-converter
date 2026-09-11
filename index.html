@@ -1045,13 +1045,27 @@
       readRows();
       const currentBefore=existingMapPoints(),id=pointOptions.presetId;
       const crossing=result.crossing;
-      const target=outputTarget([...currentBefore.points,point],id);
-      const outputCrossing=target!==id?gridBoundary([...currentBefore.points,point],target):null;
+      const points=[...currentBefore.points,point],automatic=pointOptions.autoDetect;
+      const target=(automatic&&enabledGrid(points))||outputTarget(points,id);
+      // A fresh auto-detected point supplies its own area, not the one saved for
+      // an earlier batch. Plan this before checking boundaries, then commit below.
+      const outputSettings={...state.settings,[target]:{...state.settings[target]}};
+      if(automatic&&!currentBefore.points.length&&!currentBefore.unresolved){
+        if(target==="mgrs"){
+          outputSettings[target].ao=GlobalGrid.parts(point.lat,point.lon,0).prefix;
+          outputSettings[target].sgOmit=true;
+        }else{
+          const square=suggestedSquare(target,points,outputSettings);
+          if(square){outputSettings[target].square=square;outputSettings[target].sgOmit=true;}
+        }
+      }
+      const outputCrossing=target!==id?gridBoundary(points,target,outputSettings):null;
       const changes=[crossing,outputCrossing].filter(Boolean);
       if(changes.some(c=>!boundaryAccepted.has(c.key))&&!approved){
         if(currentBefore.unresolved)return {error:"Resolve incomplete rows before changing their grid prefixes."};
         return new Promise(resolve=>reviewBoundary(changes,ok=>resolve(ok?addMapPoint(point,view,true):{canceled:true})));
       }
+      state.settings[target]=outputSettings[target];
       for(const c of changes){boundaryAccepted.add(c.key);if(c.id!==id)(state.settings[c.id]||={}).sgOmit=false;}
       if(crossing){
         boundaryAccepted.add(crossing.key);
@@ -1068,7 +1082,7 @@
       }else if(state.rows.length===1&&state.rows[0].every(v=>!String(v).trim()))state.rows=[];
       state.rows.push([...result.cells,""]);
       state.lastLocation={...point};state.pointMapView={...point,...view};
-      if(target!==state.to){state.to=target;state.explicitOutput=false;}
+      if(automatic||target!==state.to){state.to=target;state.explicitOutput=false;}
       state.points=[];stale=false;renderFrom();renderTo();updatePairState();save();
       const current=existingMapPoints();
       if(!current.unresolved&&!pairInvalid()&&state.from!==state.to)convert();
@@ -1103,7 +1117,7 @@
       const previous=last&&(!p.bbox||presetContains(id,last.lat,last.lon))?last:null;
       const fallback=p.anchor?{lat:p.anchor[0],lon:p.anchor[1]}:p.bbox?{lat:(p.bbox[0]+p.bbox[1])/2,lon:(p.bbox[2]+p.bbox[3])/2}:guessLocation();
       const nav=p.browseBbox||p.bbox;
-      pointOptions={...current,presetId:id,presetLabel:p.name,bounds:nav?[[nav[0],nav[2]],[nav[1],nav[3]]]:null,detailZoom:DETAIL_ZOOM,center:previous||fallback,zoom:(previous?state.pointMapView?.zoom:0)||(previous?15:COUNTRY_PRESETS.includes(id)?9:fallback.zoom||4),layer:state.pointMapView?.layer||"street"};
+      pointOptions={...current,autoDetect:state.from==="auto",presetId:id,presetLabel:p.name,bounds:nav?[[nav[0],nav[2]],[nav[1],nav[3]]]:null,detailZoom:DETAIL_ZOOM,center:previous||fallback,zoom:(previous?state.pointMapView?.zoom:0)||(previous?15:COUNTRY_PRESETS.includes(id)?9:fallback.zoom||4),layer:state.pointMapView?.layer||"street"};
       pointPicker.open(pointOptions);
     });
 
@@ -1232,6 +1246,7 @@
     // military grid rather than asking about an area the points do not belong to.
     function outputTarget(points,inputId){
       let to=state.to;
+      if(!state.explicitOutput&&inputId==="wgs84"&&enabledGrid(points))return enabledGrid(points);
       if(!state.explicitOutput&&inputId===to)to=inputId==="wgs84"?(enabledGrid(points)||"mgrs"):"wgs84";
       if(!points.length||!COUNTRY_PRESETS.includes(to)||points.every(p=>presetContains(to,p.lat,p.lon)))return to;
       const match=enabledGrid(points);
@@ -1718,21 +1733,22 @@
       if(target===previous){syncFormat("from");return;}
       const hadInput=state.rows.some(r=>r.some(v=>String(v).trim()));
       if(hadInput)remember();
-      state.rows=[["","",""]];
+      const preserve=previous!=="auto"&&PRESETS[previous].kind!=="latlong";
+      if(!preserve)state.rows=[["","",""]];
       finishFrom(target,[]);
-      detect(hadInput?"Entries cleared for "+PRESETS[target].name.replace(" MGR","")+" — undo to bring them back.":"",hadInput?"warn":"");
+      setBottomError("");
+      detect(hadInput?(preserve?"Entries kept unchanged. Press Convert to use the selected input system.":"Entries cleared for "+PRESETS[target].name.replace(" MGR","")+" — undo to bring them back."):"",hadInput?"warn":"");
     });
     $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value;if(state.to==="mgrs")state.to=state.settings.mgrs.format||"mgrs";state.explicitOutput=true;seedOutputArea();updatePairState();if(rowsHaveContent())convert();else renderTo();save(); });
     $("#fromFormat").addEventListener("change",()=>{
-      readRows();const pts=state.points||[],id=$("#fromFormat").value;
-      if(pts.length){
-        try{state.rows=pts.map(p=>[...formatPoint(p.lat,p.lon,id,state.settings,p.digits),p.name||""]);}
-        catch(error){syncFormat("from");setBottomError(error.message);return;}
-      }
-      state.from=id;state.explicitInput=true;delete state.pendingGrid;
+      readRows();const id=$("#fromFormat").value;
+      if(id===state.from)return;
+      const hadInput=state.rows.some(r=>r.some(v=>String(v).trim()));
+      if(hadInput)remember();
       state.settings.mgrs.format=id;
-      state.points=[];renderFrom();renderTo();updatePairState();save();
-      if(rowsHaveContent())convert();
+      finishFrom(id,[]);
+      setBottomError("");
+      detect(hadInput?"Entries kept unchanged. Press Convert to use the selected input system.":"",hadInput?"warn":"");
     });
     $("#toFormat").addEventListener("change",()=>{
       state.to=$("#toFormat").value;state.explicitOutput=true;updatePairState();
@@ -1809,8 +1825,8 @@
         if(id==="mgrs"){
           const format=s.format||"mgrs";
           h+=`<div class="srow"><span class="k">Format</span>${seg([["mgrs","MGRS"],["globalutm","UTM"]],format,v=>{
-            s.format=v;
             if(GLOBAL_FORMATS.includes(state.from)){$("#fromFormat").value=v;$("#fromFormat").dispatchEvent(new Event("change"));}
+            s.format=v;
             if(GLOBAL_FORMATS.includes(state.to)){$("#toFormat").value=v;$("#toFormat").dispatchEvent(new Event("change"));}
             save();renderSettings();
           })}</div>`+(format==="mgrs"?"":`<div class="example">Example: <b>${globalExample(format,S)}</b></div>`);
