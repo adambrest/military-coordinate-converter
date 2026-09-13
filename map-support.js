@@ -163,8 +163,9 @@
   function pointGestures(map){
     let first=null,active=null,lastTouch=0;
     const container=map.getContainer(),reset=()=>{first=null;active=null;};
+    // Commit each zoom immediately so subsequent gestures never wait for animation or tiles.
     map.doubleClickZoom.disable();
-    map.on('dblclick',e=>{if(Date.now()-lastTouch<700)return;map.setZoomAround(e.containerPoint,map.getZoom()+(e.originalEvent?.shiftKey?-1:1));});
+    map.on('dblclick',e=>{if(Date.now()-lastTouch<700)return;map.setZoomAround(e.containerPoint,map.getZoom()+(e.originalEvent?.shiftKey?-1:1),{animate:false});});
     container.addEventListener('touchstart',e=>{
       lastTouch=Date.now();
       if(e.touches.length!==1){reset();return;}
@@ -181,7 +182,7 @@
       const t=[...e.changedTouches].find(t=>t.identifier===start.id);
       if(!t||Math.hypot(t.clientX-start.x,t.clientY-start.y)>12){first=null;return;}
       if(first&&lastTouch-first.time<=400&&Math.hypot(t.clientX-first.x,t.clientY-first.y)<=35){
-        first=null;e.preventDefault();map.setZoomAround(map.mouseEventToContainerPoint(t),map.getZoom()+1);
+        first=null;e.preventDefault();map.setZoomAround(map.mouseEventToContainerPoint(t),map.getZoom()+1,{animate:false});
       }else first={x:t.clientX,y:t.clientY,time:lastTouch};
     },{passive:false});
     container.addEventListener('touchcancel',reset,{passive:true});

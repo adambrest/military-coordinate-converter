@@ -163,10 +163,10 @@
         selection=null;selectionLayer.clearLayers();pointLayer.clearLayers();$("aoApply").disabled=true;$("aoSelection").textContent="No area selected";$("aoWarning").hidden=true;
       });
       for(const id of ids){
-        const p=presets[id],bb=p.bbox;
+        const p=presets[id];
         const context=p.context||{};
         for(const poly of context.land||[])polygon(poly,{pane:"offlineLand",color:"#a8bcc2",weight:.6,fillColor:"#f3f3eb",fillOpacity:1},land);
-        for(const [index,lm] of (context.landmarks||[]).entries()){
+        for(const lm of context.landmarks||[]){
           landmarks.push({id,marker:MapSupport.marker(map,lm,()=>select(lm.lat,lm.lon))});
         }
       }

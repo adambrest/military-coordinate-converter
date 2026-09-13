@@ -115,6 +115,21 @@ const server=http.createServer((req,res)=>{
     const drift=await page.evaluate(({target,x,y})=>{const r=testMap.getContainer().getBoundingClientRect();return testMap.latLngToContainerPoint(target).distanceTo(L.point(x-r.left,y-r.top));},{target,x,y});
     assert.ok(drift<3,`${name}: zoom anchor drift ${drift}`);
    }
+   // Hold street tiles in flight and issue mouse double clicks without waiting
+   // for either their resolution or a previous zoom animation.
+   const heldTiles=[],holdTile=route=>{heldTiles.push(route);};
+   await page.route('https://tile.openstreetmap.org/**',holdTile);
+   await reset();await page.waitForTimeout(800);
+   for(let step=1;step<=3;step++){
+    const zoomAnchor=await page.evaluate(({x,y})=>{const r=testMap.getContainer().getBoundingClientRect();return testMap.containerPointToLatLng([x-r.left,y-r.top]);},{x,y});
+    await page.mouse.dblclick(x,y,{delay:30});
+    assert.equal(await page.evaluate(()=>testMap.getZoom()),12+step,`${name}: repeated double click must apply immediately`);
+    const zoomDrift=await page.evaluate(({zoomAnchor,x,y})=>{const r=testMap.getContainer().getBoundingClientRect();return testMap.latLngToContainerPoint(zoomAnchor).distanceTo(L.point(x-r.left,y-r.top));},{zoomAnchor,x,y});
+    assert.ok(zoomDrift<3,`${name}: double click anchor drift ${zoomDrift}`);
+   }
+   assert.ok(heldTiles.length,'zoom must run while tile requests are pending');
+   await page.unroute('https://tile.openstreetmap.org/**',holdTile);
+   await Promise.all(heldTiles.map(route=>route.abort()));
    if(name==='Chromium'){
     await reset();await page.waitForTimeout(800);const cdp=await context.newCDPSession(page);
     await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:1}]});
@@ -142,9 +157,26 @@ const server=http.createServer((req,res)=>{
    assert.deepEqual(tooDeep,[],'imagery was requested deeper than coverage reaches: '+tooDeep);
    await page.screenshot({path:`/tmp/saf-${name}-satellite.png`});
    await page.locator('#pointStreet').click();assert.equal(await page.evaluate(()=>testMap.getMaxZoom()),19);
+   await page.locator('#pointClose').click();
+   await page.locator('#fromRows .a').fill('1.35,103.82');await page.locator('#convertBtn').click();
+   await page.locator('#toSys').selectOption('mgrs');
+   await page.locator('#countryGridOverlay.open').waitFor();
+   assert.equal(await page.locator('#countryGridSwitch').textContent(),'Change to Singapore MGR');
+   assert.equal(await page.locator('#copyBtn').isEnabled(),false);
+   assert.equal(await page.locator('main').evaluate(el=>el.inert),true);
+   await page.screenshot({path:`/tmp/saf-${name}-country-preset.png`});
+   await page.keyboard.press('Shift+Tab');assert.equal(await page.locator('#countryGridClose').evaluate(el=>el===document.activeElement),true);
+   await page.keyboard.press('Shift+Tab');assert.equal(await page.locator('#countryGridContinue').evaluate(el=>el===document.activeElement),true);
+   await page.locator('#countryGridSwitch').click();
+   assert.equal(await page.locator('#toSys').inputValue(),'sg');assert.equal(await page.locator('#copyBtn').isEnabled(),true);
+   await page.locator('#toSys').selectOption('mgrs');
+   await page.locator('#countryGridContinue').click();
+   assert.equal(await page.locator('#toSys').inputValue(),'mgrs');assert.equal(await page.locator('#copyBtn').isEnabled(),true);
+   assert.equal(await page.locator('main').evaluate(el=>el.inert),false);
+   await page.locator('#convertBtn').click();assert.equal(await page.locator('#countryGridOverlay').isVisible(),false);
    if(errors.length)console.error('PAGE ERRORS:',errors);
    assert.deepEqual(errors,[]);
-   console.log(`${name} ${device}: touch timing, stationary single tap, anchored zoom, collapsed toggles and satellite coverage passed`);
+   console.log(`${name} ${device}: touch timing, stationary single tap, anchored zoom, collapsed toggles, satellite coverage and country preset choices passed`);
   }finally{await browser.close();}
  }
 })().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>server.close());

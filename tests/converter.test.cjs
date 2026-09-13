@@ -184,7 +184,7 @@ test('Taiwan shows Pao Li and the square north of Yunlin even with unrelated sho
   const a=app(undefined,true);a.paste('3000 3000');a.$('[data-location="taiwan"]').click();
   const layers=[];a.w.testMap.eachLayer(l=>{if(l.options?.aoCandidate)layers.push(l);});
   const c=core();
-  for(const [lat,lon] of [[22.065843,120.794543],[24.1,120.5]]){
+  for(const [lat,lon] of [[22.05483,120.73288],[24.1,120.5]]){
     const en=vm.runInContext(`toProjFromWGS(${lat},${lon},"UTM51N")`,c);
     assert.ok(layers.some(l=>l.options.aoCandidate.e===Math.floor(en.E/100000)&&l.options.aoCandidate.n===Math.floor(en.N/100000)));
   }
@@ -214,9 +214,18 @@ test('country change revalidates immediately, clears output and exports',()=>{
   const a=app();a.paste('1.352083,103.819836');assert.equal(a.$('#toSys').value,'sg');assert.equal(a.$('#copyBtn').disabled,false);
   a.change('#toSys','taiwan');assert.match(a.$('#badPair').textContent,/Singapore, not Taiwan/);assert.equal(a.$('#copyBtn').disabled,true);assert.equal(a.$('#toRows .a'),null);a.dom.window.close();
 });
-test('explicit global output assumes WGS 84 without confirmation or auto-switching',()=>{
-  const a=app();a.paste('1.352083,103.819836');a.change('#toSys','mgrs');assert.equal(a.$('#datumOverlay'),null);assert.equal(a.$('#copyBtn').disabled,false);
-  assert.match(a.$('#toRows .prefix').value,/^48N/);a.paste('1.36,103.83');assert.equal(a.$('#toSys').value,'mgrs');a.dom.window.close();
+test('explicit global output asks about the country preset and allows an informed override',()=>{
+  const a=app();
+  try{
+    a.paste('1.352083,103.819836');a.change('#toSys','mgrs');
+    assert.equal(a.$('#countryGridOverlay').classList.contains('open'),true);
+    assert.equal(a.$('#countryGridSwitch').textContent,'Change to Singapore MGR');
+    assert.equal(a.$('#copyBtn').disabled,true);
+    a.$('#countryGridContinue').click();assert.equal(a.$('#copyBtn').disabled,false);
+    assert.match(a.$('#toRows .prefix').value,/^48N/);
+    a.paste('1.36,103.83');assert.equal(a.$('#toSys').value,'mgrs');
+    assert.equal(a.$('#countryGridOverlay').classList.contains('open'),false);
+  }finally{a.dom.window.close();}
 });
 test('cross-AO batch forces prefixes and red warning even after format toggles',()=>{
   const a=app();a.paste('48.8582,2.2945');
@@ -284,7 +293,7 @@ test('explicit WGS 84 remains global when moving from Singapore to Brunei',()=>{
   a.paste('4.9,114.9');assert.equal(a.$('#toSys').value,'mgrs');assert.equal(a.$('#copyBtn').disabled,false);a.dom.window.close();
 });
 test('every visible country square is selectable and selection uses exactly its displayed polygon',()=>{
-  for(const [id,lat,lon] of [['taiwan',24.9,121.05],['taiwan',22.065843,120.794543],['australia',-22.80307,150.33732],['thailand',14.00287,99.24459]]){
+  for(const [id,lat,lon] of [['taiwan',24.9,121.05],['taiwan',22.05483,120.73288],['australia',-22.80307,150.33732],['thailand',14.00287,99.24459]]){
     const c=core(),en=vm.runInContext('toProjFromWGS('+lat+','+lon+',projectionFor("'+id+'"))',c);
     const input=[en.E,en.N].map(v=>String(Math.floor(v%100000/10)).padStart(4,'0')).join(' ');
     const a=app(undefined,true);a.change('#fromSys','wgs84');a.paste(input);a.$('[data-location="'+id+'"]').click();
@@ -449,7 +458,7 @@ test('resizing the point map preserves its geographic center and zoom',async()=>
 
 test('map boundary confirmation expands short Taiwan rows without moving existing points',async()=>{
   const a=app();a.change('#fromSys','taiwan');a.$('#selectMap').click();
-  const p={lat:24.9,lon:121.05},q={lat:22.065843,lon:120.794543};
+  const p={lat:24.9,lon:121.05},q={lat:22.05483,lon:120.73288};
   const preview=a.w.pointPickerHooks.preview(p,a.w.pointOptions);
   a.w.pointPickerHooks.onConfirm(p,{zoom:15,layer:'street'});
   assert.deepEqual(a.state().rows[0].slice(0,2),Array.from(preview.cells));assert.match(a.state().rows[0][0],/^\d{4}$/);
@@ -1319,8 +1328,6 @@ test('a link that lands on a Google consent wall is followed to the place behind
 const blur=(a,sel='#fromRows .a')=>a.$(sel).dispatchEvent(new a.w.Event('blur'));
 test('leaving a field takes the digits in without throwing a chooser in the way',async()=>{
   const a=app(undefined,false,false);
-  let opened=0;
-  a.w.pickerHooks&&(a.w.pickerHooks=a.w.pickerHooks);
   const A=a.$('#fromRows .a');
   A.value='74353727';A.dispatchEvent(new a.w.Event('input',{bubbles:true}));
   const before=a.w.mapOptions;
@@ -1511,6 +1518,8 @@ test('auto-detect map output respects disabled country grids and refreshes the g
     a.$('#selectMap').click();a.w.pointPickerHooks.onConfirm({lat:1.35,lon:103.82},{zoom:15,layer:'street'});
     assert.equal(a.state().to,'mgrs');
     assert.equal(a.state().settings.mgrs.ao,c.GlobalGrid.parts(1.35,103.82,0).prefix);
+    assert.equal(a.$('#countryGridOverlay').classList.contains('open'),true);
+    a.$('#countryGridContinue').click();
     assert.equal(a.$('#copyBtn').disabled,false);
   }finally{a.dom.window.close();}
 });
@@ -1520,7 +1529,7 @@ test('auto-detect map points across reference squares retain full prefixes',asyn
   try{
     a.$('#selectMap').click();
     a.w.pointPickerHooks.onConfirm({lat:24.9,lon:121.05},{zoom:15,layer:'street'});
-    const pending=a.w.pointPickerHooks.onConfirm({lat:22.065843,lon:120.794543},{zoom:15,layer:'street'});
+    const pending=a.w.pointPickerHooks.onConfirm({lat:22.05483,lon:120.73288},{zoom:15,layer:'street'});
     assert.equal(a.$('#boundaryOverlay').classList.contains('open'),true);
     a.$('#boundaryContinue').click();await pending;
     assert.equal(a.state().to,'taiwan');assert.equal(a.state().points.length,2);
@@ -1606,5 +1615,128 @@ test('mixed full and shortened Google and Apple links resolve without losing ord
     assert.equal(a.state().points.length,5);
     assert.deepEqual(a.state().points.map(p=>Number(p.lat.toFixed(6))),[1.386791,1.36,1.37,1.384841,1.36]);
     assert.deepEqual(asked,['https://maps.app.goo.gl/first','https://maps.apple/second','https://maps.app.goo.gl/first']);
+  }finally{a.dom.window.close();}
+});
+
+test('Taiwan landmarks use the corrected WGS 84 positions and grid round trips',()=>{
+  const c=core();
+  for(const [name,lat,lon] of [['Hukou',24.86965,121.04745],['Heng Chun (Pao Li)',22.05483,120.73288]]){
+    const landmark=c.MAP_CONTEXT.taiwan.landmarks.find(p=>p.name===name);
+    assert.equal(landmark.lat,lat);assert.equal(landmark.lon,lon);
+    c.lat=lat;c.lon=lon;
+    const point=vm.runInContext('(()=>{const s=defaultSettings();s.taiwan.sgOmit=false;s.taiwan.sgDigits=5;const cells=formatPoint(lat,lon,"taiwan",s);return parseCells("taiwan",...cells,s);})()',c);
+    assert.ok(Math.abs(point.lat-lat)<0.00002);assert.ok(Math.abs(point.lon-lon)<0.00002);
+  }
+});
+
+test('out-of-area map selections override stale explicit outputs and enable MGRS',()=>{
+  for(const from of ['auto','wgs84'])for(const to of ['wgs84','sg','globalutm']){
+    const a=app({from,to,explicitOutput:true,militaryVersion:3,militaryEnabled:false,rows:[['','','']]},false,false);
+    try{
+      a.$('#selectMap').click();
+      a.w.pointPickerHooks.onConfirm({lat:48.8582,lon:2.2945},{zoom:15,layer:'street'});
+      assert.equal(a.state().militaryEnabled,true);assert.equal(a.state().to,'mgrs');
+      assert.equal(a.$('#toSys').value,'mgrs');assert.equal(a.$('#copyBtn').disabled,false);
+    }finally{a.dom.window.close();}
+  }
+});
+
+test('successive double clicks commit each anchored zoom immediately with unloaded tiles',async()=>{
+  const a=app(undefined,true);
+  try{
+    a.$('#selectMap').click();await new Promise(r=>setTimeout(r,40));
+    const map=a.w.pointTestMap;
+    map.setView([1.35,103.82],10,{animate:false,reset:true});
+    const screen=a.w.L.point(500,190),anchor=map.containerPointToLatLng(screen);
+    for(let i=1;i<=4;i++){
+      map.fire('dblclick',{containerPoint:screen,originalEvent:{}});
+      assert.equal(map.getZoom(),10+i);
+      assert.ok(map.latLngToContainerPoint(anchor).distanceTo(screen)<3);
+    }
+    map.fire('dblclick',{containerPoint:screen,originalEvent:{shiftKey:true}});
+    assert.equal(map.getZoom(),13);
+  }finally{a.dom.window.close();}
+});
+
+test('map points outside global MGRS latitude coverage remain coordinates',()=>{
+  const a=app(undefined,false,false);
+  try{
+    a.$('#selectMap').click();
+    const result=a.w.pointPickerHooks.onConfirm({lat:85,lon:20},{zoom:5,layer:'street'});
+    assert.equal(result.error,undefined);assert.equal(a.state().to,'wgs84');
+    assert.equal(!!a.state().militaryEnabled,false);assert.equal(a.state().rows.length,1);
+  }finally{a.dom.window.close();}
+});
+
+test('global military output offers each matching country preset and switches without losing points',()=>{
+  for(const [id,lat,lon] of [['sg',1.35,103.82],['taiwan',24.86965,121.04745],['thailand',14.00287,99.24459],['australia',-22.71,150.409],['brunei',4.7,114.7]]){
+    const a=app();
+    try{
+      a.paste(`${lat},${lon}`);a.change('#toSys','mgrs');
+      assert.equal(a.$('#countryGridOverlay').classList.contains('open'),true,id);
+      assert.equal(a.$('#copyBtn').disabled,true);assert.equal(a.$('#gpxBtn').disabled,true);
+      assert.equal(a.$('#countryGridSwitch').textContent,'Change to '+a.$(`#toSys option[value="${id}"]`).textContent);
+      assert.equal(a.w.document.activeElement,a.$('#countryGridSwitch'));
+      const rows=a.state().rows;
+      a.$('#countryGridSwitch').click();
+      assert.equal(a.state().to,id);assert.deepEqual(a.state().rows,rows);
+      assert.equal(a.state().points.length,1);assert.equal(a.$('#copyBtn').disabled,false,id);
+      assert.equal(a.$('#countryGridOverlay').classList.contains('open'),false);
+      assert.equal(!!a.$('main').inert,false);
+    }finally{a.dom.window.close();}
+  }
+});
+
+test('global acknowledgment is country-specific and UTM remains available',()=>{
+  const a=app();
+  try{
+    a.change('#toSys','mgrs');a.change('#toFormat','globalutm');a.paste('1.35,103.82');
+    assert.match(a.$('#countryGridContinue').textContent,/use UTM/);
+    a.$('#countryGridContinue').click();
+    assert.equal(a.state().to,'globalutm');assert.equal(a.$('#copyBtn').disabled,false);
+    a.$('#convertBtn').click();assert.equal(a.$('#countryGridOverlay').classList.contains('open'),false);
+    a.paste('4.7,114.7');assert.match(a.$('#countryGridSwitch').textContent,/Brunei MGR/);
+    assert.equal(a.$('#countryGridOverlay').classList.contains('open'),true);
+  }finally{a.dom.window.close();}
+});
+
+test('canceling the country preset notice leaves exports disabled and Convert asks again',()=>{
+  const a=app();
+  try{
+    a.paste('1.35,103.82');a.change('#toSys','mgrs');
+    a.$('#countryGridOverlay').dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+    assert.equal(a.$('#countryGridOverlay').classList.contains('open'),false);
+    assert.equal(a.$('#copyBtn').disabled,true);assert.equal(!!a.$('main').inert,false);
+    a.$('#convertBtn').click();assert.equal(a.$('#countryGridOverlay').classList.contains('open'),true);
+    a.$('#countryGridContinue').click();assert.equal(a.$('#copyBtn').disabled,false);
+    const saved=a.state();
+    const reopened=app(saved);
+    try{reopened.$('#convertBtn').click();reopened.change('#toSys','mgrs');assert.equal(reopened.$('#countryGridOverlay').classList.contains('open'),true);}finally{reopened.dom.window.close();}
+  }finally{a.dom.window.close();}
+});
+
+test('country preset notice can enable a disabled preset and is absent outside preset coverage',()=>{
+  const c=core(),settings=vm.runInContext('defaultSettings()',c);
+  const a=app({settings,disabledPresets:['sg'],rows:[['','','']]});
+  try{
+    a.paste('1.35,103.82');assert.equal(a.$('#countryGridOverlay').classList.contains('open'),true);
+    a.$('#countryGridSwitch').click();assert.equal(a.state().to,'sg');assert.ok(!a.state().disabledPresets.includes('sg'));
+    assert.equal(a.$('#copyBtn').disabled,false);
+    a.paste('48.8582,2.2945');a.change('#toSys','mgrs');
+    assert.equal(a.$('#countryGridOverlay').classList.contains('open'),false);
+    assert.equal(a.$('#copyBtn').disabled,false);
+  }finally{a.dom.window.close();}
+});
+
+
+test('UTM input also offers the country preset when switching to global MGRS',()=>{
+  const a=app();
+  try{
+    a.paste('48N 368831.814 143329.716');assert.equal(a.state().from,'globalutm');
+    a.change('#toSys','mgrs');
+    assert.equal(a.$('#countryGridOverlay').classList.contains('open'),true);
+    assert.equal(a.$('#countryGridSwitch').textContent,'Change to Singapore MGR');
+    a.$('#countryGridSwitch').click();assert.equal(a.state().to,'sg');
+    assert.equal(a.$('#copyBtn').disabled,false);
   }finally{a.dom.window.close();}
 });
