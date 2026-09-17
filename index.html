@@ -27,7 +27,9 @@
   html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--text);font:500 15px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;overscroll-behavior:none;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
   header{flex-wrap:wrap;padding:11px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex:0 0 auto}
-  header h1{margin:0;font-size:15px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
+  header h1{margin:0;font-size:15px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;min-width:0;flex:0 1 auto;display:flex;align-items:center;gap:8px}
+  header h1 .logo{width:32px;height:32px;flex:0 0 auto}
+  header h1 .title-text{overflow:hidden;text-overflow:ellipsis;min-width:0}
   .version{flex:0 0 auto;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:2px 6px;font-size:9px;font-weight:800;letter-spacing:.2px}
   .version:empty{display:none}
   .feedback{color:var(--muted);font-size:12px;text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:8px}
@@ -192,7 +194,7 @@
 </head>
 <body>
   <header>
-    <h1><span class="wide-title">Military </span>Coordinate Converter</h1><span class="version" id="appVersion"></span>
+    <h1><img class="logo" src="icons/icon-192.png" alt="" width="32" height="32"><span class="title-text"><span class="wide-title">Military </span>Coordinate Converter</span></h1><span class="version" id="appVersion"></span>
     <nav class="tabs">
       <button id="tab-conv" class="on">Converter</button>
       <button id="tab-set">Settings</button>
@@ -863,6 +865,12 @@
           if(!filled){j.from="auto";j.rows=[["","",""]];}else if(!usable)j.from="auto";
           j.explicitInput=false;j.aoConfirmed=false;delete j.pendingGrid;
           // One-time cleanup for AOs saved by the former Thailand auto-selection behavior.
+          // Boundary notices used to switch prefix omission off for good. Crossing now only
+          // changes how those results are shown, so put the setting back once.
+          if(j.omitVersion!==2){
+            for(const [id,d] of Object.entries(defaults))if(j.settings[id]&&"sgOmit" in d)j.settings[id].sgOmit=d.sgOmit;
+            j.omitVersion=2;
+          }
           if(j.aoSelectionVersion!==2){
             if(j.settings.taiwan) delete j.settings.taiwan.square;
             if(j.settings.thailand) delete j.settings.thailand.square;
@@ -871,7 +879,7 @@
           return j;
         }
       }catch(_){}
-      return { from:"auto", to:"wgs84", rows:[["","",""]], out:null, points:[], settings:defaultSettings(), aoSelectionVersion:2 };
+      return { from:"auto", to:"wgs84", rows:[["","",""]], out:null, points:[], settings:defaultSettings(), aoSelectionVersion:2, omitVersion:2 };
     }
     function save(){ try{ localStorage.setItem(STORAGE, JSON.stringify(state)); }catch(_){} }
 
@@ -936,7 +944,11 @@
         let lead="";
         if(state.from==="globalutm")lead=`<input class="cell prefix" aria-label="UTM zone" placeholder="48N" value="${escAttr(prefixText)}">`;
         else if(areas&&state.from==="mgrs")lead=areaPill("prefix",i,prefixText,fallback?spacedPrefix(fallback):"48N UG","MGRS prefix");
-        else if(areas)lead=areaPill("square",i,r[3]?(validSquare(r[3])?squareLabel(r[3]):r[3]):"",fallback?squareLabel(fallback):"E5 N15","100 km square");
+        else if(areas){
+          let shown=r[3]?(validSquare(r[3])?squareLabel(r[3]):r[3]):"";
+          if(!shown){const key=rowPlacement(i)?.key;if(key&&key!==fallback)shown=squareLabel(key);}
+          lead=areaPill("square",i,shown,fallback?squareLabel(fallback):"E5 N15","100 km square");
+        }
         div.innerHTML=`<span class="n">${i+1}</span>`+lead+
           `<${flexible?"textarea":"input"} class="cell a" aria-label="${flexible?"Coordinate":cols[0]}" value="${escAttr(flexible?[r[0],r[1]].filter(Boolean).join(" "):pieces?pieces[2]:r[0])}" placeholder="${flexible?"Paste here":examples[0]}"${flexible?">"+escAttr([r[0],r[1]].filter(Boolean).join(" "))+"</textarea>":">"}`+
           `<input class="cell b" ${flexible?"hidden":""} aria-label="${cols[1]}" value="${escAttr(flexible?"":r[1])}" placeholder="${examples[1]}">`+
@@ -1048,12 +1060,18 @@
           else if(p.large&&(first||!S[id].square)){const q=toProjFromWGS(point.lat,point.lon,projectionFor(id,S));S[id].square=[Math.floor(q.E/100000),Math.floor(q.N/100000)];}
         }else if(!S[id].ao&&!S[id].square)S[id].sgOmit=false;
         const crossing=gridBoundary([...opts.points,point],id,S);
-        if(crossing)S[id].sgOmit=false;
-        const cells=formatPoint(point.lat,point.lon,id,S);
-        const parsed=parseCells(id,cells[0],cells[1],S);
+        // A grid with area pills writes the point in its own area; others need full references.
+        let own=S,square=null;
+        if(crossing&&hasAreas(id)&&id!=="mgrs"&&S[id].sgOmit!==false){
+          const key=areaKeyAt(id,point.lat,point.lon);
+          if(key!==S[id].square?.join("/")){square=key;own={...S,[id]:{...S[id],square:key.split("/").map(Number)}};}
+        }else if(crossing&&!hasAreas(id))S[id].sgOmit=false;
+        const cells=formatPoint(point.lat,point.lon,id,own);
+        const parsed=parseCells(id,cells[0],cells[1],own);
         if(parsed.error||!Number.isFinite(parsed.lat)||!Number.isFinite(parsed.lon))return {error:"This point cannot be represented in "+p.name+"."};
-        const area=id==="mgrs"?S[id].ao:p.lead?"E"+p.lead[0]+" N"+p.lead[1]:S[id].square?"E"+S[id].square[0]+" N"+S[id].square[1]:"";
-        return {cells,label:p.name+": "+cells.join(" "),settings:S[id],crossing,area:crossing?"Full prefix required across grid boundaries":area?"Reference area: "+area:""};
+        const area=id==="mgrs"?(crossing?areaKeyAt(id,point.lat,point.lon):S[id].ao):p.lead?"E"+p.lead[0]+" N"+p.lead[1]:own[id].square?"E"+own[id].square[0]+" N"+own[id].square[1]:"";
+        const areaText=crossing&&!hasAreas(id)?"Full prefix required across grid boundaries":area?"Reference area: "+(id==="mgrs"?spacedPrefix(area):area)+(crossing?" · outside point 1's area":""):"";
+        return {cells,square,label:p.name+": "+cells.join(" "),settings:S[id],crossing,area:areaText};
       }catch(error){return {error:error.message};}
     }
     let pointOptions;
@@ -1091,9 +1109,8 @@
         return new Promise(resolve=>reviewBoundary(changes,ok=>resolve(ok?addMapPoint(point,view,true):{canceled:true})));
       }
       state.settings[target]=outputSettings[target];
-      for(const c of changes){boundaryAccepted.add(c.key);if(c.id!==id)(state.settings[c.id]||={}).sgOmit=false;}
-      if(crossing){
-        boundaryAccepted.add(crossing.key);
+      for(const c of changes)boundaryAccepted.add(c.key);
+      if(crossing&&!hasAreas(id)){
         const S={...state.settings,[id]:result.settings};
         for(const p of currentBefore.points)state.rows[p.number-1]=[...formatPoint(p.lat,p.lon,id,S,p.digits),p.name];
       }
@@ -1105,7 +1122,7 @@
         const current=existingMapPoints();if(current.unresolved)return {error:"Resolve the existing pasted coordinates first."};
         state.rows=current.points.map(p=>[...llCells(p.lat,p.lon),p.name]);state.from="wgs84";
       }else if(state.rows.length===1&&state.rows[0].every(v=>!String(v).trim()))state.rows=[];
-      state.rows.push([...result.cells,""]);
+      state.rows.push([...result.cells,"",...(result.square?[result.square]:[])]);
       state.lastLocation={...point};state.pointMapView={...point,...view};
       if(automatic||target!==state.to){state.to=target;state.explicitOutput=false;}
       state.points=[];renderFrom();renderTo();updatePairState();save();
@@ -1547,9 +1564,13 @@
       return "";
     }
     function boundaryMessage(points,id=state.to){
-      if(!gridBoundary(points,id))return "";
-      (state.settings[id]||={}).sgOmit=false;
-      return "Points cross a grid boundary. Full prefixes have been retained.";
+      return gridBoundary(points,id)?"Points cross a grid boundary. Full prefixes have been retained.":"";
+    }
+    // Output settings as shown: points across areas are written in full, without
+    // changing the omission the reader chose.
+    function shownSettings(points,id=state.to){
+      if(!gridBoundary(points,id))return state.settings;
+      return {...state.settings,[id]:{...state.settings[id],sgOmit:false}};
     }
     function fullMGR(text){
       return /^\s*\d{1,2}\s*[C-HJ-NP-X]\s*[A-HJ-NP-Z]{2}/i.test(text)&&!parseProjected(text);
@@ -1843,9 +1864,11 @@
           reviewBoundary(pending,ok=>{
             if(ok){
               const current=existingMapPoints();
-              for(const c of changes){boundaryAccepted.add(c.key);(state.settings[c.id]||={}).sgOmit=false;}
-              // Resolve input rows using their old area before expanding their prefixes.
-              if(changes.some(c=>c.id===state.from)){
+              for(const c of changes)boundaryAccepted.add(c.key);
+              // Rows on a grid with area pills already say where they are. Other grids
+              // resolve with their old area before their prefixes are written in full.
+              if(changes.some(c=>c.id===state.from)&&!hasAreas(state.from)){
+                (state.settings[state.from]||={}).sgOmit=false;
                 for(const p of current.points)state.rows[p.number-1]=[...formatPoint(p.lat,p.lon,state.from,state.settings,p.digits),p.name];
                 renderFrom();
               }
@@ -1854,14 +1877,14 @@
             renderTo();save();
           });
         }
-        try{const warning=boundaryMessage(pts)||(state.from==="mgrs"?boundaryMessage(pts,"mgrs"):"");if(warning)setBottomError(warning);pts.forEach(p=>formatPoint(p.lat,p.lon,state.to,state.settings));}
+        try{const warning=boundaryMessage(pts)||(state.from==="mgrs"?boundaryMessage(pts,"mgrs"):"");if(warning)setBottomError(warning);pts.forEach(p=>formatPoint(p.lat,p.lon,state.to,shownSettings(pts)));}
         catch(error){state.points=[];pts=[];setBottomError(error.message);}
       }
-      const cells=pts.map(p=>formatPoint(p.lat,p.lon,state.to,state.settings,p.digits));
+      const shown=shownSettings(pts),cells=pts.map(p=>formatPoint(p.lat,p.lon,state.to,shown,p.digits));
       const split=a=>prefixed?a.match(/^(.*?[A-Za-z])\s*(\d*(?:\.\d+)?)$/):null;
       // An omitted MGRS prefix leaves nothing to show, so its column goes too.
       if(state.to==="mgrs"){
-        const s=state.settings.mgrs;
+        const s=shown.mgrs;
         prefixed=pts.length?cells.some(c=>split(c[0])?.[1]):!(s.sgOmit&&s.ao&&s.sgDigits);
       }
       $("#toRows").closest(".side").classList.toggle("prefixed-input",prefixed);
@@ -1888,6 +1911,18 @@
       updateRegionChips();
     }
 
+    // A point written as an input row: country grids keep their own square beside
+    // omitted digits, and MGRS keeps a prefix only outside point 1's area.
+    function inputRow(p,id){
+      const name=p.name||"";
+      if(hasAreas(id)&&id!=="mgrs"&&state.settings[id]?.sgOmit!==false&&presetContains(id,p.lat,p.lon)){
+        const key=areaKeyAt(id,p.lat,p.lon),S={...state.settings,[id]:{...state.settings[id],square:key.split("/").map(Number)}};
+        const [a,b]=formatPoint(p.lat,p.lon,id,S,p.digits);
+        return key===defaultAreaKey(id)?[a,b,name]:[a,b,name,key];
+      }
+      const [a,b]=formatPoint(p.lat,p.lon,id,state.settings,p.digits);
+      return [a,b,name];
+    }
     /* ---- swap ---- */
     $("#swapBtn").addEventListener("click",()=>{
       readRows();remember();
@@ -1897,7 +1932,7 @@
       state.from=nf; state.to=nt;
       if(PRESETS[nf].kind!=="latlong"){ lastGridFrom=nf; state.lastGridFrom=nf; }
       $("#fromSys").value=nf; $("#toSys").value=nt;
-      if(pts.length){ state.rows=pts.map(p=>{ const [a,b]=formatPoint(p.lat,p.lon,nf,state.settings,p.digits); return [a,b,p.name||""]; }); }
+      if(pts.length){ fillArea(pts,nf); state.rows=pts.map(p=>inputRow(p,nf)); }
       state.points=[]; renderFrom(); renderTo(); updatePairState(); detect(""); save();
       // The other side was computed a moment ago, so recompute it rather than
       // handing back an empty column and asking for Convert again.
@@ -2007,7 +2042,7 @@
     $("#mapsBtn").addEventListener("click",()=>{ if(!state.points||!state.points.length)return; window.open(routeUrl(state.points),"_blank","noopener"); });
     $("#copyBtn").addEventListener("click",()=>{
       if(!state.points||!state.points.length)return;
-      const text=state.points.map(p=>{ const [a,b]=formatPoint(p.lat,p.lon,state.to,state.settings,p.digits); return p.name?`${a}  ${b}  ${p.name}`:`${a}  ${b}`; }).join("\n");
+      const shown=shownSettings(state.points),text=state.points.map(p=>{ const [a,b]=formatPoint(p.lat,p.lon,state.to,shown,p.digits); return p.name?`${a}  ${b}  ${p.name}`:`${a}  ${b}`; }).join("\n");
       navigator.clipboard.writeText(text).then(()=>toast("Copied "+state.points.length+" points")).catch(()=>toast("Copy failed",true));
     });
 

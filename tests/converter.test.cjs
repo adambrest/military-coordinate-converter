@@ -260,10 +260,10 @@ test('explicit global output asks about the country preset and allows an informe
 });
 test('cross-AO batch forces prefixes and red warning even after format toggles',()=>{
   const a=app();a.paste('48.8582,2.2945');
-  const s=a.state();s.settings.mgrs.sgOmit=true;
+  const s=a.state();s.settings.mgrs.sgOmit=true;s.militaryVersion=3;s.omitVersion=2;
   a.dom.window.close();const b=app(s);b.paste('48.8582,2.2945\n51.5074,-0.1278');
   assert.equal(b.$('#boundaryOverlay').classList.contains('open'),true);assert.equal(b.$('#copyBtn').disabled,true);b.$('#boundaryContinue').click();
-  assert.match(b.$('#badPair').textContent,/grid boundary/);assert.equal(b.state().settings.mgrs.sgOmit,false);
+  assert.match(b.$('#badPair').textContent,/grid boundary/);assert.equal(b.state().settings.mgrs.sgOmit,true,'crossing must not change the saved setting');
   assert.match(b.$('#toRows').children[0].querySelector('.prefix').value,/^31U DQ/);assert.match(b.$('#toRows').children[1].querySelector('.prefix').value,/^30U/);b.dom.window.close();
 });
 test('complete MGRS input needs no AO, exports location',()=>{
@@ -317,7 +317,9 @@ test('source settings changes invalidate previous results',()=>{
 test('boundary guard cannot be bypassed by the output-prefix checkbox',async()=>{
   const a=app();a.paste('48.8582,2.2945\n51.5074,-0.1278');a.$('#boundaryContinue').click();a.$('#tab-set').click();a.$('[data-head="mgrs"]').click();
   await new Promise(resolve=>setTimeout(resolve,10));
-  a.$('#om_mgrs').click();assert.equal(a.$('#om_mgrs').checked,false);assert.match(a.$('#badPair').textContent,/grid boundary/);a.dom.window.close();
+  a.$('#om_mgrs').click();assert.equal(a.$('#om_mgrs').checked,true);assert.match(a.$('#badPair').textContent,/grid boundary/);
+  assert.match(a.$('#toRows').children[0].querySelector('.prefix').value,/^31U DQ/,'omission must not apply across areas');
+  assert.match(a.$('#toRows').children[1].querySelector('.prefix').value,/^30U/);a.dom.window.close();
 });
 test('explicit WGS 84 remains global when moving from Singapore to Brunei',()=>{
   const a=app();a.paste('1.352083,103.819836');a.change('#toSys','mgrs');
@@ -498,8 +500,10 @@ test('map boundary confirmation expands short Taiwan rows without moving existin
   assert.equal(a.$('#boundaryOverlay').classList.contains('open'),true);assert.deepEqual(a.state().rows,before);
   a.$('#boundaryClose').click();assert.equal((await pending).canceled,true);assert.deepEqual(a.state().rows,before);
   pending=a.w.pointPickerHooks.onConfirm(q,{zoom:15,layer:'street'});a.$('#boundaryContinue').click();await pending;
-  assert.equal(a.state().rows.length,2);assert.equal(a.state().settings.taiwan.sgOmit,false);
-  assert.match(a.state().rows[0][0],/^\d{5}$/);assert.match(a.state().rows[1][0],/^\d{5}$/);
+  assert.equal(a.state().rows.length,2);assert.equal(a.state().settings.taiwan.sgOmit,true,'the setting stays as chosen');
+  assert.match(a.state().rows[0][0],/^\d{4}$/);assert.equal(a.state().rows[0][3],undefined);
+  assert.match(a.state().rows[1][0],/^\d{4}$/);assert.match(a.state().rows[1][3],/^\d+\/\d+$/,'the new row keeps its own square');
+  assert.equal(a.$('#fromRows').children[1].querySelector('.square').value,'E'+a.state().rows[1][3].replace('/',' N'));
   assert.ok(Math.abs(a.state().points[0].lat-first.lat)<.00002);assert.ok(Math.abs(a.state().points[0].lon-first.lon)<.00002);
   assert.ok(Math.abs(a.state().points[1].lat-q.lat)<.0002);a.dom.window.close();
 });
@@ -744,8 +748,10 @@ test('a first Australian pin picks its own area; a pin in another square must be
   assert.equal(a.$('#boundaryOverlay').classList.contains('open'),true,'a pin in another square was accepted silently');
   assert.deepEqual(a.state().rows,before);
   a.$('#boundaryContinue').click();await pending;
-  assert.equal(a.state().settings.australia.sgOmit,false,'leading digits were still omitted across squares');
-  assert.match(a.state().rows[0][0],/^\d{5}$/);assert.match(a.state().rows[1][0],/^\d{5}$/);
+  assert.equal(a.state().settings.australia.sgOmit,true,'crossing must not change the saved setting');
+  assert.match(a.state().rows[0][0],/^\d{4}$/);assert.match(a.state().rows[1][0],/^\d{4}$/);
+  assert.notEqual(a.state().rows[1][3],undefined,'the Brisbane row must name its own square');
+  assert.ok(Math.abs(a.state().points[1].lat-brisbane.lat)<.001,'the Brisbane pin moved');
   a.dom.window.close();
 });
 
@@ -1595,7 +1601,8 @@ test('auto-detect map points across reference squares retain full prefixes',asyn
     assert.equal(a.$('#boundaryOverlay').classList.contains('open'),true);
     a.$('#boundaryContinue').click();await pending;
     assert.equal(a.state().to,'taiwan');assert.equal(a.state().points.length,2);
-    assert.equal(a.state().settings.taiwan.sgOmit,false);
+    assert.equal(a.state().settings.taiwan.sgOmit,true,'crossing must not change the saved setting');
+    assert.ok([...a.$('#toRows').querySelectorAll('.a')].every(c=>/^\d{5}$/.test(c.value)),'output across squares keeps leading digits');
     assert.equal(a.$('#copyBtn').disabled,false);
   }finally{a.dom.window.close();}
 });
@@ -1842,9 +1849,10 @@ test('only actual active input setting changes require conversion again',async()
 });
 
 /* ---- v2 reference areas ---- */
-test('the app reports version 2.1',()=>{
+test('the app reports version 2.2',()=>{
   const a=app();
-  try{assert.equal(a.$('#appVersion').textContent,'v2.1.0');assert.match(read('version.js'),/APP_VERSION = "2\.1\.0"/);}
+  try{assert.equal(a.$('#appVersion').textContent,'v2.2.0');assert.match(read('version.js'),/APP_VERSION = "2\.2\.0"/);
+    const logo=a.$('header h1 .logo');assert.ok(logo,'the header shows the app icon');assert.equal(logo.getAttribute('src'),'icons/icon-192.png');assert.equal(logo.getAttribute('alt'),'');}
   finally{a.dom.window.close();}
 });
 test('the output reference area follows point 1 and cannot be changed',()=>{
@@ -2042,7 +2050,7 @@ test('typing a square into a country pill moves that row; the shared square need
 });
 test('omitting the MGRS prefix drops the prefix column where every row is in the area',()=>{
   const c=core(),settings=vm.runInContext('defaultSettings()',c);settings.mgrs.ao='48NUG';settings.mgrs.sgOmit=true;
-  const a=app({settings,militaryVersion:3,militaryEnabled:true,aoSelectionVersion:2,rows:[['','','']]});
+  const a=app({settings,militaryVersion:3,militaryEnabled:true,aoSelectionVersion:2,omitVersion:2,rows:[['','','']]});
   try{
     a.change('#fromSys','wgs84');a.paste('1.3521, 103.8198');
     a.change('#toSys','mgrs');
@@ -2059,7 +2067,7 @@ test('omitting the MGRS prefix drops the prefix column where every row is in the
     if(a.$('#boundaryOverlay').classList.contains('open'))a.$('#boundaryContinue').click();
     assert.ok(a.$('#fromRows .prefix'),'a row outside the area needs its prefix shown');
   }finally{a.dom.window.close();}
-  const b=app({settings:{...settings,mgrs:{...settings.mgrs,sgOmit:false}},militaryVersion:3,militaryEnabled:true,aoSelectionVersion:2,rows:[['','','']]});
+  const b=app({settings:{...settings,mgrs:{...settings.mgrs,sgOmit:false}},militaryVersion:3,militaryEnabled:true,aoSelectionVersion:2,omitVersion:2,rows:[['','','']]});
   try{
     b.change('#fromSys','mgrs');assert.ok(b.$('#fromRows .prefix'),'without omission the prefix column stays');
   }finally{b.dom.window.close();}
@@ -2092,5 +2100,50 @@ test('pasting a full reference splits it into fields, and Undo returns the paste
     a.$('#undoBtn').click();
     assert.equal(a.$('#fromSys').value,'auto');
     assert.equal(a.$('#fromRows .a').value,'48N UG 6793 4572');
+  }finally{a.dom.window.close();}
+});
+
+/* ---- v2.2 areas survive crossing and swapping ---- */
+test('swapping a Thailand batch across squares keeps each row in its own square',()=>{
+  const a=app(undefined,false,false);
+  try{
+    a.change('#fromSys','wgs84');
+    a.paste('14.0029030, 99.2445874\n14.0419231, 99.2486000\n13.4281631, 100.9890747');
+    assert.equal(a.$('#boundaryOverlay').classList.contains('open'),true);
+    a.$('#boundaryContinue').click();
+    assert.equal(a.state().to,'thailand');
+    assert.equal(a.state().settings.thailand.sgOmit,true,'crossing must not turn omission off');
+    assert.ok([...a.$('#toRows').querySelectorAll('.a')].every(c=>c.value.length===5),'output across squares keeps leading digits');
+    const points=a.state().points;
+    a.$('#swapBtn').click();
+    if(a.$('#boundaryOverlay').classList.contains('open'))a.$('#boundaryContinue').click();
+    assert.equal(a.state().from,'thailand');
+    const rows=a.state().rows;
+    assert.ok(rows.every(r=>/^\d{4}$/.test(r[0])&&/^\d{4}$/.test(r[1])),'input digits follow the omit setting: '+JSON.stringify(rows));
+    assert.deepEqual(rows.map(r=>r[3]||null),[null,null,'7/14']);
+    const pills=[...a.$('#fromRows').querySelectorAll('.square')];
+    assert.deepEqual(pills.map(x=>x.value),['','','E7 N14']);
+    assert.ok(pills.every(x=>x.placeholder==='E5 N15'));
+    a.$('#swapBtn').click();a.$('#swapBtn').click();
+    if(a.$('#boundaryOverlay').classList.contains('open'))a.$('#boundaryContinue').click();
+    assert.equal(a.state().points.length,3);
+    a.state().points.forEach((p,k)=>assert.ok(Math.abs(p.lat-points[k].lat)<.001&&Math.abs(p.lon-points[k].lon)<.001,'point '+(k+1)+' moved'));
+  }finally{a.dom.window.close();}
+});
+test('a full-digit row shows the square its digits name, not the shared one',()=>{
+  const c=core(),settings=vm.runInContext('defaultSettings()',c);settings.thailand.square=[5,15];
+  const a=app({settings,militaryVersion:3,militaryEnabled:false,aoSelectionVersion:2,omitVersion:2,from:'thailand',rows:[['1234','5678',''],['71536','148535','']]},false,false);
+  try{
+    const pills=[...a.$('#fromRows').querySelectorAll('.square')];
+    assert.deepEqual(pills.map(x=>x.value),['','E7 N14']);
+  }finally{a.dom.window.close();}
+});
+test('saved omission switched off by an old boundary notice is restored once',()=>{
+  const c=core(),settings=vm.runInContext('defaultSettings()',c);settings.thailand.sgOmit=false;settings.mgrs.sgOmit=true;
+  const a=app({settings,militaryVersion:3,militaryEnabled:true,aoSelectionVersion:2,rows:[['','','']]});
+  try{
+    a.change('#fromSys','wgs84');
+    const s=a.state();
+    assert.equal(s.settings.thailand.sgOmit,true);assert.equal(s.settings.mgrs.sgOmit,false);assert.equal(s.omitVersion,2);
   }finally{a.dom.window.close();}
 });
