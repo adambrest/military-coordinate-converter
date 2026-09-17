@@ -125,11 +125,11 @@ test('slow typing never replaces or blurs the input; complete MGRS needs no AO',
 });
 test('global Settings controls format and holds examples outside converter',async()=>{
   const a=app();a.paste('1.2964704,103.8210085');a.change('#toSys','mgrs');
-  assert.equal(a.$('#toFormatExample'),null);assert.match(a.$('#toFormatChip').textContent,/MGRS/);
+  assert.equal(a.$('#toFormatExample'),null);assert.equal(a.$('#toFormatChip'),null,'the format is chosen in Settings, without a chip');
   a.$('#tab-set').click();a.$('[data-head="mgrs"]').click();await new Promise(r=>setTimeout(r,20));
   assert.match(a.$('[data-head="mgrs"]').textContent,/Military grid/);
   a.$('[data-id="mgrs"] [data-v="globalutm"]').click();await new Promise(r=>setTimeout(r,20));
-  assert.equal(a.state().to,'globalutm');assert.match(a.$('#toFormatChip').textContent,/UTM/);
+  assert.equal(a.state().to,'globalutm');assert.equal(a.$('#toFormatChip'),null);
   assert.match(a.$('[data-id="mgrs"] .example').textContent,/368831.814/);assert.equal(a.$('#aoCenter'),null);
   a.dom.window.close();
 });
@@ -151,11 +151,42 @@ test('new projected formats still enforce country output and never need an AO',(
   assert.equal(a.w.mapOptions,undefined);assert.equal(a.$('#copyBtn').disabled,false);
   a.dom.window.close();
 });
-test('reload always returns to Auto-detect while retaining coordinates and names',()=>{
-  const first=app();first.paste('48N 366000 149000');const saved=first.state();saved.rows[0][2]='Keep me';first.dom.window.close();
-  const a=app(saved);assert.equal(a.$('#fromSys').value,'auto');assert.equal(a.$('#fromRows .nm').value,'Keep me');
-  assert.match(a.$('#fromRows .a').value,/48N 366000 149000/);assert.equal(a.$('#copyBtn').disabled,true);
-  assert.equal(a.$('#pasteHint').querySelectorAll('li').length,0);assert.equal(a.$('#fromRows .nm').hidden,true);assert.equal(a.$('#fromRows .a').placeholder,'Paste here');a.dom.window.close();
+test('reload reopens entries in their detected system and keeps names',()=>{
+  const first=app();first.paste('48N 366000 149000');const saved=first.state();saved.rows[0][2]='Keep me';saved.militaryVersion=3;first.dom.window.close();
+  const a=app(saved);
+  try{
+    assert.equal(a.state().from,'globalutm');assert.equal(a.$('#fromSys').value,'mgrs');
+    assert.equal(a.$('#fromSys option[value="auto"]'),null,'filled input must not offer Auto-detect as its system');
+    assert.equal(a.$('#fromRows .nm').value,'Keep me');assert.equal(a.$('#fromRows .nm').hidden,false);
+    assert.equal(a.$('#fromRows .prefix').value,'48N');assert.equal(a.$('#fromRows .a').value,'366000');
+    assert.equal(a.$('#copyBtn').disabled,true,'results are recomputed, not restored');
+    a.$('#convertBtn').click();assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
+  }finally{a.dom.window.close();}
+  // Military grid entries come back as Military grid, however many rows.
+  const second=app();second.paste('48N UG 6793 4572\n48N VG 2977 6263');
+  if(second.$('#boundaryOverlay').classList.contains('open'))second.$('#boundaryContinue').click();
+  const grid={...second.state(),militaryVersion:3};second.dom.window.close();
+  const b=app(grid);
+  try{assert.equal(b.state().from,'mgrs');assert.equal(b.$('#fromRows').children.length,2);assert.equal(b.$('#fromRows textarea'),null);}
+  finally{b.dom.window.close();}
+  const empty=app({...grid,rows:[['','',''],['','','']]});
+  try{assert.equal(empty.$('#fromSys').value,'auto');assert.equal(empty.$('#fromRows').children.length,1);assert.ok(empty.$('#fromRows textarea'));}
+  finally{empty.dom.window.close();}
+});
+test('Auto-detect is a single box: stranded rows are detected, or kept together',()=>{
+  const c=core(),settings=vm.runInContext('defaultSettings()',c);
+  const base={settings,militaryVersion:3,militaryEnabled:true,aoSelectionVersion:2};
+  // A system that is no longer enabled falls back to Auto-detect and detects again.
+  const a=app({...base,militaryEnabled:false,from:'mgrs',rows:[['48N UG 6793','4572',''],['48N UG 6800','4600','']]},false,false);
+  try{
+    assert.equal(a.$('#fromRows textarea'),null,'rows were left sitting in Auto-detect');
+    assert.equal(a.state().from,'mgrs');assert.equal(a.$('#fromRows').children.length,2);
+  }finally{a.dom.window.close();}
+  const b=app({...base,from:'auto',rows:[['not a place','',''],['still not','','']]});
+  try{
+    assert.equal(b.state().from,'auto');assert.equal(b.$('#fromRows').children.length,1);
+    assert.match(b.$('#fromRows .a').value,/not a place\nstill not/);
+  }finally{b.dom.window.close();}
 });
 test('restored batches can be detected again without losing row names',()=>{
   const a=app();a.paste('1.35,103.82\n1.36,103.83');const saved=a.state();saved.rows[0][2]='One';saved.rows[1][2]='Two';a.dom.window.close();
@@ -1345,16 +1376,53 @@ test('turning the chooser down does not leave Convert asking the same question',
   assert.equal(a.$('#fromRows .a').value.replace(/\s/g,''),'74353727','the digits must survive being declined');
   a.dom.window.close();
 });
-test('eight digits typed into the easting move half into the northing',async()=>{
+test('typed digits are never split on leaving a field',async()=>{
   const a=app(undefined,false,false);
-  a.change('#fromSys','thailand');
-  const A=a.$('#fromRows .a'),B=a.$('#fromRows .b');
-  A.value='74353727';A.dispatchEvent(new a.w.Event('input',{bubbles:true}));
-  blur(a);
-  await new Promise(r=>setTimeout(r,20));
-  assert.deepEqual([a.$('#fromRows .a').value,a.$('#fromRows .b').value],['7435','3727'],
-    'the halves belong in both fields');
-  a.dom.window.close();
+  try{
+    a.change('#fromSys','thailand');
+    for(const typed of ['6872','74353727']){
+      const A=a.$('#fromRows .a');
+      A.value=typed;A.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+      blur(a);
+      await new Promise(r=>setTimeout(r,20));
+      assert.deepEqual([a.$('#fromRows .a').value,a.$('#fromRows .b').value],[typed,''],typed+' was split while typing');
+    }
+  }finally{a.dom.window.close();}
+});
+test('pasting splits only 3+3 digits or more, and Undo restores the digits as pasted',()=>{
+  const c=core(),settings=vm.runInContext('defaultSettings()',c);settings.thailand.square=[5,15];
+  const a=app({settings,militaryVersion:3,militaryEnabled:false,aoSelectionVersion:2,rows:[['','','']]},false,false);
+  try{
+    a.change('#fromSys','thailand');
+    const short=new a.w.Event('paste',{bubbles:true,cancelable:true});Object.defineProperty(short,'clipboardData',{value:{getData:()=>'6872'}});
+    a.$('#fromRows .a').dispatchEvent(short);
+    assert.equal(short.defaultPrevented,false,'a short paste must land as typed');
+    assert.equal(a.$('#fromRows .b').value,'');
+    a.paste('68724924');
+    assert.deepEqual([a.$('#fromRows .a').value,a.$('#fromRows .b').value],['6872','4924']);
+    assert.equal(a.$('#undoBtn').disabled,false,'an automatic split must be undoable');
+    a.$('#undoBtn').click();
+    assert.deepEqual([a.$('#fromRows .a').value,a.$('#fromRows .b').value],['68724924',''],'undo should keep the digits as pasted');
+    a.$('#redoBtn').click();
+    assert.deepEqual([a.$('#fromRows .a').value,a.$('#fromRows .b').value],['6872','4924']);
+  }finally{a.dom.window.close();}
+});
+test('Convert halves a typed run of 3+3 or more, undoably, but leaves shorter runs alone',()=>{
+  const c=core(),settings=vm.runInContext('defaultSettings()',c);settings.thailand.square=[5,15];
+  const a=app({settings,militaryVersion:3,militaryEnabled:false,aoSelectionVersion:2,rows:[['','','']]},false,false);
+  try{
+    a.change('#fromSys','thailand');
+    const A=a.$('#fromRows .a');A.value='6872';A.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+    a.$('#convertBtn').click();
+    assert.deepEqual([a.$('#fromRows .a').value,a.$('#fromRows .b').value],['6872','']);
+    assert.equal(a.$('#copyBtn').disabled,true);
+    const B=a.$('#fromRows .a');B.value='68724924';B.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+    a.$('#convertBtn').click();
+    assert.deepEqual([a.$('#fromRows .a').value,a.$('#fromRows .b').value],['6872','4924']);
+    assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
+    a.$('#undoBtn').click();
+    assert.equal(a.$('#fromRows .a').value,'68724924');
+  }finally{a.dom.window.close();}
 });
 
 test('a Google link carrying its place in the path is read',()=>{
@@ -1774,9 +1842,9 @@ test('only actual active input setting changes require conversion again',async()
 });
 
 /* ---- v2 reference areas ---- */
-test('the app reports version 2',()=>{
+test('the app reports version 2.1',()=>{
   const a=app();
-  try{assert.equal(a.$('#appVersion').textContent,'v2.0.0');assert.match(read('version.js'),/APP_VERSION = "2\.0\.0"/);}
+  try{assert.equal(a.$('#appVersion').textContent,'v2.1.0');assert.match(read('version.js'),/APP_VERSION = "2\.1\.0"/);}
   finally{a.dom.window.close();}
 });
 test('the output reference area follows point 1 and cannot be changed',()=>{
@@ -1869,7 +1937,7 @@ test('a country grid chip leaves rows in other squares where they are',()=>{
     const second=a.$('#fromRows').children[1];
     second.querySelector('.a').value='2000';second.querySelector('.b').value='3000';second.querySelector('.a').dispatchEvent(new a.w.Event('input',{bubbles:true}));
     // Point 2 moves to its own square first, then the chip moves point 1's square.
-    second.querySelector('.area-more').click();
+    second.querySelector('.pill-map').click();
     a.w.pickerHooks.onSelect({id:'thailand',e:6,n:15,lat:13.6,lon:100.2},a.w.mapOptions);
     if(a.$('#boundaryOverlay').classList.contains('open'))a.$('#boundaryContinue').click();
     a.$('#regionChip').click();
@@ -1889,8 +1957,9 @@ test('each grid row can move to its own reference area, and the boundary notice 
   try{
     a.change('#fromSys','thailand');
     const first=a.$('#fromRows').children[0];
-    assert.ok(first.querySelector('.area-more'),'grid rows need a ⋯ button');
-    assert.equal(first.querySelector('.area-more').disabled,true,'an empty row has nothing to move');
+    assert.ok(first.querySelector('.area-pill .square'),'grid rows need an area pill');
+    assert.equal(first.querySelector('.square').placeholder,'E5 N15','the pill shows the square rows share');
+    assert.equal(first.querySelector('.pill-map').disabled,true,'an empty row has nothing to move');
     first.querySelector('.a').value='1234';first.querySelector('.b').value='5678';first.querySelector('.a').dispatchEvent(new a.w.Event('input',{bubbles:true}));
     a.$('#addRow').click();
     const second=a.$('#fromRows').children[1];
@@ -1898,7 +1967,7 @@ test('each grid row can move to its own reference area, and the boundary notice 
     a.$('#convertBtn').click();
     assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
     const before=a.state().points[1];
-    a.$('#fromRows').children[1].querySelector('.area-more').click();
+    a.$('#fromRows').children[1].querySelector('.pill-map').click();
     assert.equal(a.w.mapOptions.row,1);
     assert.equal(a.w.mapOptions.bulk,undefined);
     assert.deepEqual({...a.w.mapOptions.pick},{e:'2000',n:'3000'});
@@ -1906,7 +1975,7 @@ test('each grid row can move to its own reference area, and the boundary notice 
     a.w.pickerHooks.onSelect({id:'thailand',e:6,n:15,lat:13.6,lon:100.2},a.w.mapOptions);
     assert.equal(a.state().rows[1][3],'6/15');
     assert.equal(a.state().rows[0][3],undefined,'point 1 must not move');
-    assert.match(a.$('#fromRows').children[1].querySelector('.row-area').textContent,/E6 N15/);
+    assert.equal(a.$('#fromRows').children[1].querySelector('.square').value,'E6 N15');assert.equal(a.$('#fromRows').children[0].querySelector('.square').value,'');
     assert.equal(a.$('#boundaryOverlay').classList.contains('open'),true,'points across squares must raise the boundary notice');
     a.$('#boundaryContinue').click();
     const after=a.state().points[1];
@@ -1932,5 +2001,96 @@ test('hovering a square previews where the point would land there',()=>{
       layer.fire('mouseout');
     }
     assert.equal(dots().length,0,'leaving the squares kept a preview with nothing selected');
+  }finally{a.dom.window.close();}
+});
+
+/* ---- v2.1 area pills ---- */
+test('typing into an MGRS prefix pill moves that row, and the map icon opens its area',()=>{
+  const a=app();
+  try{
+    a.change('#fromSys','mgrs');
+    a.paste('48N UG 6793 4572\n48N UG 6800 4600');
+    const rows=a.$('#fromRows').children;
+    assert.ok(rows[1].querySelector('.area-pill .prefix'),'the prefix is a pill');
+    assert.equal(a.$('#fromFormatChip'),null);
+    const pill=rows[1].querySelector('.prefix');
+    pill.value='48N VG';pill.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+    assert.match(a.state().rows[1][0],/^48N VG 6800$/);
+    a.$('#convertBtn').click();
+    if(a.$('#boundaryOverlay').classList.contains('open'))a.$('#boundaryContinue').click();
+    assert.ok(a.state().points[1].lon>104,'point 2 did not move to 48N VG');
+    a.$('#fromRows').children[0].querySelector('.pill-map').click();
+    assert.equal(a.w.mapOptions.row,0);
+  }finally{a.dom.window.close();}
+});
+test('typing a square into a country pill moves that row; the shared square needs none',()=>{
+  const c=core(),settings=vm.runInContext('defaultSettings()',c);settings.thailand.square=[5,15];
+  const a=app({settings,militaryVersion:3,militaryEnabled:false,aoSelectionVersion:2,from:'thailand',rows:[['1234','5678','']]},false,false);
+  try{
+    assert.equal(a.state().from,'thailand');
+    const pill=a.$('#fromRows .square');
+    for(const [typed,stored] of [['E6 N15','6/15'],['6/15','6/15'],['E5 N15',undefined]]){
+      pill.value=typed;pill.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+      assert.equal(a.state().rows[0][3],stored,typed);
+    }
+    pill.value='nowhere';pill.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+    a.$('#convertBtn').click();
+    assert.equal(a.$('#copyBtn').disabled,true);
+    assert.match(a.$('#badPair').textContent,/E5 N15/);
+    assert.ok(a.$('#fromRows .area-pill').classList.contains('bad'));
+  }finally{a.dom.window.close();}
+});
+test('omitting the MGRS prefix drops the prefix column where every row is in the area',()=>{
+  const c=core(),settings=vm.runInContext('defaultSettings()',c);settings.mgrs.ao='48NUG';settings.mgrs.sgOmit=true;
+  const a=app({settings,militaryVersion:3,militaryEnabled:true,aoSelectionVersion:2,rows:[['','','']]});
+  try{
+    a.change('#fromSys','wgs84');a.paste('1.3521, 103.8198');
+    a.change('#toSys','mgrs');
+    if(a.$('#countryGridOverlay').classList.contains('open'))a.$('#countryGridContinue').click();
+    assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
+    assert.equal(a.$('#toRows .prefix'),null,'the output kept an empty prefix column');
+    assert.doesNotMatch(a.$('#toHead').textContent,/Prefix/);
+    a.$('#swapBtn').click();
+    assert.equal(a.state().from,'mgrs');
+    assert.equal(a.$('#fromRows .prefix'),null,'the input kept a prefix column for an omitted prefix');
+    assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
+    // A row in another area brings the column back.
+    a.paste('48N UG 6793 4572\n48N VG 2977 6263');
+    if(a.$('#boundaryOverlay').classList.contains('open'))a.$('#boundaryContinue').click();
+    assert.ok(a.$('#fromRows .prefix'),'a row outside the area needs its prefix shown');
+  }finally{a.dom.window.close();}
+  const b=app({settings:{...settings,mgrs:{...settings.mgrs,sgOmit:false}},militaryVersion:3,militaryEnabled:true,aoSelectionVersion:2,rows:[['','','']]});
+  try{
+    b.change('#fromSys','mgrs');assert.ok(b.$('#fromRows .prefix'),'without omission the prefix column stays');
+  }finally{b.dom.window.close();}
+});
+test('a clicked square keeps its point while other squares are hovered',()=>{
+  const a=app(undefined,true);
+  try{
+    a.change('#fromSys','taiwan');
+    a.paste('1234 5678');
+    if(a.$('#locationOverlay').classList.contains('open'))a.$('[data-location="taiwan"]').click();
+    const candidates=[];a.w.testMap.eachLayer(l=>{if(l.options?.aoCandidate?.point)candidates.push(l);});
+    assert.ok(candidates.length>1);
+    const dots=()=>{const found=[];a.w.testMap.eachLayer(l=>{if(l instanceof a.w.L.CircleMarker&&l.options.radius===7)found.push(l.getLatLng());});return found;};
+    candidates[0].fire('click');
+    const chosen=candidates[0].options.aoCandidate.point;
+    candidates[1].fire('mouseover');
+    assert.equal(dots().length,1);
+    assert.ok(Math.abs(dots()[0].lat-chosen.lat)<1e-9,'hovering moved the point after a click');
+    candidates[1].fire('mouseout');
+    assert.ok(Math.abs(dots()[0].lat-chosen.lat)<1e-9);
+  }finally{a.dom.window.close();}
+});
+test('pasting a full reference splits it into fields, and Undo returns the pasted text',()=>{
+  const a=app();
+  try{
+    a.paste('48N UG 6793 4572');
+    assert.equal(a.state().from,'mgrs');
+    assert.equal(a.$('#fromRows .prefix').value,'48N UG');
+    assert.equal(a.$('#undoBtn').disabled,false,'the split must be undoable');
+    a.$('#undoBtn').click();
+    assert.equal(a.$('#fromSys').value,'auto');
+    assert.equal(a.$('#fromRows .a').value,'48N UG 6793 4572');
   }finally{a.dom.window.close();}
 });

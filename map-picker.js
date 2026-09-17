@@ -88,8 +88,9 @@
       const layer=polygon(chosen.polygon,{interactive:true,bubblingMouseEvents:false,fillOpacity:.05,weight:1.5},grid,worldOffset);
       layer.options.aoCandidate=chosen;
       layer.on("click",e=>{L.DomEvent.stopPropagation(e);selectCandidate(chosen);});
-      layer.on("mouseover",()=>{layer.setStyle({fillOpacity:.15});if(chosen.point)showPoint(chosen,true);});
-      layer.on("mouseout",()=>{layer.setStyle({fillOpacity:.05});if(chosen.point)showPoint(null);});
+      // Once a square is clicked its point stays put; hovering only previews before that.
+      layer.on("mouseover",()=>{layer.setStyle({fillOpacity:.15});if(chosen.point&&!selection)showPoint(chosen,true);});
+      layer.on("mouseout",()=>{layer.setStyle({fillOpacity:.05});if(chosen.point&&!selection)showPoint(null);});
       // Stacked labels at country scale are unreadable; the squares still are not.
       layer.bindTooltip(chosen.prefix,{permanent:!map||map.getZoom()>=6,direction:"center",className:"grid-label"});
     }

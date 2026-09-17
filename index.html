@@ -856,7 +856,12 @@
           if(!PRESETS[j.to]||(!j.militaryEnabled&&GLOBAL_FORMATS.includes(j.to))||j.disabledPresets?.includes(j.to))j.to="wgs84";
           // Never restore computed output across engine versions.
           j.points=[];
-          j.from="auto";j.explicitInput=false;j.aoConfirmed=false;delete j.pendingGrid;
+          // Reopen on the system the entries were written in. Only an empty page starts
+          // at Auto-detect, which is a single blank box and never a list of rows.
+          const filled=Array.isArray(j.rows)&&j.rows.some(r=>Array.isArray(r)&&r.some(v=>String(v??"").trim()));
+          const usable=j.from!=="auto"&&PRESETS[j.from]&&(GLOBAL_FORMATS.includes(j.from)?j.militaryEnabled:!j.disabledPresets?.includes(j.from));
+          if(!filled){j.from="auto";j.rows=[["","",""]];}else if(!usable)j.from="auto";
+          j.explicitInput=false;j.aoConfirmed=false;delete j.pendingGrid;
           // One-time cleanup for AOs saved by the former Thailand auto-selection behavior.
           if(j.aoSelectionVersion!==2){
             if(j.settings.taiwan) delete j.settings.taiwan.square;
@@ -882,10 +887,7 @@
       $("#"+side+"Sys").value=global?"mgrs":id;
       $("#"+side+"FormatWrap").hidden=!global;
       if(global)$("#"+side+"Format").value=id;
-      let chip=$("#"+side+"FormatChip");
-      if(!chip){chip=document.createElement("button");chip.id=side+"FormatChip";chip.className="regionchip format-chip";chip.type="button";$("#"+side+"FormatWrap").after(chip);chip.onclick=()=>{openPreset="mgrs";switchTab("set");};}
       $("#"+side+"FormatWrap").hidden=true;
-      chip.hidden=!global;chip.textContent=id==="globalutm"?"UTM · Change in Settings":"MGRS · Change in Settings";
     }
     buildSel($("#fromSys")); buildSel($("#toSys"));
     $("#fromSys").value=state.from; $("#toSys").value=state.to;
@@ -910,14 +912,17 @@
       const cols=colsFor(state.from,state.settings);
       const flexible=state.from==="auto";
       $("#addRow").hidden=flexible;
-      const prefixed=!flexible&&["mgrs","globalutm"].includes(state.from);
+      const omitted=inputPrefixOmitted();
+      const areas=!flexible&&hasAreas(state.from)&&!omitted;
+      const prefixed=!flexible&&(state.from==="globalutm"||(state.from==="mgrs"&&!omitted));
       $("#fromRows").closest(".side").classList.toggle("flexible-input",flexible);
-      $("#fromRows").closest(".side").classList.toggle("prefixed-input",prefixed);
-      const areas=!flexible&&hasAreas(state.from);
+      $("#fromRows").closest(".side").classList.toggle("prefixed-input",prefixed||areas);
       $("#fromRows").closest(".side").classList.toggle("area-input",areas);
       $("#fromName").textContent=PRESETS[state.from].name;
       updatePasteHint();
-      $("#fromHead").innerHTML=`<span>#</span>${prefixed?"<span>Prefix</span>":""}<span>${prefixed?"Easting":cols[0]}</span><span>${cols[1]}</span><span>Name</span>${areas?"<span></span>":""}<span></span>`;
+      const lead=state.from==="mgrs"||state.from==="globalutm"?"Prefix":"Square";
+      $("#fromHead").innerHTML=`<span>#</span>${prefixed||areas?`<span>${lead}</span>`:""}<span>${prefixed?"Easting":cols[0]}</span><span>${cols[1]}</span><span>Name</span><span></span>`;
+      const fallback=defaultAreaKey(state.from);
       const examples=PRESETS[state.from].kind==="latlong"
         ? (state.settings.wgs84.order==="lonlat"?["103.82° E","1.35° N"]:["1.35° N","103.82° E"])
         : state.from==="globalutm"?["368831","143329"]:["1234","5678"];
@@ -925,18 +930,22 @@
       state.rows.forEach((r,i)=>{
         const div=document.createElement("div"); div.className="trow"; div.dataset.i=i;
         const canDelete = state.rows.length>1;
-        const pieces=prefixed?r[0].match(/^(.*?[A-Za-z])\s*(\d*(?:\.\d+)?)$/):null;
-        div.innerHTML=`<span class="n">${i+1}</span>`+
-          (prefixed?`<input class="cell prefix" aria-label="${state.from==="mgrs"?"MGRS prefix":"UTM zone"}" placeholder="${state.from==="mgrs"?"48N UG":"48N"}" value="${escAttr((pieces?.[1]||"").toUpperCase().replace(/^(\d{1,2}[C-HJ-NP-X])\s*([A-HJ-NP-Z]{2})$/,"$1 $2"))}">`:"")+
+        // An omitted prefix still reads the digits after it.
+        const pieces=prefixed||omitted?r[0].match(/^(.*?[A-Za-z])\s*(\d*(?:\.\d+)?)$/):null;
+        const prefixText=(pieces?.[1]||"").toUpperCase().replace(/^(\d{1,2}[C-HJ-NP-X])\s*([A-HJ-NP-Z]{2})$/,"$1 $2");
+        let lead="";
+        if(state.from==="globalutm")lead=`<input class="cell prefix" aria-label="UTM zone" placeholder="48N" value="${escAttr(prefixText)}">`;
+        else if(areas&&state.from==="mgrs")lead=areaPill("prefix",i,prefixText,fallback?spacedPrefix(fallback):"48N UG","MGRS prefix");
+        else if(areas)lead=areaPill("square",i,r[3]?(validSquare(r[3])?squareLabel(r[3]):r[3]):"",fallback?squareLabel(fallback):"E5 N15","100 km square");
+        div.innerHTML=`<span class="n">${i+1}</span>`+lead+
           `<${flexible?"textarea":"input"} class="cell a" aria-label="${flexible?"Coordinate":cols[0]}" value="${escAttr(flexible?[r[0],r[1]].filter(Boolean).join(" "):pieces?pieces[2]:r[0])}" placeholder="${flexible?"Paste here":examples[0]}"${flexible?">"+escAttr([r[0],r[1]].filter(Boolean).join(" "))+"</textarea>":">"}`+
           `<input class="cell b" ${flexible?"hidden":""} aria-label="${cols[1]}" value="${escAttr(flexible?"":r[1])}" placeholder="${examples[1]}">`+
           `<input class="cell nm" aria-label="Point name" value="${escAttr(r[2])}" ${flexible?"hidden":""} placeholder="Optional">`+
-          (areas?`<button class="area-more" type="button" aria-label="Change reference area for point ${i+1}" title="Change reference area">⋯</button>`:"")+
-          `<button class="del" aria-label="${canDelete?"Delete":"Clear"} row" title="${canDelete?"Delete":"Clear"} row">×</button>`+
-          (areas&&r[3]?`<span class="row-area">${escAttr(areaLabel(state.from,r[3]))}</span>`:"");
-        if(areas&&r[3])div.dataset.area=r[3];
+          `<button class="del" aria-label="${canDelete?"Delete":"Clear"} row" title="${canDelete?"Delete":"Clear"} row">×</button>`;
+        // A country row whose square is not shown still keeps it.
+        if(!areas&&r[3])div.dataset.area=r[3];
         rowsEl.appendChild(div);
-        div.querySelector(".area-more")?.addEventListener("click",()=>openRowArea(i));
+        div.querySelector(".pill-map")?.addEventListener("click",()=>openRowArea(i));
         const delEl=div.querySelector(".del");
         if(delEl) delEl.addEventListener("click",()=>{
           if(state.from==="auto"&&!div.querySelector(".a").value.trim())return;
@@ -947,8 +956,8 @@
           renderFrom(); renderTo(); detect(""); save();
         });
         const A=div.querySelector(".a"),B=div.querySelector(".b"),NM=div.querySelector(".nm");
-        const prefix=div.querySelector(".prefix");
-        if(prefix)prefix.addEventListener("input",()=>{readRows();state.points=[];renderTo();setBottomError("");save();});
+        const prefix=div.querySelector(".prefix,.square");
+        if(prefix)prefix.addEventListener("input",()=>{prefix.closest(".area-pill")?.classList.remove("bad");readRows();state.points=[];renderTo();updateRegionChips();setBottomError("");save();});
         [A,B,NM].forEach(inp=>inp.addEventListener("input",()=>{ readRows(); updatePasteHint(); setBottomError(""); state.points=[];renderTo();save(); }));
         [A,B].forEach(inp=>inp.addEventListener("blur",()=>{ inp.classList.remove("bad"); }));
         if(flexible)A.addEventListener("blur",e=>{
@@ -962,15 +971,7 @@
             if(!state.pendingGrid&&nextField&&nextIndex!==null)$("#fromRows").children[nextIndex]?.querySelector(nextField)?.focus();
           },0);
         });
-        // A two-field row earns the same reading: eight digits typed into the easting
-        // are a four-plus-four, and the northing is where the second half belongs.
-        else A.addEventListener("blur",()=>setTimeout(()=>{
-          if(!A.isConnected||B.value.trim()||!/^\d+$/.test(A.value.trim()))return;
-          const g=splitGrid(A.value.trim());
-          if(g.error)return;
-          A.value=g.e;B.value=g.n;
-          readRows();state.points=[];renderTo();setBottomError("");save();
-        },0));
+        // Typed digits stay as typed: the reader fills easting and northing themselves.
         // Enter starts a new row and focuses it
         [A,B,NM].forEach(inp=>inp.addEventListener("keydown",e=>{
           if(e.key==="Enter"){
@@ -988,7 +989,16 @@
       updateRegionChips();updateRowAction();
     }
     function escAttr(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
-    function readRows(){ state.rows=[...$("#fromRows").children].map(d=>{const row=[(d.querySelector(".prefix")?.value?d.querySelector(".prefix").value+" ":"")+d.querySelector(".a").value,d.querySelector(".b").value,d.querySelector(".nm").value];if(d.dataset.area)row.push(d.dataset.area);return row;}); updateRowAction(); }
+    function readRows(){ state.rows=[...$("#fromRows").children].map(d=>{
+      const row=[(d.querySelector(".prefix")?.value?d.querySelector(".prefix").value+" ":"")+d.querySelector(".a").value,d.querySelector(".b").value,d.querySelector(".nm").value];
+      const square=d.querySelector(".square");
+      if(square){
+        // The square the rest of the input uses needs no row of its own.
+        const text=square.value.trim(),key=squareKey(text);
+        if(key?key!==defaultAreaKey(state.from):text)row.push(key||text);
+      }else if(d.dataset.area)row.push(d.dataset.area);
+      return row;
+    }); updateRowAction(); }
     function rowPopulated(i){
       const row=$("#fromRows").children[i];return row&&(isWholeSquareRow(i)||(row.querySelector(".a").value.trim()&&row.querySelector(".b").value.trim()));
     }
@@ -997,7 +1007,7 @@
       $("#addRow").disabled=state.from==="auto"||!rowPopulated(state.rows.length-1);
       [...$("#fromRows").children].forEach((row,i)=>{
         row.querySelector(".del").disabled=state.from==="auto"&&!row.querySelector(".a").value.trim();
-        const more=row.querySelector(".area-more");if(more)more.disabled=!rowPlacement(i);
+        const map=row.querySelector(".pill-map");if(map)map.disabled=!rowPlacement(i);
       });
     }
     function newRowAfter(i){
@@ -1336,10 +1346,35 @@
     // MGRS needs no such field: the row's prefix already says where it is.
     function rowSettings(r){
       const id=state.from;
-      if(id==="mgrs"||!hasAreas(id)||!r?.[3])return state.settings;
+      if(id==="mgrs"||!hasAreas(id)||!validSquare(r?.[3]))return state.settings;
       return {...state.settings,[id]:{...state.settings[id],square:r[3].split("/").map(Number),sgOmit:true}};
     }
-    function parseRow(r){return parseCells(state.from,r[0],r[1],rowSettings(r));}
+    function parseRow(r){
+      if(state.from!=="mgrs"&&hasAreas(state.from)&&r?.[3]&&!validSquare(r[3]))return {error:"Enter the 100 km square as E5 N15.",badSquare:true,badA:false,badB:false};
+      return parseCells(state.from,r[0],r[1],rowSettings(r));
+    }
+    const validSquare=key=>/^\d{1,2}\/\d{1,3}$/.test(key||"");
+    const squareLabel=key=>{const [e,n]=String(key).split("/");return "E"+e+" N"+n;};
+    // A typed square: "E5 N15", "5 15" or "5/15".
+    function squareKey(text){
+      const m=String(text).trim().toUpperCase().match(/^E\s*(\d{1,2})[\s,/]*N\s*(\d{1,3})$|^(\d{1,2})\s*[\s,/]\s*(\d{1,3})$/);
+      return m?(+(m[1]??m[3]))+"/"+(+(m[2]??m[4])):null;
+    }
+    const MAP_ICON='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg>';
+    // A row's area as a blue pill: type into it, or pick the area on the map.
+    function areaPill(kind,i,value,placeholder,label){
+      return `<span class="area-pill"><input class="cell ${kind}" aria-label="${label} for point ${i+1}" placeholder="${escAttr(placeholder)}" value="${escAttr(value)}" autocomplete="off" spellcheck="false">`+
+        `<button class="pill-map" type="button" aria-label="Choose the reference area for point ${i+1} on the map" title="Choose on map">${MAP_ICON}</button></span>`;
+    }
+    const compactPrefix=v=>String(v||"").toUpperCase().replace(/\s+/g,"");
+    // With prefix omission on and an area in force, rows written in that area need no
+    // prefix column. Any row typed with another prefix brings the column back.
+    function inputPrefixOmitted(){
+      if(state.from!=="mgrs")return false;
+      const s=state.settings.mgrs;
+      if(!s.sgOmit||!s.ao||!s.sgDigits)return false;
+      return state.rows.every(r=>{const m=r[0].match(/^(.*?[A-Za-z])\s*(\d*(?:\.\d+)?)$/);return !m||compactPrefix(m[1])===compactPrefix(s.ao);});
+    }
     // Where a row sits and the digits it holds within its square, so the same digits
     // can be placed in another area. Rows still waiting on an area have digits only.
     function rowPlacement(i){
@@ -1567,8 +1602,19 @@
       const text=normalizeMapText((e.clipboardData||window.clipboardData).getData("text"));
       if(!text)return;
       readRows();
+      // A few digits pasted into a grid field are just typing: leave them where they land.
+      if(e.target&&state.from!=="auto"&&PRESETS[state.from].kind!=="latlong"&&/^\d[\d ]*$/.test(text.trim())){
+        const g=splitGrid(text.trim());if(g.error||g.d<3)return;
+      }
       const lines=splitBatch(text);
       const short=lines.length&&lines.every(line=>{const g=splitGrid(line);return !g.error&&g.d>=3;});
+      // Every automatic split can be undone, back to the text as it was entered.
+      const rememberRaw=()=>{
+        const r=state.rows[i]||["","",""];
+        const raw=[...state.rows];raw[i]=[text.trim(),"",r[2]||"",...r.slice(3)];
+        rememberSnapshot(snapshot({rows:raw,from:state.from}));
+      };
+      if(short)rememberRaw();
       const full=lines.length&&lines.every(line=>fullMGR(line)||(state.from==="mgrs"&&/^\s*[A-HJ-NP-Z]{2}\s*\d/i.test(line)));
       const projected=lines.map(line=>parseProjected(line));
       if(short){
@@ -1600,6 +1646,7 @@
       if(target!==state.from&&state.rows.some((r,k)=>(k<i||k>=i+parsed.length)&&(r[0].trim()||r[1].trim()))){
         setBottomError("These rows use a different input system. Clear them before pasting this format.");return;
       }
+      if(!short)rememberRaw();
       state.from=target;$("#fromSys").value=target;
       delete state.pendingGrid;
       const points=parsed.map(p=>p.point).filter(Boolean);
@@ -1682,16 +1729,17 @@
       // two fields, and pasting one has always divided it. Typing earns the same
       // reading: 12345678 is a four-plus-four, not an easting with no northing.
       if(PRESETS[state.from]&&PRESETS[state.from].kind!=="latlong"){
-        let regrouped=false,runError="",runRow=-1;
+        let regrouped=false,runError="",runRow=-1;const before=snapshot();
         state.rows.forEach((r,i)=>{
           if(r[1].trim()||!/^\d+$/.test(r[0].trim()))return;
           const g=splitGrid(r[0].trim());
           // An odd run cannot be halved, and saying so beats complaining that a
-          // northing which was never separate is not a number.
-          if(g.error){if(!runError){runError=g.error;runRow=i;}return;}
+          // northing which was never separate is not a number. Short runs are left
+          // for the reader to finish.
+          if(g.error||g.d<3){if(!runError){runError=g.error||"easting and northing need separate fields";runRow=i;}return;}
           state.rows[i]=[g.e,g.n,r[2],...r.slice(3)];regrouped=true;
         });
-        if(regrouped)renderFrom();
+        if(regrouped){rememberSnapshot(before);renderFrom();}
         if(runError&&!regrouped){
           const cell=$("#fromRows").children[runRow]?.querySelector(".a");
           if(cell)cell.classList.add("bad");
@@ -1724,7 +1772,7 @@
         if(!A.value.trim() && !B.value.trim() && !r[2].trim()&&!isWholeSquareRow(i)) return; // an inherited prefix alone is not a point
         const res=parseRow(r);
         if(res.error==="pick-square"){ if(!needPick) needPick=res.pick||{e:r[0],n:r[1]}; return; }
-        if(res.error){ if(res.empty && !r[2].trim()) return; bad=true;firstError=firstError||res.error; if(res.badA!==false)A.classList.add("bad"); if(res.badB!==false)B.classList.add("bad"); return; }
+        if(res.error){ if(res.empty && !r[2].trim()) return; bad=true;firstError=firstError||res.error; if(res.badA!==false)A.classList.add("bad"); if(res.badB!==false)B.classList.add("bad"); if(res.badSquare)rowEl.querySelector(".area-pill")?.classList.add("bad"); return; }
         if(!Number.isFinite(res.lat)||!Number.isFinite(res.lon)||Math.abs(res.lat)>90||Math.abs(res.lon)>180){bad=true;firstError="Coordinate out of range.";return;}
         if(state.from==="wgs84"&&res.detectedOrder) detectedOrders.add(res.detectedOrder);
         if(res.ambiguous&&!ambiguous)ambiguous=res.ambiguous;
@@ -1766,10 +1814,8 @@
     function renderTo(){
       syncFormat("to");
       const cols=colsFor(state.to,state.settings);
-      const prefixed=GLOBAL_FORMATS.includes(state.to);
-      $("#toRows").closest(".side").classList.toggle("prefixed-input",prefixed);
+      let prefixed=GLOBAL_FORMATS.includes(state.to);
       $("#toName").textContent=PRESETS[state.to].name;
-      $("#toHead").innerHTML=`<span>#</span>${prefixed?"<span>Prefix</span>":""}<span>${prefixed?"Easting":cols[0]}</span><span>${cols[1]}</span><span>Name</span><span></span>`;
       const rowsEl=$("#toRows"); rowsEl.innerHTML="";
       let pts=state.points||[];
       const countryError=state.to!=="wgs84"?countryMismatchMessage(state.to,pts):"";
@@ -1811,14 +1857,23 @@
         try{const warning=boundaryMessage(pts)||(state.from==="mgrs"?boundaryMessage(pts,"mgrs"):"");if(warning)setBottomError(warning);pts.forEach(p=>formatPoint(p.lat,p.lon,state.to,state.settings));}
         catch(error){state.points=[];pts=[];setBottomError(error.message);}
       }
+      const cells=pts.map(p=>formatPoint(p.lat,p.lon,state.to,state.settings,p.digits));
+      const split=a=>prefixed?a.match(/^(.*?[A-Za-z])\s*(\d*(?:\.\d+)?)$/):null;
+      // An omitted MGRS prefix leaves nothing to show, so its column goes too.
+      if(state.to==="mgrs"){
+        const s=state.settings.mgrs;
+        prefixed=pts.length?cells.some(c=>split(c[0])?.[1]):!(s.sgOmit&&s.ao&&s.sgDigits);
+      }
+      $("#toRows").closest(".side").classList.toggle("prefixed-input",prefixed);
+      $("#toHead").innerHTML=`<span>#</span>${prefixed?"<span>Prefix</span>":""}<span>${prefixed?"Easting":cols[0]}</span><span>${cols[1]}</span><span>Name</span><span></span>`;
       if(!pts.length){
         const ph=document.createElement("div"); ph.className="trow out placeholder";
         ph.innerHTML=`<span class="n"></span>${prefixed?'<span class="ghost">—</span>':""}<span class="ghost">—</span><span class="ghost">—</span><span class="ghost nm"></span><span></span>`;
         rowsEl.appendChild(ph);
       }
       pts.forEach((p,i)=>{
-        const [a,b]=formatPoint(p.lat,p.lon,state.to,state.settings,p.digits);
-        const pieces=prefixed?a.match(/^(.*?[A-Za-z])\s*(\d*(?:\.\d+)?)$/):null;
+        const [a,b]=cells[i];
+        const pieces=split(a);
         const div=document.createElement("div"); div.className="trow out";
         div.innerHTML=`<span class="n">${i+1}</span>`+
           (prefixed?`<input class="cell prefix" aria-label="${state.to==="mgrs"?"MGRS prefix":"UTM zone"}" readonly value="${escAttr(pieces?.[1]||"")}">`:"")+
@@ -1863,8 +1918,9 @@
     // digits as another place. Undo puts them back.
     const history={past:[],future:[]};
     const HISTORY_KEYS=["rows","from","to","points","settings","lastGridFrom","militaryEnabled","disabledPresets","explicitInput","explicitOutput"];
-    function snapshot(){const kept={};for(const key of HISTORY_KEYS)kept[key]=state[key];return JSON.stringify(kept);}
-    function remember(){history.past.push(snapshot());if(history.past.length>50)history.past.shift();history.future.length=0;updateHistoryButtons();}
+    function snapshot(overrides={}){const kept={};for(const key of HISTORY_KEYS)kept[key]=key in overrides?overrides[key]:state[key];return JSON.stringify(kept);}
+    function rememberSnapshot(json){history.past.push(json);if(history.past.length>50)history.past.shift();history.future.length=0;updateHistoryButtons();}
+    function remember(){rememberSnapshot(snapshot());}
     function updateHistoryButtons(){$("#undoBtn").disabled=!history.past.length;$("#redoBtn").disabled=!history.future.length;}
     function restore(json){
       const kept=JSON.parse(json);
@@ -2149,8 +2205,21 @@
       });
     }
 
+    // Auto-detect is one box. Entries restored into it (saved before their system was
+    // known) are detected now, and anything still unreadable stays together in that box.
+    function settleAutoRows(){
+      if(state.from!=="auto")return;
+      const filled=state.rows.filter(r=>r[0].trim()||r[1].trim());
+      if(!filled.length){state.rows=[["","",""]];return;}
+      const text=filled.map(r=>[r[0],r[1]].filter(Boolean).join(" ")).join("\n");
+      state.rows=filled;renderFrom();
+      quietChooser=true;
+      try{onPaste({clipboardData:{getData:()=>text},preventDefault(){}},0);}finally{quietChooser=false;}
+      if(state.from==="auto"&&state.rows.length>1){state.rows=[[text,"",""]];renderFrom();}
+    }
+
     // initial render
-    renderFrom(); updatePairState(); renderTo();
+    renderFrom(); updatePairState(); renderTo(); settleAutoRows();
   })();
   </script>
 <!-- Cloudflare Web Analytics -->
