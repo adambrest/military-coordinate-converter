@@ -53,10 +53,18 @@
         return result;
       }catch(_){return null;}
     }
+    // The point the entered digits make in a square. Hovering a square previews it
+    // there, so the dot follows the pointer; leaving puts it back on the selection.
+    function showPoint(chosen,hovering){
+      pointLayer.clearLayers();
+      const shown=chosen||selection;
+      if(!shown?.point)return;
+      L.circleMarker([shown.point.lat,shown.point.lon+(shown.offset||0)],{radius:7,color:"#fff",weight:2,fillColor:hovering?"#2563eb":"#7c3aed",fillOpacity:1,interactive:false}).addTo(pointLayer);
+    }
     function selectCandidate(chosen){
-      selection=chosen;selectionLayer.clearLayers();pointLayer.clearLayers();$("aoWarning").hidden=true;
+      selection=chosen;selectionLayer.clearLayers();$("aoWarning").hidden=true;
       polygon(chosen.polygon,{weight:3,color:"#7c3aed",fillColor:"#7c3aed",fillOpacity:.12},selectionLayer,chosen.offset||0);
-      if(chosen.point)L.circleMarker([chosen.point.lat,chosen.point.lon+(chosen.offset||0)],{radius:7,color:"#fff",weight:2,fillColor:"#7c3aed",fillOpacity:1}).addTo(pointLayer);
+      showPoint(chosen);
       $("aoSelection").textContent=presets[chosen.id].name+" · "+chosen.prefix;
       $("aoApply").disabled=false;
       if(chosen.invalid){
@@ -80,8 +88,8 @@
       const layer=polygon(chosen.polygon,{interactive:true,bubblingMouseEvents:false,fillOpacity:.05,weight:1.5},grid,worldOffset);
       layer.options.aoCandidate=chosen;
       layer.on("click",e=>{L.DomEvent.stopPropagation(e);selectCandidate(chosen);});
-      layer.on("mouseover",()=>layer.setStyle({fillOpacity:.15}));
-      layer.on("mouseout",()=>layer.setStyle({fillOpacity:.05}));
+      layer.on("mouseover",()=>{layer.setStyle({fillOpacity:.15});if(chosen.point)showPoint(chosen,true);});
+      layer.on("mouseout",()=>{layer.setStyle({fillOpacity:.05});if(chosen.point)showPoint(null);});
       // Stacked labels at country scale are unreadable; the squares still are not.
       layer.bindTooltip(chosen.prefix,{permanent:!map||map.getZoom()>=6,direction:"center",className:"grid-label"});
     }
@@ -106,6 +114,7 @@
     }
     function draw(){
       if(!map||!$("aoOverlay").classList.contains("open"))return;
+      if(options.view){grid.clearLayers();candidates=[];return;}
       limitZoom();
       grid.clearLayers();candidates=[];const zoom=map.getZoom(),id=gridId(),worlds=MapSupport.worlds(map),key=worlds.join(',');
       if(worldData&&worldKey!==key){worldLand.clearLayers();for(const offset of worlds)worldLand.addData(MapSupport.repeatGeometry(worldData,offset));worldKey=key;}
@@ -173,10 +182,10 @@
       map.on("click",e=>{const threshold=wholeZone()?3:squareThreshold();if(map.getZoom()>=threshold)select(e.latlng.lat,e.latlng.lng);});
       limitCenter=MapSupport.limitCenter(map);
       map.on("moveend zoomend",()=>{const p=map.getCenter();stableCenter={lat:p.lat,lng:p.lng};cancelAnimationFrame(frame);frame=requestAnimationFrame(draw);});
-      const resize=()=>{if(!$("aoOverlay").classList.contains("open"))return;const p=stableCenter||map.getCenter(),z=map.getZoom();map.invalidateSize({pan:false,animate:false});limitZoom();map.setView(p,Math.min(z,map.getMaxZoom()),{animate:false,reset:true});};
+      const resize=()=>{if(!$("aoOverlay").classList.contains("open"))return;const p=stableCenter||map.getCenter(),z=map.getZoom();map.invalidateSize({pan:false,animate:false});if(!options.view)limitZoom();map.setView(p,Math.min(z,map.getMaxZoom()),{animate:false,reset:true});};
       if(root.ResizeObserver)new ResizeObserver(resize).observe($("aoMap"));else root.addEventListener("resize",resize);
     }
-    function close(){ cancelTap?.();$("aoOverlay").classList.remove("open");returnFocus?.focus(); }
+    function close(){ cancelTap?.();$("aoOverlay").classList.remove("open","viewing");returnFocus?.focus(); }
     $("aoClose").addEventListener("click",close);
     $("aoApply").addEventListener("click",()=>{if(!selection||$("aoApply").disabled)return;const chosen=selection;close();onSelect(chosen,options);});
     $("aoOverlay").addEventListener("keydown",e=>{
@@ -226,14 +235,15 @@
     $("aoBack").addEventListener("click",()=>showLocations(options));
     function showMap(opts){
       options=opts;selection=null;
-      $("aoOverlay").classList.add("open");if(!map)init();
-      $("aoApply").disabled=true;$("aoSelection").textContent="No area selected";$("aoWarning").hidden=true;
+      $("aoOverlay").classList.remove("viewing");$("aoOverlay").classList.add("open");if(!map)init();
+      $("aoApply").hidden=false;$("aoApply").disabled=true;$("aoSelection").textContent="No area selected";$("aoWarning").hidden=true;
       const id=gridId(),raw=id==="mgrs";
       $("aoRegion").hidden=!raw;
       $("aoScope").textContent="";
-      $("aoTitle").textContent=raw?"Military grid · reference area":presets[id].name+" · reference area";
+      $("aoTitle").textContent=opts.title||(raw?"Military grid · reference area":presets[id].name+" · reference area");
       $("aoSystemLabel").textContent=raw?"MGRS":presets[id].zoneCode?"Zone "+presets[id].zoneCode:"";
-      $("aoBack").hidden=!(opts.pending||(opts.side==="from"&&opts.converter!==false));
+      // One row keeps its grid; only its area moves.
+      $("aoBack").hidden=opts.row!==undefined||!(opts.pending||(opts.side==="from"&&opts.converter!==false));
       $("aoInstruction").textContent=raw?"Choose your area.":"Select a highlighted AO square.";
       selectionLayer.clearLayers();pointLayer.clearLayers();map.invalidateSize();limitCenter(null);map.setMinZoom(1);map.setMaxZoom(10);
       if(raw){
@@ -247,12 +257,43 @@
         // one strip of a large country is wider than where the grid itself is valid.
         const nav=p.browseBbox||b;
         const region=L.latLngBounds([[nav[0],nav[2]],[nav[1],nav[3]]]);map.setMaxZoom(MapSupport.squareZoom(map));map.setMinZoom(Math.min(map.getMaxZoom(),map.getBoundsZoom(region)));limitCenter(region);
+        // Moving existing points starts from those points, not from the country's anchor.
+        if(opts.point&&(opts.row!==undefined||opts.bulk)&&region.contains([opts.point.lat,opts.point.lon]))map.setView([opts.point.lat,opts.point.lon],map.getMaxZoom(),{animate:false});
       }
       draw();if(opts.point)select(opts.point.lat,opts.point.lon);$("aoClose").focus();
+    }
+    // Read-only: which points fall in which reference area. Nothing here can be chosen.
+    const AREA_COLORS=["#2563eb","#d97706","#16a34a","#dc2626","#7c3aed","#0891b2"];
+    function showView(opts){
+      returnFocus=document.activeElement;
+      options={...opts,view:true};selection=null;
+      $("aoOverlay").classList.add("open","viewing");if(!map)init();
+      $("aoApply").hidden=true;$("aoBack").hidden=true;$("aoRegion").hidden=true;$("aoWarning").hidden=true;$("aoScope").textContent="";
+      $("aoTitle").textContent=opts.title||"Reference areas";
+      $("aoInstruction").textContent="Each point is colored by the reference area it falls in.";
+      $("aoSystemLabel").textContent=opts.system||"";
+      selectionLayer.clearLayers();pointLayer.clearLayers();grid.clearLayers();candidates=[];
+      map.invalidateSize();limitCenter(null);map.setMinZoom(1);map.setMaxZoom(18);
+      const focus=L.latLngBounds([]),legend=[];
+      opts.areas.forEach((area,k)=>{
+        const color=AREA_COLORS[k%AREA_COLORS.length],focused=area.key===opts.focus;
+        const shape=polygon(area.polygon,{weight:focused?3:1.5,color,fillColor:color,fillOpacity:focused?.16:.05},selectionLayer);
+        shape.bindTooltip(area.label,{permanent:true,direction:"center",className:"grid-label"});
+        for(const p of area.points){
+          L.circleMarker([p.lat,p.lon],{radius:focused?8:6,color:"#fff",weight:2,fillColor:color,fillOpacity:focused?1:.7,interactive:false})
+            .bindTooltip(String(p.number),{permanent:true,direction:"top",offset:[0,-6],className:"area-point-label"}).addTo(pointLayer);
+          if(focused)focus.extend([p.lat,p.lon]);
+        }
+        if(focused)for(const q of area.polygon)focus.extend([q[1],q[0]]);
+        legend.push(area.label+": "+(area.points.length===1?"point ":"points ")+area.points.map(p=>p.number).join(", "));
+      });
+      $("aoSelection").textContent=legend.join(" · ");
+      if(focus.isValid())map.fitBounds(focus,{padding:[40,40],maxZoom:14,animate:false});
+      draw();$("aoClose").focus();
     }
     return {open(opts={}){
       returnFocus=document.activeElement;
       if(opts.pending&&!opts.system)showLocations(opts);else showMap({...opts,system:opts.system||opts.preset||"mgrs"});
-    },close};
+    },view:showView,close};
   };
 })(globalThis);

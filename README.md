@@ -24,6 +24,13 @@ Coordinate conversion works offline. Selecting points from the map requires inte
 
 Enable Military grid in Settings to use global MGRS/UTM. Auto-detect accepts pasted coordinates or map links. You can also select points from the map; auto-detect chooses the matching enabled country grid and reference area. Map points outside enabled country grids automatically enable Military grid and select global MGRS output. Digits-only grid references prompt you to choose their country and area.
 
+### Reference areas
+
+Reference areas apply to global MGRS and the Taiwan, Thailand and Australia presets. Singapore and Brunei each use a single fixed area.
+
+- **Input:** your first point sets the reference area. Short digits with no prefix prompt you to choose one, and later rows are assumed to share it. The Reference area chip above the input moves point 1's area and every row in it, rewriting typed MGRS prefixes. The ⋯ button on a row moves that row alone. On the map, hovering a square (or tapping one on mobile) shows where the point would land.
+- **Output:** point 1 always sets the reference area, and it cannot be changed. When points fall in more than one area, the boundary notice appears and full prefixes are kept. The output then lists each area; select one to see which points it holds on the map.
+
 Choosing global Military grid for coordinates with a matching country preset prompts you to switch to that preset or explicitly continue with global MGRS/UTM. Continuing is remembered for that country during the current session.
 
 Global UTM and MGRS use a fixed WGS 84 datum. When importing copied UTM coordinates elsewhere, select WGS 84 / UTM with the matching zone, hemisphere and meter units. NAD83/NAD27 coordinates require a datum transformation; relabeling them is not a conversion. GPX downloads always contain WGS 84 latitude/longitude. Settings → Military grid explains datum and export compatibility.

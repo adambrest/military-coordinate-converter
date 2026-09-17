@@ -114,9 +114,6 @@
   .settings-section{padding-top:12px;margin-top:12px;border-top:1px solid var(--line)}
   .settings-section:first-child{padding-top:0;margin-top:0;border-top:0}
   .settings-subhead{margin:0 0 8px;font-size:12px;font-weight:800;color:var(--text)}
-  .ao-panel{padding:12px;border:1px solid var(--line);border-radius:9px;background:var(--panel2)}
-  .ao-panel.needs-ao{border-color:rgba(37,99,235,.45);background:rgba(37,99,235,.06)}
-  .ao-status{font-size:13px;color:var(--text);margin:0 0 10px}
   .ao-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
   .setting-action{min-height:36px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text);font-size:12px;font-weight:700;padding:0 12px;cursor:pointer}
   .setting-action.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
@@ -916,9 +913,11 @@
       const prefixed=!flexible&&["mgrs","globalutm"].includes(state.from);
       $("#fromRows").closest(".side").classList.toggle("flexible-input",flexible);
       $("#fromRows").closest(".side").classList.toggle("prefixed-input",prefixed);
+      const areas=!flexible&&hasAreas(state.from);
+      $("#fromRows").closest(".side").classList.toggle("area-input",areas);
       $("#fromName").textContent=PRESETS[state.from].name;
       updatePasteHint();
-      $("#fromHead").innerHTML=`<span>#</span>${prefixed?"<span>Prefix</span>":""}<span>${prefixed?"Easting":cols[0]}</span><span>${cols[1]}</span><span>Name</span><span></span>`;
+      $("#fromHead").innerHTML=`<span>#</span>${prefixed?"<span>Prefix</span>":""}<span>${prefixed?"Easting":cols[0]}</span><span>${cols[1]}</span><span>Name</span>${areas?"<span></span>":""}<span></span>`;
       const examples=PRESETS[state.from].kind==="latlong"
         ? (state.settings.wgs84.order==="lonlat"?["103.82° E","1.35° N"]:["1.35° N","103.82° E"])
         : state.from==="globalutm"?["368831","143329"]:["1234","5678"];
@@ -932,8 +931,12 @@
           `<${flexible?"textarea":"input"} class="cell a" aria-label="${flexible?"Coordinate":cols[0]}" value="${escAttr(flexible?[r[0],r[1]].filter(Boolean).join(" "):pieces?pieces[2]:r[0])}" placeholder="${flexible?"Paste here":examples[0]}"${flexible?">"+escAttr([r[0],r[1]].filter(Boolean).join(" "))+"</textarea>":">"}`+
           `<input class="cell b" ${flexible?"hidden":""} aria-label="${cols[1]}" value="${escAttr(flexible?"":r[1])}" placeholder="${examples[1]}">`+
           `<input class="cell nm" aria-label="Point name" value="${escAttr(r[2])}" ${flexible?"hidden":""} placeholder="Optional">`+
-          `<button class="del" aria-label="${canDelete?"Delete":"Clear"} row" title="${canDelete?"Delete":"Clear"} row">×</button>`;
+          (areas?`<button class="area-more" type="button" aria-label="Change reference area for point ${i+1}" title="Change reference area">⋯</button>`:"")+
+          `<button class="del" aria-label="${canDelete?"Delete":"Clear"} row" title="${canDelete?"Delete":"Clear"} row">×</button>`+
+          (areas&&r[3]?`<span class="row-area">${escAttr(areaLabel(state.from,r[3]))}</span>`:"");
+        if(areas&&r[3])div.dataset.area=r[3];
         rowsEl.appendChild(div);
+        div.querySelector(".area-more")?.addEventListener("click",()=>openRowArea(i));
         const delEl=div.querySelector(".del");
         if(delEl) delEl.addEventListener("click",()=>{
           if(state.from==="auto"&&!div.querySelector(".a").value.trim())return;
@@ -985,14 +988,17 @@
       updateRegionChips();updateRowAction();
     }
     function escAttr(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
-    function readRows(){ state.rows=[...$("#fromRows").children].map(d=>[(d.querySelector(".prefix")?.value?d.querySelector(".prefix").value+" ":"")+d.querySelector(".a").value,d.querySelector(".b").value,d.querySelector(".nm").value]); updateRowAction(); }
+    function readRows(){ state.rows=[...$("#fromRows").children].map(d=>{const row=[(d.querySelector(".prefix")?.value?d.querySelector(".prefix").value+" ":"")+d.querySelector(".a").value,d.querySelector(".b").value,d.querySelector(".nm").value];if(d.dataset.area)row.push(d.dataset.area);return row;}); updateRowAction(); }
     function rowPopulated(i){
       const row=$("#fromRows").children[i];return row&&(isWholeSquareRow(i)||(row.querySelector(".a").value.trim()&&row.querySelector(".b").value.trim()));
     }
     function isWholeSquareRow(i){return state.from==="mgrs"&&state.settings.mgrs.sgDigits===0&&/^\d{1,2}[C-HJ-NP-X]\s*[A-HJ-NP-Z]{2}\s*$/i.test(state.rows[i]?.[0]||"")&&!state.rows[i]?.[1].trim();}
     function updateRowAction(){
       $("#addRow").disabled=state.from==="auto"||!rowPopulated(state.rows.length-1);
-      [...$("#fromRows").children].forEach(row=>{row.querySelector(".del").disabled=state.from==="auto"&&!row.querySelector(".a").value.trim();});
+      [...$("#fromRows").children].forEach((row,i)=>{
+        row.querySelector(".del").disabled=state.from==="auto"&&!row.querySelector(".a").value.trim();
+        const more=row.querySelector(".area-more");if(more)more.disabled=!rowPlacement(i);
+      });
     }
     function newRowAfter(i){
       if(state.from==="mgrs"&&state.settings.mgrs.sgDigits===0)return ["","",""];
@@ -1013,7 +1019,7 @@
           if(projected)p=projected.point||projected;
           else if(fullMGR(raw)){try{p=GlobalGrid.parse(raw);}catch(_){p={error:true};}}
           else p=parseLatLon(raw,state.settings.wgs84.order);
-        }else p=parseCells(state.from,r[0],r[1],state.settings);
+        }else p=parseRow(r);
         if(!p.error&&Number.isFinite(p.lat)&&Number.isFinite(p.lon)&&Math.abs(p.lat)<=90&&Math.abs(p.lon)<=180){points.push({...p,name:r[2].trim(),number:i+1});}
         else unresolved++;
       });
@@ -1026,8 +1032,10 @@
       try{
         const S={...state.settings,[id]:{...state.settings[id]}};
         if(!opts.unresolved){
-          if(id==="mgrs"&&!S[id].ao)S[id].ao=GlobalGrid.parts(point.lat,point.lon,0).prefix;
-          else if(p.large&&!S[id].square){const q=toProjFromWGS(point.lat,point.lon,projectionFor(id,S));S[id].square=[Math.floor(q.E/100000),Math.floor(q.N/100000)];}
+          // The first point placed sets the area; a saved one from earlier input does not.
+          const first=!opts.points.length;
+          if(id==="mgrs"&&(first||!S[id].ao))S[id].ao=GlobalGrid.parts(point.lat,point.lon,0).prefix;
+          else if(p.large&&(first||!S[id].square)){const q=toProjFromWGS(point.lat,point.lon,projectionFor(id,S));S[id].square=[Math.floor(q.E/100000),Math.floor(q.N/100000)];}
         }else if(!S[id].ao&&!S[id].square)S[id].sgOmit=false;
         const crossing=gridBoundary([...opts.points,point],id,S);
         if(crossing)S[id].sgOmit=false;
@@ -1051,17 +1059,20 @@
       // Polar points beyond MGRS coverage remain latitude/longitude.
       const target=globalMapPoint?(points.every(p=>p.lat>=-80&&p.lat<=84)?"mgrs":"wgs84")
         :(automatic&&match)||outputTarget(points,id);
-      // A fresh auto-detected point supplies its own area, not the one saved for
-      // an earlier batch. Plan this before checking boundaries, then commit below.
+      // The output area always follows point 1, never one saved for an earlier batch.
+      // Plan this before checking boundaries, then commit below.
       const outputSettings={...state.settings,[target]:{...state.settings[target]}};
-      if(automatic&&!currentBefore.points.length&&!currentBefore.unresolved){
-        if(target==="mgrs"){
-          outputSettings[target].ao=GlobalGrid.parts(point.lat,point.lon,0).prefix;
-          outputSettings[target].sgOmit=true;
-        }else{
-          const square=suggestedSquare(target,points,outputSettings);
-          if(square){outputSettings[target].square=square;outputSettings[target].sgOmit=true;}
-        }
+      if(target!==id&&hasAreas(target)&&!currentBefore.unresolved){
+        const first=points[0],fresh=automatic&&!currentBefore.points.length,s=outputSettings[target];
+        try{
+          if(target==="mgrs"){
+            s.ao=areaKeyAt("mgrs",first.lat,first.lon);
+            if(fresh)s.sgOmit=true;
+          }else if(presetContains(target,first.lat,first.lon)){
+            const [e,n]=areaKeyAt(target,first.lat,first.lon).split("/").map(Number);
+            if(!s.square||s.square[0]!==e||s.square[1]!==n){s.square=[e,n];s.sgOmit=true;}
+          }
+        }catch(_){}
       }
       const outputCrossing=target!==id?gridBoundary(points,target,outputSettings):null;
       const changes=[crossing,outputCrossing].filter(Boolean);
@@ -1198,8 +1209,16 @@
       },
       onSelect(chosen,opts){
         const id=chosen.id, s=state.settings[id];
-        if(id==="mgrs")s.ao=chosen.prefix;else assignSquare(id,chosen.e,chosen.n);
         state.lastLocation={lat:chosen.lat,lon:chosen.lon};
+        if(opts.row!==undefined||opts.bulk)readRows();
+        if(opts.row!==undefined&&state.from===id){
+          remember();setRowArea(opts.row,chosen);
+          state.points=[];renderFrom();updatePairState();renderTo();save();
+          if(rowsHaveContent())convert();
+          return;
+        }
+        if(opts.bulk&&state.from===id){if(rowsHaveContent())remember();moveInputArea(chosen);}
+        else if(id==="mgrs")s.ao=chosen.prefix;else assignSquare(id,chosen.e,chosen.n);
         state.aoConfirmed=true;
         if(opts.pending){
           delete state.pendingGrid;
@@ -1209,7 +1228,7 @@
           rows.forEach((r,k)=>{const i=opts.pending.i+k;while(state.rows.length<=i)state.rows.push(["","",""]);state.rows[i]=[r.e,r.n,state.rows[i][2]||""];});
         }else if(opts.side==="from"&&state.from!==id){
           state.from=id;$("#fromSys").value=id;
-        }else if(opts.side==="to"&&state.to!==id){state.to=id;$("#toSys").value=id;}
+        }
         state.points=[];renderFrom();updatePairState();renderTo();save();
         if(opts.afterPick)opts.afterPick();else if(rowsHaveContent())convert();
       }
@@ -1272,16 +1291,128 @@
       if(quietChooser){detect("These digits could be several grids. Press Convert to choose one.","warn");return;}
       picker.open({pending:{text,i},pick:g.error?null:g,point:state.lastLocation,preset,system});
     }
-    function openSquareBrowser(id,afterPick){
-      const point=state.points?.[0]||state.lastLocation;
-      const first=state.from===id?state.rows.find(r=>r[0]||r[1]):null;
-      const g=first?splitGrid(first[0]+" "+first[1]):null;
-      picker.open({system:id,preset:id,point,pick:g&&!g.error?g:null,converter:afterPick!==renderSettings,scope:id==="mgrs"&&/^\d{1,2}[C-HJ-NP-X]$/.test(state.settings.mgrs.ao||"")?"zone":"square",side:state.from===id?"from":"to",afterPick});
+    // Point 1's digits travel with the map, so each square previews where it would land.
+    function openSquareBrowser(id){
+      readRows();
+      const first=state.from===id?firstPlacement():null;
+      picker.open({system:id,preset:id,point:first?.point||state.lastLocation,pick:first?.pick?.e?first.pick:null,converter:true,scope:id==="mgrs"&&/^\d{1,2}[C-HJ-NP-X]$/.test(state.settings.mgrs.ao||"")?"zone":"square",side:"from",bulk:true});
+    }
+    function openRowArea(i){
+      readRows();
+      const id=state.from,place=rowPlacement(i);
+      if(!place)return;
+      picker.open({system:id,preset:id,point:place.point||state.lastLocation,pick:place.pick.e?place.pick:null,converter:true,scope:"square",side:"from",row:i,
+        title:"Point "+(i+1)+" · reference area"});
     }
     function showSquarePicker(id,pick){
       picker.open({system:id,preset:id,pick,point:state.lastLocation,side:"from",afterPick:convert});
     }
     function zoneCodeLabel(p,e,n){return (p.zoneCode||p.name.replace(" MGR",""))+" · E"+e+" N"+n;}
+    /* ---- reference areas: chosen on the input, derived from point 1 on the output ---- */
+    // Singapore and Brunei sit in one fixed square, so only these grids have an area to choose.
+    const AREA_PRESETS=["mgrs","taiwan","thailand","australia"];
+    const hasAreas=id=>AREA_PRESETS.includes(id);
+    const spacedPrefix=prefix=>String(prefix).toUpperCase().replace(/^(\d{1,2}[C-HJ-NP-X])\s*([A-HJ-NP-Z]{2})$/,"$1 $2");
+    // The area a point falls in: an MGRS prefix, or a country grid's 100 km square as "e/n".
+    function areaKeyAt(id,lat,lon){
+      if(id==="mgrs")return GlobalGrid.parts(lat,lon,0).prefix;
+      const q=toProjFromWGS(lat,lon,projectionFor(id));
+      return Math.floor(q.E/100000)+"/"+Math.floor(q.N/100000);
+    }
+    function areaLabel(id,key){
+      if(id==="mgrs")return spacedPrefix(key);
+      const [e,n]=String(key).split("/");return zoneCodeLabel(PRESETS[id],e,n);
+    }
+    function defaultAreaKey(id){
+      const s=state.settings[id]||{};
+      return id==="mgrs"?s.ao||null:s.square?s.square.join("/"):null;
+    }
+    function areaPolygon(id,key,point){
+      if(id==="mgrs")return GlobalGrid.at(point.lat,point.lon).polygon;
+      const [e,n]=key.split("/").map(Number);
+      return GlobalGrid.square(projectionFor(id),e*100000,n*100000);
+    }
+    // A country-grid row moved to its own square carries that square as a fourth field.
+    // MGRS needs no such field: the row's prefix already says where it is.
+    function rowSettings(r){
+      const id=state.from;
+      if(id==="mgrs"||!hasAreas(id)||!r?.[3])return state.settings;
+      return {...state.settings,[id]:{...state.settings[id],square:r[3].split("/").map(Number),sgOmit:true}};
+    }
+    function parseRow(r){return parseCells(state.from,r[0],r[1],rowSettings(r));}
+    // Where a row sits and the digits it holds within its square, so the same digits
+    // can be placed in another area. Rows still waiting on an area have digits only.
+    function rowPlacement(i){
+      const id=state.from,r=state.rows[i];
+      if(!hasAreas(id)||!r||!(r[0].trim()||r[1].trim()))return null;
+      const res=parseRow(r);
+      if(res.error==="pick-square"){
+        const g=splitGrid((r[0]+" "+r[1]).replace(/^.*?[A-Za-z]\s*/,""));
+        return g.error?null:{pick:{e:g.e,n:g.n},key:null};
+      }
+      if(res.error||!Number.isFinite(res.lat)||!Number.isFinite(res.lon))return null;
+      try{
+        const point={lat:res.lat,lon:res.lon},key=areaKeyAt(id,res.lat,res.lon);
+        let pick;
+        if(id==="mgrs"){
+          const q=GlobalGrid.parts(res.lat,res.lon,res.digits??4);pick={e:q.e,n:q.n};
+        }else{
+          const d=res.digits||state.settings[id].sgDigits||4,q=toProjFromWGS(res.lat,res.lon,projectionFor(id));
+          const [e,n]=sgHalvesEN(q.E,q.N,{sgDigits:d,sgOmit:true},key.split("/").map(Number),true);pick={e,n};
+        }
+        return {point,key,pick,explicit:id==="mgrs"&&/[A-Za-z]/.test(r[0])};
+      }catch(_){return null;}
+    }
+    function firstPlacement(){
+      for(let i=0;i<state.rows.length;i++){const place=rowPlacement(i);if(place)return {...place,i};}
+      return null;
+    }
+    // Write a row's digits into a chosen area. MGRS rows get the prefix typed out, so
+    // the change is visible in the table; country rows keep a square only when it
+    // differs from the one the rest of the input uses.
+    function placeRow(i,place,chosen){
+      const id=state.from,r=state.rows[i],name=r[2]||"";
+      if(id==="mgrs"){state.rows[i]=[spacedPrefix(chosen.prefix)+" "+place.pick.e,place.pick.n,name];return;}
+      const key=chosen.e+"/"+chosen.n;
+      state.rows[i]=[place.pick.e,place.pick.n,name];
+      if(key!==defaultAreaKey(id))state.rows[i][3]=key;
+    }
+    function setRowArea(i,chosen){
+      const place=rowPlacement(i);
+      if(place)placeRow(i,place,chosen);
+    }
+    // The input chip moves point 1's area, and with it every row that shared it.
+    function moveInputArea(chosen){
+      const id=state.from,first=firstPlacement(),from=first?.key||defaultAreaKey(id);
+      const zone=id==="mgrs"&&/^\d{1,2}[C-HJ-NP-X]$/.test(from||"");
+      const rows=state.rows.map((_,i)=>({place:rowPlacement(i),i})).filter(({place})=>place);
+      const moving=place=>place.key===null||place.key===from||(zone&&place.key.startsWith(from));
+      if(id==="mgrs")state.settings.mgrs.ao=chosen.prefix;else assignSquare(id,chosen.e,chosen.n);
+      for(const {place,i} of rows){
+        if(place.key===null)continue;
+        if(moving(place)){
+          // A zone cannot stand in for square letters, so typed prefixes stay as they are.
+          if(id!=="mgrs"||(place.explicit&&chosen.scope!=="zone"))placeRow(i,place,chosen);
+        }else if(id!=="mgrs"||!place.explicit){
+          // Rows outside point 1's area would otherwise follow the new default; pin them.
+          const [e,n]=place.key.split("/");
+          placeRow(i,place,{prefix:place.key,e,n});
+        }
+      }
+    }
+    function inputAreaKey(){
+      const first=firstPlacement();
+      return first?.key||defaultAreaKey(state.from);
+    }
+    function outputAreaGroups(points,id){
+      const groups=new Map();
+      points.forEach((p,k)=>{
+        let key;try{key=areaKeyAt(id,p.lat,p.lon);}catch(_){return;}
+        if(!groups.has(key))groups.set(key,{key,label:areaLabel(id,key),points:[]});
+        groups.get(key).points.push({lat:p.lat,lon:p.lon,number:k+1});
+      });
+      return [...groups.values()];
+    }
     // Placing an area implies its prefix, so omission goes on. A first area also
     // starts at the 4+4, ten meter reference people actually pass around; a later
     // move of the area leaves a precision the reader has since chosen alone.
@@ -1309,14 +1440,17 @@
       state.lastLocation={lat:points[0].lat,lon:points[0].lon};
       fillArea(points,state.to);
     }
+    // An output's reference area is never chosen: point 1 sets it on every conversion,
+    // so a stale area cannot rewrite results. Points beyond it raise the boundary notice.
     function fillArea(points,id){
-      if(!points.length)return;
-      if(id==="mgrs"){
-        try{const prefix=GlobalGrid.parts(points[0].lat,points[0].lon,0).prefix;if(!state.settings.mgrs.ao)state.settings.mgrs.ao=prefix;}catch(_){}
-      }else if(COUNTRY_PRESETS.includes(id)&&points.every(p=>presetContains(id,p.lat,p.lon))){
-        const square=suggestedSquare(id,points,state.settings);
-        if(square&&!(state.settings[id]||={}).square)assignSquare(id,...square);
-      }
+      if(!points.length||!hasAreas(id))return;
+      const first=points[0];
+      try{
+        if(id==="mgrs"){state.settings.mgrs.ao=areaKeyAt(id,first.lat,first.lon);return;}
+        if(!presetContains(id,first.lat,first.lon))return;
+        const [e,n]=areaKeyAt(id,first.lat,first.lon).split("/").map(Number),square=(state.settings[id]||={}).square;
+        if(!square||square[0]!==e||square[1]!==n)assignSquare(id,e,n);
+      }catch(_){}
     }
     // Acknowledgment lasts for this session and country, never silently for every country.
     const countryGridAccepted=new Set();
@@ -1478,7 +1612,8 @@
       parsed.forEach((r,k)=>{while(state.rows.length<=i+k)state.rows.push(["","",""]);state.rows[i+k]=[...r.cells,state.rows[i+k][2]||""];});
       if(points.length){
         autoArea(points);state.aoConfirmed=true;
-        if(target==="mgrs"&&!state.settings.mgrs.ao)state.settings.mgrs.ao=points[0].prefix;
+        // Point 1 sets the input's area unless the area in force already holds it.
+        if(target==="mgrs"&&!points[0].prefix.startsWith(state.settings.mgrs.ao||"-"))state.settings.mgrs.ao=points[0].prefix;
       }
       state.points=[];renderFrom();updatePairState();renderTo();flashRows(i,parsed.length);convert();
       const pasted=[...new Set(parsed.map(r=>r.point&&r.point.warning).filter(Boolean))];
@@ -1490,24 +1625,42 @@
       for(let k=0;k<count;k++){ const el=rows[start+k]; if(!el) continue; const A=el.querySelector(".a"),B=el.querySelector(".b"); A&&A.classList.add("flash"); B&&B.classList.add("flash"); setTimeout(()=>{A&&A.classList.remove("flash");B&&B.classList.remove("flash");},800); }
     }
 
-    // confirmed-region label shown in the chip / settings status
-    function regionChipLabel(presetId){
-      const p=PRESETS[presetId], s=state.settings[presetId]||{};
-      if(presetId==="mgrs")return s.ao||null;
-      if(!s.square) return null;
-      return zoneCodeLabel(p,s.square[0],s.square[1]);
-    }
-    function renderRegionChip(chipId,presetId){
-      const chip=$(chipId); if(!chip) return;
-      const label=regionChipLabel(presetId);
-      chip.hidden=!PRESETS[presetId].large;
-      if(presetId==="mgrs")chip.hidden=chipId==="#regionChip"?state.rows.every(r=>!r[0].trim()||fullMGR(r[0])):!(state.settings.mgrs.ao||state.settings.mgrs.sgOmit);
-      chip.textContent=label?`Reference area: ${label} · Change`:"Select reference area";
+    // Any grid input with areas can change them here, whether its rows are typed
+    // with a prefix, without one, or not typed yet.
+    function renderInputArea(){
+      const chip=$("#regionChip"),id=state.from;
+      chip.hidden=!hasAreas(id);
+      if(chip.hidden)return;
+      const key=inputAreaKey();
+      chip.textContent=key?`Reference area: ${areaLabel(id,key)} · Change`:"Select reference area";
       chip.setAttribute("role","button");chip.tabIndex=0;
-      chip.onclick=()=>openSquareBrowser(presetId);
-      chip.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();openSquareBrowser(presetId);}};
+      chip.onclick=()=>openSquareBrowser(id);
+      chip.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();openSquareBrowser(id);}};
     }
-    function updateRegionChips(){ renderRegionChip("#regionChip", state.from); renderRegionChip("#regionChipTo", state.to); }
+    // The output only reports its areas. When points span several, each area opens
+    // a map of which points it holds.
+    function renderOutputArea(){
+      const chip=$("#regionChipTo"),id=state.to,pts=state.points||[];
+      chip.onclick=chip.onkeydown=null;chip.removeAttribute("role");chip.removeAttribute("tabindex");
+      chip.className="regionchip static";chip.replaceChildren();
+      const groups=hasAreas(id)&&pts.length?outputAreaGroups(pts,id):[];
+      chip.hidden=!groups.length;
+      if(groups.length===1){chip.textContent="Reference area: "+groups[0].label;return;}
+      if(!groups.length)return;
+      chip.classList.add("area-list");
+      chip.append("Reference areas:");
+      for(const group of groups){
+        const button=document.createElement("button");
+        button.type="button";button.className="area-link";
+        button.textContent=group.label+" · "+group.points.length+(group.points.length===1?" point":" points");
+        button.addEventListener("click",()=>picker.view({
+          title:(id==="mgrs"?"Military grid":PRESETS[id].name)+" · reference areas",focus:group.key,
+          areas:groups.map(g=>({...g,polygon:areaPolygon(id,g.key,g.points[0])}))
+        }));
+        chip.append(button);
+      }
+    }
+    function updateRegionChips(){ renderInputArea(); renderOutputArea(); }
 
     /* ---- convert ---- */
     function convert(){
@@ -1536,7 +1689,7 @@
           // An odd run cannot be halved, and saying so beats complaining that a
           // northing which was never separate is not a number.
           if(g.error){if(!runError){runError=g.error;runRow=i;}return;}
-          state.rows[i]=[g.e,g.n,r[2]];regrouped=true;
+          state.rows[i]=[g.e,g.n,r[2],...r.slice(3)];regrouped=true;
         });
         if(regrouped)renderFrom();
         if(runError&&!regrouped){
@@ -1551,7 +1704,7 @@
       if(state.pendingGrid){
         const i=state.pendingGrid.i,r=state.rows[i];
         // Typing a prefix resolves the row; only still-placeless digits need the chooser.
-        if(r&&parseCells(state.from,r[0],r[1],state.settings).error==="pick-square"){openCountryChooser(r[0]+" "+r[1],i);return;}
+        if(r&&parseRow(r).error==="pick-square"){openCountryChooser(r[0]+" "+r[1],i);return;}
         delete state.pendingGrid;
       }
       // Full prefixes, and short digits an existing reference area already resolves,
@@ -1559,7 +1712,7 @@
       if(!state.aoConfirmed&&PRESETS[state.from].large&&!PRESETS[state.from].lead){
         const unresolved=state.rows.findIndex(r=>{
           const g=splitGrid(r[0]+" "+r[1]);
-          return !g.error&&g.d>=3&&parseCells(state.from,r[0],r[1],state.settings).error==="pick-square";
+          return !g.error&&g.d>=3&&parseRow(r).error==="pick-square";
         });
         if(unresolved>=0){openCountryChooser(state.rows[unresolved][0]+" "+state.rows[unresolved][1],unresolved);return;}
       }
@@ -1569,7 +1722,7 @@
         const rowEl=rowsEl[i]; const A=rowEl.querySelector(".a"), B=rowEl.querySelector(".b");
         A.classList.remove("bad"); B.classList.remove("bad");
         if(!A.value.trim() && !B.value.trim() && !r[2].trim()&&!isWholeSquareRow(i)) return; // an inherited prefix alone is not a point
-        const res=parseCells(state.from, r[0], r[1], state.settings);
+        const res=parseRow(r);
         if(res.error==="pick-square"){ if(!needPick) needPick=res.pick||{e:r[0],n:r[1]}; return; }
         if(res.error){ if(res.empty && !r[2].trim()) return; bad=true;firstError=firstError||res.error; if(res.badA!==false)A.classList.add("bad"); if(res.badB!==false)B.classList.add("bad"); return; }
         if(!Number.isFinite(res.lat)||!Number.isFinite(res.lon)||Math.abs(res.lat)>90||Math.abs(res.lon)>180){bad=true;firstError="Coordinate out of range.";return;}
@@ -1846,13 +1999,18 @@
       const cur=state.settings[id]||{}, def=defaultsFor(id);
       return Object.keys(cur).length===Object.keys(def).length && Object.keys(def).every(k=>JSON.stringify(cur[k])===JSON.stringify(def[k]));
     }
+    function applyPresetSettings(id){
+      if(state.from===id){readRows();state.points=[];renderFrom();renderTo();}
+      else if(state.to===id)renderTo();
+      updateRegionChips();save();renderSettings();
+    }
     function renderSettings(){
       const S=state.settings; const el=$("#view-set");
-      const seg=(opts,cur,cb,locked)=>{ const id="seg"+Math.random().toString(36).slice(2); if(!locked)setTimeout(()=>{ const g=document.getElementById(id); if(!g)return; g.addEventListener("click",e=>{const b=e.target.closest("button"); if(!b)return; [...g.children].forEach(x=>x.classList.toggle("on",x===b)); cb(b.dataset.v); }); },0); return `<div class="seg${locked?" locked":""}" id="${id}">${opts.map(o=>`<button data-v="${o[0]}" ${locked?"disabled":""} class="${String(cur)===String(o[0])?"on":""}">${o[1]}</button>`).join("")}</div>`; };
+      const seg=(opts,cur,cb,locked)=>{ const id="seg"+Math.random().toString(36).slice(2); if(!locked)setTimeout(()=>{ const g=document.getElementById(id); if(!g)return; g.addEventListener("click",e=>{const b=e.target.closest("button"); if(!b||b.classList.contains("on"))return; [...g.children].forEach(x=>x.classList.toggle("on",x===b)); cb(b.dataset.v); }); },0); return `<div class="seg${locked?" locked":""}" id="${id}">${opts.map(o=>`<button data-v="${o[0]}" ${locked?"disabled":""} class="${String(cur)===String(o[0])?"on":""}">${o[1]}</button>`).join("")}</div>`; };
       // editable controls, limited to what each preset allows
       const controls=(id)=>{
         const p=PRESETS[id], s=S[id]; let h="";
-        const changed=()=>{ if(state.from===id){readRows();state.points=[];renderFrom();renderTo();} if(state.to===id)renderTo();save();renderSettings(); };
+        const changed=()=>applyPresetSettings(id);
         if(id==="mgrs"){
           const format=s.format||"mgrs";
           h+=`<div class="srow"><span class="k">Format</span>${seg([["mgrs","MGRS"],["globalutm","UTM"]],format,v=>{
@@ -1872,35 +2030,15 @@
           const la=fmtLat(EXAMPLE_POINT.lat,s),lo=fmtLon(EXAMPLE_POINT.lon,s);
           h+=`<div class="example">Example&nbsp; <b>${s.order==="lonlat"?lo+"&nbsp;&nbsp;&nbsp;"+la:la+"&nbsp;&nbsp;&nbsp;"+lo}</b></div>`;
         } else if(p.kind==="grid"||p.shortGrid){
-          if(p.large){
-            const label=regionChipLabel(id);
-            h+=`<section class="settings-section ao-panel${label?"":" needs-ao"}"><h4 class="settings-subhead">${label?"Reference area":"Choose a reference area"}</h4>`;
-            if(label){
-              const clId="rcl_"+id, mapId="mapbtn_"+id;
-              h+=`<p class="ao-status">Reference area: <strong>${escAttr(label)}</strong></p>`;
-              h+=`<div class="ao-actions"><button class="setting-action primary" id="${mapId}" type="button">Change reference area</button><button class="setting-action danger" id="${clId}" type="button">Clear reference area</button></div>`;
-              setTimeout(()=>{ const b=document.getElementById(clId); if(b) b.addEventListener("click",()=>{ delete state.settings[id].square;delete state.settings[id].ao;state.aoConfirmed=false;state.points=[];renderTo();updateRegionChips();changed(); }); const m=document.getElementById(mapId); if(m) m.addEventListener("click",()=>openSquareBrowser(id,renderSettings)); },0);
-            } else {
-              const mapId="mapbtn_"+id;
-              h+=`<div class="note">${id==="mgrs"?"Zoom out on the map for a grid zone, in for a 100 km square.":"Choose the 100 km square containing your coordinates."}</div>`;
-              h+=`<div class="ao-actions"><button class="setting-action primary" id="${mapId}" type="button">Choose reference area</button></div>`;
-              setTimeout(()=>{ const b=document.getElementById(mapId); if(b) b.addEventListener("click",()=>openSquareBrowser(id,renderSettings)); },0);
-            }
-            h+=`</section>`;
-          }
-
+          // Reference areas live in the converter: the input chooses one, the output
+          // takes point 1's. Settings only shapes how references are written.
+          if(p.large)h+=`<div class="note">Reference areas are set in the converter. Your first point sets them; change an input's area from its reference area chip or a row's ⋯ button.</div>`;
           const digits=s.sgDigits??4, meters=10**(5-digits), precision=meters>=1000?meters/1000+" km":meters+" meters";
-          const canOmit = id==="mgrs"?!!s.ao:!p.large || !!s.square;
-          // Only a country grid without an area widens its digits beyond what the
-          // precision claims. A full MGRS reference always prints exactly its own
-          // digit count, so its precision stays settable.
-          const needsArea = id!=="mgrs" && p.large && !s.square;
           h+=`<section class="settings-section"><h4 class="settings-subhead">Output format</h4>`;
-          if(needsArea) h+=`<div class="note required">Choose a reference area first</div>`;
-          h+=`<div class="srow"><span class="k">Precision</span>${seg(id==="mgrs"?[[5,"1 m"],[4,"10 m"],[3,"100 m"],[2,"1 km"],[1,"10 km"],[0,"100 km"]]:[[5,"1 m"],[4,"10 m"],[3,"100 m"]],digits,v=>{s.sgDigits=+v;changed();},needsArea)}</div>`;
+          h+=`<div class="srow"><span class="k">Precision</span>${seg(id==="mgrs"?[[5,"1 m"],[4,"10 m"],[3,"100 m"],[2,"1 km"],[1,"10 km"],[0,"100 km"]]:[[5,"1 m"],[4,"10 m"],[3,"100 m"]],digits,v=>{s.sgDigits=+v;changed();})}</div>`;
           h+=`<div class="note precision-note">${precision} · ${digits} digits within each 100 km square</div>`;
           const omId="om_"+id;
-          h+=`<label class="chk${canOmit?"":" locked"}"><input type="checkbox" id="${omId}" ${canOmit&&s.sgOmit!==false?"checked":""} ${canOmit?"":"disabled"}> ${id==="mgrs"?"Omit selected reference-area prefix":"Omit 100 km square prefix"}</label>`;
+          h+=`<label class="chk"><input type="checkbox" id="${omId}" ${s.sgOmit!==false?"checked":""}> ${id==="mgrs"?"Omit reference-area prefix":"Omit 100 km square prefix"}</label>`;
           setTimeout(()=>{ const c=document.getElementById(omId); if(c) c.addEventListener("change",e=>{ s.sgOmit=e.target.checked; changed(); }); },0);
           if(id==="mgrs")h+=`<div class="note">Full references include zone, band and square letters. Prefixes are required when points cross the selected grid boundary.</div>`;
           const example=examplePoint(id,S);
@@ -1945,8 +2083,8 @@
         readRows();const current=existingMapPoints(),id=button.dataset.toggle,enabled=!presetEnabled(id);
         if(id==="mgrs")state.militaryEnabled=enabled;
         else state.disabledPresets=enabled?(state.disabledPresets||[]).filter(p=>p!==id):[...(state.disabledPresets||[]),id];
-        if(!enabled){
-          const matches=value=>id==="mgrs"?GLOBAL_FORMATS.includes(value):value===id;
+        const matches=value=>id==="mgrs"?GLOBAL_FORMATS.includes(value):value===id;
+        if(!enabled&&(matches(state.from)||matches(state.to))){
           if(matches(state.from)){
             state.rows=current.unresolved?state.rows:current.points.map(p=>[...llCells(p.lat,p.lon),p.name]);
             if(!state.rows.length)state.rows=[["","",""]];
