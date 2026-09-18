@@ -85,7 +85,8 @@
     const {zooms=[9,11,13],radius=1,concurrency=4,request=globalThis.fetch}=options||{};
     if(typeof request!=='function'||!point)return 0;
     const connection=globalThis.navigator?.connection;
-    if(connection?.saveData||/(^|-)2g$/.test(connection?.effectiveType||''))return 0;
+    // Only a fast link warms the cache: on 3G the reader's own requests need the bandwidth.
+    if(connection?.saveData||/(^|-)[23]g$/.test(connection?.effectiveType||''))return 0;
     const urls=tileUrls(point.lat,point.lon,zooms,radius);
     let index=0,stored=0;
     const worker=async()=>{

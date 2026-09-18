@@ -29,6 +29,7 @@
   header{flex-wrap:wrap;padding:11px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex:0 0 auto}
   header h1{margin:0;font-size:15px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;min-width:0;flex:0 1 auto;display:flex;align-items:center;gap:8px}
   header h1 .logo{width:32px;height:32px;flex:0 0 auto}
+  header h1 .logo:not([src]){display:none}
   header h1 .title-text{overflow:hidden;text-overflow:ellipsis;min-width:0}
   .version{flex:0 0 auto;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:2px 6px;font-size:9px;font-weight:800;letter-spacing:.2px}
   .version:empty{display:none}
@@ -53,11 +54,18 @@
 
   /* tables */
   .tbl{border:1px solid var(--line);border-radius:10px;overflow:hidden}
-  .thead,.trow{display:grid;grid-template-columns:18px minmax(0,1.4fr) minmax(0,1.4fr) minmax(60px,.8fr) 22px;gap:5px;align-items:center;padding:5px 6px}
+  .thead,.trow{display:grid;grid-template-columns:26px minmax(0,1.4fr) minmax(0,1.4fr) minmax(60px,.8fr) 22px;gap:5px;align-items:center;padding:5px 6px}
   .thead{background:var(--panel);color:var(--muted);font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px}
   .thead span{min-width:0;white-space:normal;overflow-wrap:anywhere;line-height:1.3}
   .trow{border-top:1px solid var(--line)}
   .trow .n{color:var(--muted);font-size:11px;font-weight:700;text-align:center}
+  .grip{border:0;background:transparent;padding:4px 0;margin:0;cursor:grab;touch-action:none;display:flex;flex-direction:column;align-items:center;gap:2px;border-radius:6px;min-height:34px;justify-content:center;font:inherit;font-size:11px;font-weight:700;color:var(--muted)}
+  .grip svg{width:12px;height:10px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}
+  .grip:hover,.grip:focus-visible{background:var(--panel2);color:var(--text);outline:none}
+  .trow.dragging{position:relative;z-index:2;background:var(--panel);box-shadow:0 6px 18px rgba(2,6,23,.16);border-radius:8px}
+  .trow.dragging .grip{cursor:grabbing}
+  #fromRows .trow{transition:transform .12s}
+  #fromRows .trow.dragging{transition:none}
   .cell{width:100%;min-width:0;border:1px solid var(--line);background:#fff;color:var(--text);border-radius:6px;padding:8px 6px;font:500 12px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
   .cell.nm{font:500 12px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
   .cell:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px rgba(37,99,235,.15)}
@@ -85,6 +93,8 @@
   .exportbar button{flex:1 1 0;min-height:42px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--text);font-size:13px;font-weight:700;cursor:pointer}
   .exportbar button.maps{background:var(--ok);color:#fff;border-color:var(--ok)}
   .exportbar button:disabled{opacity:.4;pointer-events:none}
+  .maps-parts button.visited{opacity:.65}
+  .modal a{color:var(--accent)}
   .history{display:inline-flex;gap:4px;margin-left:auto}
   .histbtn{min-width:34px;min-height:34px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text);font-size:15px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
   .histbtn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
@@ -166,7 +176,8 @@
   .preset-body{display:none;padding:12px 14px}
   .preset.open .preset-body{display:block}
   .basis{font-size:12px;color:var(--text);margin-bottom:6px;line-height:1.5}
-  #countryGridOverlay .m-actions{flex-direction:column}
+  #countryGridOverlay .m-actions,.maps-parts{flex-direction:column}
+  .maps-parts button{flex:auto;padding:10px 14px}
   #countryGridOverlay .m-actions button{flex:auto;padding:10px 14px}
   .datum-info{font-size:12px;line-height:1.5}
   .datum-info p{margin:8px 0}
@@ -194,7 +205,7 @@
 </head>
 <body>
   <header>
-    <h1><img class="logo" src="icons/icon-192.png" alt="" width="32" height="32"><span class="title-text"><span class="wide-title">Military </span>Coordinate Converter</span></h1><span class="version" id="appVersion"></span>
+    <h1><img class="logo" id="logo" alt="" width="32" height="32"><span class="title-text"><span class="wide-title">Military </span>Coordinate Converter</span></h1><span class="version" id="appVersion"></span>
     <nav class="tabs">
       <button id="tab-conv" class="on">Converter</button>
       <button id="tab-set">Settings</button>
@@ -221,6 +232,7 @@
           <div class="detect" id="detect"></div>
           <div class="row-actions"><button class="addrow" id="addRow">+ Add row</button><button class="select-map" id="selectMap" type="button">Select from map</button><span class="history"><button class="histbtn" id="undoBtn" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-5 5 5 5M4 10h10a6 6 0 0 1 6 6v3"/></svg></button><button class="histbtn" id="redoBtn" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 5 5-5 5M20 10H10a6 6 0 0 0-6 6v3"/></svg></button></span></div>
           <p class="map-offline" id="mapOffline" hidden>Select from map needs an internet connection.</p>
+          <p class="map-offline" id="mapWeak" hidden>Weak connection: the map may load slowly.</p>
         </div>
 
         <!-- CONVERT / SWAP -->
@@ -262,6 +274,18 @@
     </div>
   </div>
 
+  <div class="overlay" id="mapsOverlay" role="dialog" aria-modal="true" aria-labelledby="mapsTitle">
+    <div class="modal">
+      <div class="dialog-heading"><h3 id="mapsTitle">Open in Google Maps</h3><button id="mapsCancel" class="dialog-close" aria-label="Close Google Maps dialog">×</button></div>
+      <p class="note" id="mapsNote"></p>
+      <div class="m-actions maps-parts" id="mapsParts"></div>
+      <div class="settings-section">
+        <h4 class="settings-subhead">See every point at once</h4>
+        <p class="note">Download GPX, then in <a href="https://www.google.com/maps/d/" target="_blank" rel="noopener noreferrer">Google My Maps</a> choose Create a new map → Import and select the file.</p>
+        <div class="m-actions"><button id="mapsGpx">Download GPX for My Maps</button></div>
+      </div>
+    </div>
+  </div>
   <div class="overlay" id="locationOverlay" role="dialog" aria-modal="true" aria-labelledby="locationTitle">
     <div class="modal location-modal"><div class="dialog-heading"><h3 id="locationTitle">Where is this grid reference?</h3><button id="locationClose" class="dialog-close" aria-label="Close location chooser">×</button></div><p class="location-intro">You entered a short MGR without its area. Choose the grid it belongs to.</p>
       <div class="location-options"><button data-location="sg">Singapore MGR</button><button data-location="thailand">Thailand MGR</button><button data-location="brunei">Brunei MGR</button><button data-location="australia">Australia MGR</button><button data-location="taiwan">Taiwan MGR</button></div>
@@ -388,7 +412,9 @@
   for(const [id,context] of Object.entries(globalThis.MAP_CONTEXT)){
     PRESETS[id].context=context;
     if(context.boundaries)PRESETS[id].regions=context.boundaries;
-    if(context.likely)PRESETS[id].likely=context.likely;
+    // The detailed training-area coast is country too; the world outline is too coarse
+    // to hold places like Stanage Bay on the Shoalwater peninsula.
+    if(context.likely)PRESETS[id].likely=[...context.likely,...(context.land||[])];
   }
   const PRESET_ORDER = ["wgs84","mgrs","sg","taiwan","thailand","australia","brunei"];
   const COUNTRY_PRESETS = ["sg","taiwan","thailand","australia","brunei"];
@@ -537,9 +563,16 @@
     const tol=p.toleranceKm||0;
     return tol>0&&polys.some(poly=>nearPolygon(lat,lon,poly,tol));
   }
+  // A batch is offered a country grid when the grid can write every point and the batch
+  // is plainly in that country. One point out at sea or over the border is not enough to
+  // take the grid away from the rest; convert() still says which points sit outside.
   function suggestedGrid(points,ids=COUNTRY_PRESETS){
+    if(!points.length)return null;
     for(const id of ids){
-      if(points.length&&points.every(p=>presetLikely(id,p.lat,p.lon))) return id;
+      if(points.every(p=>presetLikely(id,p.lat,p.lon))) return id;
+    }
+    for(const id of ids){
+      if(points.every(p=>presetContains(id,p.lat,p.lon))&&points.some(p=>presetLikely(id,p.lat,p.lon))) return id;
     }
     return null;
   }
@@ -618,6 +651,12 @@
         for(const m of decoded.matchAll(new RegExp(`!2d(${DEC})!3d(${DEC})`,"gi"))) pins.push({index:m.index,lat:m[2],lon:m[1]});
         pins.sort((a,b)=>b.index-a.index);
         for(const pin of pins){ const p=mapPoint(pin.lat,pin.lon,"Google Maps pin"); if(p) return p; }
+        // A route keeps its stops as !1d<lon>!2d<lat>; the last one is where it ends.
+        if(/\/dir\//.test(u.pathname)){
+          const stops=[...decoded.matchAll(new RegExp(`!1d(${DEC})!2d(${DEC})`,"gi"))];
+          const end=stops.length?mapPoint(stops.at(-1)[2],stops.at(-1)[1],"Google Maps route end"):null;
+          if(end) return end;
+        }
         let m;
         for(const key of ["query","q","viewpoint","destination","origin","waypoints","center"]){
           const pair=decimalPair(u.searchParams.get(key));
@@ -626,10 +665,14 @@
         // Searching a bare pair puts the place in the path, as /maps/search/1.38,+103.98,
         // where no parameter holds it. Read the path back to front so the place beats
         // whatever the route was filed under.
+        // The @ segment is only where the map was looking, never the place itself.
         for(const segment of u.pathname.split("/").reverse()){
+          if(segment.startsWith("@")||segment.startsWith("data="))continue;
           let part=segment; try{part=decodeURIComponent(segment);}catch(_){}
           const pair=decimalPair(part.replace(/\+/g," "));
           if(pair) return mapPoint(pair.lat,pair.lon,"Google Maps link");
+          // A dropped pin is named by its own degrees, minutes and seconds.
+          if(/[NS].*[EW]/i.test(part)){const ll=parseLatLon(part.replace(/\+/g," "),"latlon");if(!ll.error&&ll.confidence==="certain")return mapPoint(ll.lat,ll.lon,"Google Maps pin");}
         }
         m=decoded.match(new RegExp(`@(${DEC}),(${DEC})(?:[,/]|$)`,"i"));
         if(m){ const p=mapPoint(m[1],m[2],"Google Maps view"); if(p) return p; }
@@ -644,24 +687,113 @@
     if(sawMapLink) return {error:sawShortLink?"A short map link holds no coordinates. Open it, then paste the address it lands on.":"map link has no readable coordinates",mapLink:true,shortLink:sawShortLink,link:sawShortLink?shortLinkUrl:""};
     return null;
   }
+  // Copies arrive through Word, WhatsApp, PDFs, spreadsheets and pages decoded with the
+  // wrong character set. Put the marks back to the handful a coordinate needs.
+  function normalizeCoordText(text){
+    let s=String(text);
+    // UTF-8 read as Windows-1252: Â° for °, â€² for ′, â€³ for ″, â€™ for ’, â€œ/â€ for “ ”.
+    s=s.replace(/Â(?=[°º])/g,"").replace(/â€²|â€™|â€˜/g,"'").replace(/â€³|â€œ|â€|â€/g,'"');
+    s=s.replace(/&(?:deg|#0*176|#x0*b0);/gi,"°").replace(/&(?:prime|rsquo|lsquo|apos|#0*39|#0*8217|#x0*2019);/gi,"'")
+      .replace(/&(?:Prime|rdquo|ldquo|quot|#0*34|#0*8221|#x0*201d);/g,'"').replace(/&(?:nbsp|#0*160|#x0*a0);/gi," ");
+    // Degree look-alikes first: NFKC would turn the ordinal º into a letter o.
+    s=s.replace(/[º˚ᵒ∘⁰]/g,"°").normalize("NFKC").replace(/[\u2212\u2012\u2013\u2014]/g,"-");
+    s=s.replace(/[’‘‛′`´ʹꞌ]/g,"'").replace(/[”“„″ʺ〃]/g,'"').replace(/''/g,'"');
+    // Quoted JSON keys would otherwise read as seconds marks.
+    s=s.replace(/["']\s*(lat(?:itude)?|lng|lon(?:g(?:itude)?)?)\s*["']/gi,"$1");
+    s=s.replace(/\bdeg(?:rees?)?\b/gi,"°").replace(/\bmin(?:ute)?s?\b/gi,"'").replace(/\bsec(?:ond)?s?\b/gi,'"');
+    s=s.replace(/\bnorth\b/gi,"N").replace(/\bsouth\b/gi,"S").replace(/\beast\b/gi,"E").replace(/\bwest\b/gi,"W");
+    // 1d21m07.6s and 1:21:07.6 are both degrees, minutes and seconds.
+    s=s.replace(/(\d+)\s*d\s*(\d+(?:\.\d+)?)\s*m(?:\s*(\d+(?:\.\d+)?)\s*s(?=\s*[NSEW]))?/gi,(_,d,m,sec)=>d+"°"+m+"'"+(sec!==undefined?sec+'"':""));
+    s=s.replace(/(\d{1,3}):(\d{1,2}(?:\.\d+)?)(?::(\d{1,2}(?:\.\d+)?))?/g,(_,d,m,sec)=>d+"°"+m+"'"+(sec!==undefined?sec+'"':""));
+    s=s.replace(/[()[\]{}]/g," ");
+    // European decimal commas, only where no decimal point appears and exactly two
+    // numbers use them, so a comma between two plain numbers is still a separator.
+    if(!/\./.test(s)&&(s.match(/\d,\d/g)||[]).length===2)s=s.replace(/(\d),(\d)/g,"$1.$2");
+    return s;
+  }
+  // Split a normalized pair into two coordinates, each degrees with optional minutes and
+  // seconds. Marks, hemisphere letters, separators and finally the count of numbers say
+  // where one coordinate ends: 1 21 07.6 N 103 49 11.3 E is two coordinates, not three.
+  function coordinateComponents(norm){
+    const tokens=[];const re=/\s*(?:([NSEW])(?![A-Z])|([+-]?\d+(?:\.\d+)?)\s*([°'"])?|([,;|/\t]|-(?!\d))|(\S))/gy;
+    let m;
+    while(re.lastIndex<norm.length&&(m=re.exec(norm))){
+      if(m[5])return {error:"unrecognized coordinate text"};
+      if(m[1])tokens.push({hemi:m[1]});else if(m[2])tokens.push({num:m[2],mark:m[3]||""});else if(m[4])tokens.push({sep:true});
+    }
+    const nums=tokens.filter(t=>t.num),hemis=tokens.filter(t=>t.hemi),marks=nums.some(t=>t.mark);
+    let groups=null;
+    const first=tokens.find(t=>!t.sep),last=[...tokens].reverse().find(t=>!t.sep);
+    // Hemisphere letters on the same side of both coordinates bound each group.
+    if(hemis.length===2&&(first?.hemi&&!last?.hemi||last?.hemi&&!first?.hemi)){
+      groups=[];let cur=null;
+      for(const t of tokens){
+        if(t.hemi){if(first.hemi){cur={nums:[],hemi:t.hemi};groups.push(cur);}else if(cur){cur.hemi=t.hemi;cur=null;}}
+        else if(t.num){if(!cur){cur={nums:[]};groups.push(cur);}cur.nums.push(t);}
+      }
+    }
+    if(!groups&&marks){
+      groups=[];let cur=null,rank=-1;const RANK={"°":0,"'":1,'"':2};
+      for(const t of tokens){
+        if(t.sep){cur=null;continue;}
+        if(!t.num)continue;
+        const r=t.mark?RANK[t.mark]:(cur?rank+1:0);
+        if(!cur||r<=rank||t.mark==="°"){cur={nums:[]};groups.push(cur);}
+        cur.nums.push(t);rank=r;
+      }
+    }
+    if(!groups){
+      const bySep=[[]];for(const t of tokens){if(t.sep){if(bySep.at(-1).length)bySep.push([]);}else if(t.num)bySep.at(-1).push(t);}
+      const parts=bySep.filter(g=>g.length);
+      if(parts.length===2)groups=parts.map(g=>({nums:g}));
+      else if(nums.length===2)groups=[{nums:[nums[0]]},{nums:[nums[1]]}];
+      else if(nums.length===4||nums.length===6){const half=nums.length/2;groups=[{nums:nums.slice(0,half)},{nums:nums.slice(half)}];}
+      else return {error:"need exactly two coordinates"};
+    }
+    if(groups.length!==2||groups.some(g=>!g.nums.length||g.nums.length>3))return {error:"need exactly two coordinates"};
+    // Letters not already bound to a group belong to the number beside them.
+    if(!groups.some(g=>g.hemi)&&hemis.length){
+      let lastGroup=null;const owner=new Map();groups.forEach(g=>g.nums.forEach(n=>owner.set(n,g)));
+      tokens.forEach((t,k)=>{
+        if(t.num){lastGroup=owner.get(t);return;}
+        if(!t.hemi)return;
+        const next=tokens.slice(k+1).find(x=>x.num),prev=lastGroup;
+        const target=first===t?owner.get(next):prev&&!prev.hemi?prev:owner.get(next);
+        if(target&&!target.hemi)target.hemi=t.hemi;
+      });
+    }
+    const comps=[];
+    for(const g of groups){
+      const [d,mi,se]=g.nums.map(n=>n.num);
+      if(mi!==undefined){
+        // Minutes and seconds only make sense after whole degrees and under 60.
+        if(/\./.test(d)||Math.abs(+mi)>=60||/^[+-]/.test(mi)||(se!==undefined&&(+se>=60||/\./.test(mi)||/^[+-]/.test(se))))return {error:"need exactly two coordinates"};
+      }
+      const val=Math.abs(+d)+(mi!==undefined?+mi/60:0)+(se!==undefined?+se/3600:0);
+      comps.push({val,neg:/^-/.test(d),card:g.hemi||"",hasMinSec:mi!==undefined});
+    }
+    return {comps};
+  }
   // ---- lat/long pair parser (paste). preferredOrder: 'latlon'|'lonlat'
   function parseLatLon(text, preferredOrder){
     const raw=String(text).trim(); if(!raw) return {error:"empty"};
     const map=extractMapCoordinate(raw); if(map) return map;
-    const norm=raw.replace(/[，]/g,",").replace(/[°º]/g,"°");
-    const re=/([NSEW])?\s*([+-]?\d+(?:\.\d+)?)\s*°?\s*(?:(\d+(?:\.\d+)?)\s*['′])?\s*(?:(\d+(?:\.\d+)?)\s*["″])?\s*([NSEW])?/gi;
-    const comps=[]; let m;
-    while((m=re.exec(norm)) && comps.length<4){
-      if(!m[2]) { if(re.lastIndex===m.index) re.lastIndex++; continue; }
-      const deg=parseFloat(m[2]), min=m[3]?parseFloat(m[3]):0, sec=m[4]?parseFloat(m[4]):0;
-      let val=Math.abs(deg)+min/60+sec/3600;
-      const neg=/^-/.test(m[2]);
-      const card=(m[1]||m[5]||"").toUpperCase();
-      comps.push({val,neg,card,hasMinSec:!!(m[3]||m[4])});
+    let norm=normalizeCoordText(raw);
+    // Well-known text is always longitude first.
+    const wkt=norm.match(/^\s*POINT\s*Z?\s*([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)(?:\s+[+-]?\d+(?:\.\d+)?)?\s*$/i);
+    if(wkt){norm=wkt[1]+"E "+wkt[2]+"N";if(/^-/.test(wkt[1]))norm=wkt[1].slice(1)+"W "+wkt[2]+"N";if(/^-/.test(wkt[2]))norm=norm.replace(/(\S+)N$/,(_,v)=>v.slice(1)+"S");}
+    // Labels say which number is which; they carry no digits of their own.
+    const labels=[...norm.matchAll(/\b(lat(?:itude)?|lng|lon(?:g(?:itude)?)?)\b\s*[:=]?/gi)];
+    let labelOrder=null;
+    if(labels.length===2){const firstLat=/^lat/i.test(labels[0][1]),secondLat=/^lat/i.test(labels[1][1]);if(firstLat!==secondLat)labelOrder=firstLat?"latlon":"lonlat";}
+    norm=norm.replace(/\b(lat(?:itude)?|lng|lon(?:g(?:itude)?)?)\b\s*[:=]?/gi," ").toUpperCase();
+    const split=coordinateComponents(norm);
+    if(split.error)return split;
+    let [a,b]=split.comps;
+    if(labelOrder&&!a.card&&!b.card){
+      const la=labelOrder==="latlon"?a:b,lo=labelOrder==="latlon"?b:a;
+      la.card=la.neg?"S":"N";lo.card=lo.neg?"W":"E";la.neg=lo.neg=false;
     }
-    if(comps.length!==2) return {error:"need exactly two coordinates"};
-    if(norm.replace(re,"").replace(/[\s,;|/]+/g,"")!=="")return {error:"unrecognized coordinate text"};
-    const a=comps[0], b=comps[1];
     let lat, lon, warning, confidence="certain", detectedOrder=null;
     const roleOf=c=>/^[NS]$/.test(c.card)?"lat":/^[EW]$/.test(c.card)?"lon":null;
     const applyCard=(c)=>{ if(c.card==="N")return{lat:c.val}; if(c.card==="S")return{lat:-c.val}; if(c.card==="E")return{lon:c.val}; if(c.card==="W")return{lon:-c.val}; return {}; };
@@ -702,15 +834,10 @@
     if(m){ const dig=m[1]; if(dig.length%2!==0) return {error:"odd number of digits"}; const d=dig.length/2; if(d<1||d>5) return {error:"too many digits"}; return {e:dig.slice(0,d),n:dig.slice(d),d}; }
     return {error:"enter matching easting and northing, e.g. 1234 5678"};
   }
-  // Grid E/N strings -> WGS84, anchored at the south-west corner of the stated square.
-  function sgToWGS(eStr,nStr,s,lead,epsg){
-    lead=lead||[LEAD_E,LEAD_N]; epsg=epsg||"EPSG:3168";
-    const d=s&&s.sgOmit===false ? (s.sgDigits||4) : eStr.length, step=Math.pow(10,5-d);
-    const E=s&&s.sgOmit===false ? parseInt(eStr,10)*step : lead[0]*100000 + parseInt(eStr,10)*step;
-    const N=s&&s.sgOmit===false ? parseInt(nStr,10)*step : lead[1]*100000 + parseInt(nStr,10)*step;
-    const r=proj4(epsg,"WGS84",[E,N]); return {lon:r[0],lat:r[1]};
-  }
-
+  // A reference names a square, not a point: every digit dropped widens it. Read it as
+  // the square's center, which is at most half a diagonal from anywhere inside it and
+  // formats back to the same digits. MGRS is read the same way.
+  function cellCenter(E,N,digits,epsg){ const half=10**(5-digits)/2; return toWGSfromProj(E+half,N+half,epsg); }
   // parse two cells for a preset -> {lat,lon}|{error, badA,badB}
   function parseProjected(text,kind){
     const raw=text.trim().toUpperCase();
@@ -752,10 +879,22 @@
     if(p.kind==="grid"){
       if(!a && !b) return {error:"empty",empty:true};
       if(!/^\d+$/.test(a)||!/^\d+$/.test(b)) return {error:"digits only",badA:!/^\d+$/.test(a),badB:!/^\d+$/.test(b)};
-      const short=a.length===b.length&&a.length<=(s.sgDigits||4);
-      const inputSettings=short?{...s,sgOmit:true}:s;
-      if(inputSettings.sgOmit!==false&&a.length!==b.length) return {error:"unequal length",badA:true,badB:true};
-      return {...sgToWGS(a,b,inputSettings,p.lead,projectionFor(presetId,S)),digits:inputSettings.sgOmit===false?(s.sgDigits||4):a.length};
+      // A short reference sits in the preset's one 100 km square. A full reference puts that
+      // square's own digits in front (Brunei square 44/14 writes 4412 as 444412), so it can
+      // also name a neighboring square. Where both readings fit the digits, short wins unless
+      // only the full one lands in the country, or Settings says references are written in full.
+      const epsg=projectionFor(presetId,S),[le,ln]=p.lead.map(v=>String(v).length);
+      const read=(E,N,d)=>({...cellCenter(E,N,d,epsg),digits:d});
+      const shortRead=a.length===b.length&&a.length<=5?read(p.lead[0]*1e5+Number(a)*10**(5-a.length),p.lead[1]*1e5+Number(b)*10**(5-b.length),a.length):null;
+      const d=a.length-le,fullRead=d>=3&&d<=5&&b.length-ln===d?read(Number(a)*10**(5-d),Number(b)*10**(5-d),d):null;
+      // Both readings never land in the country together (checked across every Brunei and
+      // Singapore reference), so whichever one does is the reference.
+      if(shortRead&&fullRead){
+        if(s.sgOmit===false&&a.length>(s.sgDigits??4))return fullRead;
+        return !presetContains(presetId,shortRead.lat,shortRead.lon)&&presetContains(presetId,fullRead.lat,fullRead.lon)?fullRead:shortRead;
+      }
+      if(shortRead||fullRead)return shortRead||fullRead;
+      return {error:a.length===b.length?"too many digits":"unequal length",badA:true,badB:true};
     }
     // utm: full easting/northing in meters, OR a truncated grid that needs a picked 100 km square
     if(!a && !b) return {error:"empty",empty:true};
@@ -765,15 +904,14 @@
     // or no square has been selected.
     if(trunc&&a.length>(s.sgDigits??4)&&(!s.square||s.sgOmit===false)){
       const step=10**(5-(s.sgDigits??4));
-      const point=toWGSfromProj(Number(a)*step,Number(b)*step,projectionFor(presetId,S));
+      const point=cellCenter(Number(a)*step,Number(b)*step,s.sgDigits??4,projectionFor(presetId,S));
       if(presetContains(presetId,point.lat,point.lon))return {...point,digits:s.sgDigits??4};
     }
     if(p.large && trunc){
       const sq=s.square;
       if(!sq) return {error:"pick-square", pick:{e:a,n:b}};
       const d=a.length, step=Math.pow(10,5-d);
-      const E=sq[0]*100000 + parseInt(a,10)*step, N=sq[1]*100000 + parseInt(b,10)*step;
-      return {...toWGSfromProj(E,N,projectionFor(presetId,S)),digits:d};
+      return {...cellCenter(sq[0]*100000+parseInt(a,10)*step,sq[1]*100000+parseInt(b,10)*step,d,projectionFor(presetId,S)),digits:d};
     }
     const na=Number(a), nb=Number(b);
     if(!isFinite(na)||a==="") return {error:"E not a number",badA:true};
@@ -783,7 +921,7 @@
     if(/^\d+$/.test(a)&&/^\d+$/.test(b)){
       const readings=[];
       for(const digits of [5,4,3]){
-        const step=10**(5-digits),point=toWGSfromProj(na*step,nb*step,projectionFor(presetId,S));
+        const step=10**(5-digits),point=cellCenter(na*step,nb*step,digits,projectionFor(presetId,S));
         if(presetContains(presetId,point.lat,point.lon))readings.push({...point,digits});
       }
       if(readings.length){
@@ -837,6 +975,8 @@
   (function(){
     const $=s=>document.querySelector(s);
     $("#appVersion").textContent="v"+globalThis.APP_VERSION;
+    // The logo is decoration: skip it where the reader saves data or the link is 2G.
+    {const c=navigator.connection;if(!(c&&(c.saveData||/2g/.test(c.effectiveType||""))))$("#logo").src="icons/logo-64.png";}
     const STORAGE="mgrconv-v1";
     let state = loadState();
     let lastGridFrom=state.lastGridFrom&&PRESETS[state.lastGridFrom]&&PRESETS[state.lastGridFrom].kind!=="latlong"
@@ -902,6 +1042,32 @@
 
     function detect(msg,cls){ const d=$("#detect"); d.textContent=msg||""; d.className="detect"+(cls?" "+cls:""); }
     function setBottomError(msg){ const el=$("#badPair"); el.textContent=msg||""; el.hidden=!msg; }
+    // Parsers answer in short codes; the reader gets one sentence that says what to do,
+    // worded the same whichever preset is in use.
+    const MESSAGES={
+      "need exactly two coordinates":"Enter a latitude and a longitude, e.g. 1.3521, 103.8198.",
+      "could not read lat & lon":"Enter one latitude and one longitude, e.g. 1°21'07.6\"N 103°49'11.3\"E.",
+      "unrecognized coordinate text":"This isn't a format the converter reads. Use decimal degrees (1.3521, 103.8198), degrees and minutes, a grid reference or a Google or Apple Maps link.",
+      "out of range":"Coordinate out of range: latitude runs from 90° S to 90° N and longitude from 180° W to 180° E.",
+      "digits only":"Grid references are digits only, e.g. 1234 5678.",
+      "unequal length":"Easting and northing need the same number of digits, e.g. 1234 5678.",
+      "too many digits":"A grid reference has at most five digits each for easting and northing.",
+      "odd number of digits":"This run has an odd number of digits, so it can't split evenly into easting and northing, e.g. 12345678.",
+      "single run":"Enter a grid reference as an easting and a northing, e.g. 1234 5678, or a latitude and a longitude.",
+      "easting and northing need separate fields":"Enter both an easting and a northing, e.g. 1234 5678.",
+      "E not a number":"Enter the easting as a number.",
+      "N not a number":"Enter the northing as a number.",
+      "map link has no readable coordinates":"This map link doesn't hold coordinates. In Maps, drop a pin on the place and share that pin's link instead.",
+    };
+    function explain(error,row,label="Point"){
+      let text=MESSAGES[error]||String(error||"");
+      const groups=text.match(/^unequal groups \((\d+)\+(\d+)\)$/);
+      if(groups)text="Easting and northing need the same number of digits; this has "+groups[1]+" and "+groups[2]+".";
+      if(/^enter matching easting/i.test(text))text="Enter a matching easting and northing, e.g. 1234 5678.";
+      text=text.charAt(0).toUpperCase()+text.slice(1);
+      if(!/[.!?)]$/.test(text))text+=".";
+      return (row?label+" "+row+": ":"")+text;
+    }
     function toast(msg,warn){ const t=$("#toast"); t.textContent=msg; t.className="toast show"+(warn?" warn":""); clearTimeout(toast._t); toast._t=setTimeout(()=>t.className="toast",1600); }
 
     function rowsHaveContent(){ return state.rows.some(r=>r.some(v=>String(v).trim())); }
@@ -949,7 +1115,10 @@
           if(!shown){const key=rowPlacement(i)?.key;if(key&&key!==fallback)shown=squareLabel(key);}
           lead=areaPill("square",i,shown,fallback?squareLabel(fallback):"E5 N15","100 km square");
         }
-        div.innerHTML=`<span class="n">${i+1}</span>`+lead+
+        const grip=!flexible&&state.rows.length>1
+          ?`<button class="n grip" type="button" aria-label="Point ${i+1}: drag, or press the up and down arrow keys, to reorder" title="Drag to reorder"><svg viewBox="0 0 12 10" aria-hidden="true"><path d="M1 1.5h10M1 5h10M1 8.5h10"/></svg><span>${i+1}</span></button>`
+          :`<span class="n">${i+1}</span>`;
+        div.innerHTML=grip+lead+
           `<${flexible?"textarea":"input"} class="cell a" aria-label="${flexible?"Coordinate":cols[0]}" value="${escAttr(flexible?[r[0],r[1]].filter(Boolean).join(" "):pieces?pieces[2]:r[0])}" placeholder="${flexible?"Paste here":examples[0]}"${flexible?">"+escAttr([r[0],r[1]].filter(Boolean).join(" "))+"</textarea>":">"}`+
           `<input class="cell b" ${flexible?"hidden":""} aria-label="${cols[1]}" value="${escAttr(flexible?"":r[1])}" placeholder="${examples[1]}">`+
           `<input class="cell nm" aria-label="Point name" value="${escAttr(r[2])}" ${flexible?"hidden":""} placeholder="Optional">`+
@@ -958,10 +1127,19 @@
         if(!areas&&r[3])div.dataset.area=r[3];
         rowsEl.appendChild(div);
         div.querySelector(".pill-map")?.addEventListener("click",()=>openRowArea(i));
+        const gripEl=div.querySelector(".grip");
+        if(gripEl){
+          gripEl.addEventListener("pointerdown",e=>dragRow(e,i,gripEl));
+          gripEl.addEventListener("keydown",e=>{
+            const to=e.key==="ArrowUp"?i-1:e.key==="ArrowDown"?i+1:null;
+            if(to===null||to<0||to>=state.rows.length)return;
+            e.preventDefault();moveRow(i,to);$("#fromRows").children[to]?.querySelector(".grip")?.focus();
+          });
+        }
         const delEl=div.querySelector(".del");
         if(delEl) delEl.addEventListener("click",()=>{
           if(state.from==="auto"&&!div.querySelector(".a").value.trim())return;
-          readRows();
+          readRows();remember();
           if(state.rows.length===1){state.rows=[["","",""]];state.from="auto";$("#fromSys").value="auto";delete state.pendingGrid;state.explicitInput=false;}
           else state.rows.splice(i,1);
           state.points=[];
@@ -972,12 +1150,21 @@
         if(prefix)prefix.addEventListener("input",()=>{prefix.closest(".area-pill")?.classList.remove("bad");readRows();state.points=[];renderTo();updateRegionChips();setBottomError("");save();});
         [A,B,NM].forEach(inp=>inp.addEventListener("input",()=>{ readRows(); updatePasteHint(); setBottomError(""); state.points=[];renderTo();save(); }));
         [A,B].forEach(inp=>inp.addEventListener("blur",()=>{ inp.classList.remove("bad"); }));
+        // A finished edit to any field is one step for Undo, however many keys it took.
+        [A,B,NM,prefix].forEach(inp=>{
+          if(!inp)return;
+          inp.addEventListener("focus",()=>{editStart=snapshot();});
+          inp.addEventListener("change",()=>{readRows();if(editStart&&editStart!==snapshot())rememberSnapshot(editStart);editStart=null;});
+        });
         if(flexible)A.addEventListener("blur",e=>{
           const next=e.relatedTarget, row=next?.closest(".trow"),nextIndex=row?Number(row.dataset.i):null;
           const nextField=next?.classList.contains("nm")?".nm":next?.classList.contains("b")?".b":next?.classList.contains("a")?".a":null;
           // Let the click finish first; it may already convert or change the input system.
           setTimeout(()=>{
             if(!A.isConnected||!A.value.trim())return;
+            // A bare run of digits may be half typed: 1212 could still become 12125656.
+            // Leaving the box never splits it; Convert or Enter does, once it is finished.
+            if(/^\d+$/.test(A.value.trim())){detect("Press Convert when the grid reference is complete.","warn");return;}
             quietChooser=true;
             try{onPaste({clipboardData:{getData:()=>A.value},preventDefault(){}},i);}finally{quietChooser=false;}
             if(!state.pendingGrid&&nextField&&nextIndex!==null)$("#fromRows").children[nextIndex]?.querySelector(nextField)?.focus();
@@ -999,6 +1186,40 @@
         [A,B].forEach(inp=>inp.addEventListener("paste",e=>onPaste(e,i)));
       });
       updateRegionChips();updateRowAction();
+    }
+    let editStart=null;
+    // Rows follow the grip: other rows slide aside as it passes their middle, and the
+    // order is written once it is let go. The output is recomputed rather than
+    // reshuffled, because point 1 is what sets the output's reference area.
+    function dragRow(e,i,grip){
+      if(e.button>0)return;
+      e.preventDefault();
+      const rowsEl=$("#fromRows"),rows=[...rowsEl.children],row=rows[i];
+      const boxes=rows.map(r=>r.getBoundingClientRect()),height=boxes[i].height,startY=e.clientY;
+      let target=i,moved=false;
+      row.classList.add("dragging");
+      try{grip.setPointerCapture(e.pointerId);}catch(_){}
+      const move=ev=>{
+        const dy=ev.clientY-startY;if(Math.abs(dy)>3)moved=true;
+        row.style.transform=`translateY(${dy}px)`;
+        const center=boxes[i].top+height/2+dy;
+        target=boxes.filter((b,k)=>k!==i&&b.top+b.height/2<center).length;
+        rows.forEach((r,k)=>{if(k===i)return;const shift=k>i&&k<=target?-height:k<i&&k>=target?height:0;r.style.transform=shift?`translateY(${shift}px)`:"";});
+      };
+      const end=()=>{
+        grip.removeEventListener("pointermove",move);grip.removeEventListener("pointerup",end);grip.removeEventListener("pointercancel",end);
+        rows.forEach(r=>{r.style.transform="";r.classList.remove("dragging");});
+        if(moved&&target!==i){moveRow(i,target);$("#fromRows").children[target]?.querySelector(".grip")?.focus();}
+      };
+      grip.addEventListener("pointermove",move);grip.addEventListener("pointerup",end);grip.addEventListener("pointercancel",end);
+    }
+    function moveRow(from,to){
+      readRows();remember();
+      const [row]=state.rows.splice(from,1);state.rows.splice(to,0,row);
+      if(state.pendingGrid){const p=state.pendingGrid.i;state.pendingGrid.i=p===from?to:p>from&&p<=to?p-1:p<from&&p>=to?p+1:p;}
+      const shown=(state.points||[]).length>0;
+      state.points=[];renderFrom();renderTo();save();
+      if(shown)convert();
     }
     function escAttr(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
     function readRows(){ state.rows=[...$("#fromRows").children].map(d=>{
@@ -1145,7 +1366,8 @@
     if("serviceWorker" in navigator){
       const whenIdle=globalThis.requestIdleCallback||(run=>setTimeout(run,1500));
       whenIdle(()=>{
-        (locationGuess||=MapSupport.approximateLocation({helper:MAP_HELPER})).ready.then(point=>{
+        // Warming the cache is only worth it on a link that answered quickly.
+        tileProbe().then(answer=>answer==="ok"&&!dataSaver()?(locationGuess||=MapSupport.approximateLocation({helper:MAP_HELPER})).ready:Promise.reject()).then(point=>{
           MapSupport.prefetchTiles(point);
           // Knowing the ceiling up front stops the first satellite switch stalling.
           MapSupport.imageryZoom(point.lat,point.lon,800,480).catch(()=>{});
@@ -1184,7 +1406,7 @@
       try{const r=await fetch("version.js?connectivity="+Date.now(),{cache:"no-store",signal:controller.signal});reachable=r.ok&&/APP_VERSION\s*=/.test(await r.text());}
       catch(_){reachable=false;}
       finally{clearTimeout(timer);}
-      if(!reachable){setMapAvailable(false);return;}
+      if(!reachable){setMapAvailable(false);$("#mapWeak").hidden=true;return;}
       setMapAvailable(tilesReachable!==false);
       // Past this point the page may already be gone, and an image needs a document
       // to be made in, so nothing below may run for a check that has been overtaken.
@@ -1192,29 +1414,42 @@
       // Reaching our own files only proves the network is up. A network can allow
       // this page and still block the tile services, which is common enough on a
       // managed connection, and the map would then open blank with nothing to say.
-      // So ask for a real tile too — but in the background, because the button has
-      // already earned its place and waiting on an image would only hold it shut.
-      if(tilesReachable===null&&!probing){
+      // So ask for a real tile too, in the background. Until one arrives the answer is
+      // asked again on every check, so a network that recovers is noticed without the
+      // device ever reporting itself offline.
+      if(tilesReachable!==true&&!probing){
         probing=true;
-        probeTiles().then(ok=>{
-          probing=false;tilesReachable=ok;
-          if(ok||token!==connectionCheck||!button.isConnected)return;
-          setMapAvailable(false);note.textContent="Map imagery cannot be reached on this network.";
+        probeTiles().then(answer=>{
+          probing=false;
+          // Slow is not broken: the map opens, it just fills in slowly.
+          tilesReachable=answer!=="error";weakConnection=answer==="slow"||dataSaver();
+          probeWaiters.splice(0).forEach(run=>run(answer));
+          if(!button.isConnected)return;
+          $("#mapWeak").hidden=!weakConnection||answer==="error";
+          if(token!==connectionCheck)return;
+          if(answer==="error"){setMapAvailable(false);note.textContent="Map imagery cannot be reached on this network.";}
+          else setMapAvailable(true);
         });
       }
     }
+    const dataSaver=()=>{const c=navigator.connection;return !!(c&&(c.saveData||/2g/.test(c.effectiveType||"")));};
+    let weakConnection=dataSaver();const probeWaiters=[];
+    // The tile question answered once: "ok", "slow" or "error".
+    const tileProbe=()=>new Promise(done=>{if(tilesReachable!==null&&!probing)done(tilesReachable?(weakConnection?"slow":"ok"):"error");else probeWaiters.push(done);});
     // The load and error events fire regardless of origin, which a fetch for a
     // tile cannot manage, so an image is the only way to ask this question.
     function probeTiles(){
       return new Promise(done=>{
-        if(typeof Image!=="function")return done(true);
+        if(typeof Image!=="function")return done("ok");
         let img;
         // A torn-down page has no document to make an image in, and an unanswerable
         // question is better left unanswered than counted as a network failure.
-        try{img=new Image();}catch(_){return done(true);}
-        const finish=answer=>{clearTimeout(timer);img.onload=img.onerror=null;done(answer);};
-        const timer=setTimeout(()=>finish(false),5000);
-        img.onload=()=>finish(true);img.onerror=()=>finish(false);
+        try{img=new Image();}catch(_){return done("ok");}
+        let settled=false;
+        const finish=answer=>{if(settled)return;settled=true;clearTimeout(slow);clearTimeout(timer);img.onload=img.onerror=null;done(answer);};
+        // One small tile taking four seconds is a weak link; twenty is no link at all.
+        const slow=setTimeout(()=>finish("slow"),4000),timer=setTimeout(()=>finish("error"),20000);
+        img.onload=()=>finish("ok");img.onerror=()=>finish("error");
         img.src="https://tile.openstreetmap.org/0/0/0.png?connectivity="+Date.now();
       });
     }
@@ -1306,12 +1541,13 @@
     // Leaving a field is not a request for a modal. The digits are still taken in
     // and remembered; the chooser waits until Convert actually asks for a place.
     let quietChooser=false;
-    function openCountryChooser(text,i){
+    function openCountryChooser(text,i,{insert=false,names=[]}={}){
       state.points=[];renderTo();
       const preset=COUNTRY_PRESETS.includes(state.from)?state.from:null;
       const system=state.pendingGrid?.system||(state.explicitInput&&preset?preset:undefined);
       state.pendingGrid={text,i,system};state.aoConfirmed=false;
-      text.trim().split(/\r?\n/).forEach((line,k)=>{const g=splitGrid(line);if(g.error)return;while(state.rows.length<=i+k)state.rows.push(["","",""]);state.rows[i+k]=[g.e,g.n,state.rows[i+k][2]||""];});
+      const grids=text.trim().split(/\r?\n/).map((line,k)=>({g:splitGrid(line),name:names[k]||""})).filter(({g})=>!g.error);
+      if(grids.length)writeRows(i,grids.map(({g,name})=>({cells:[g.e,g.n],name})),insert);
       if(state.militaryEnabled&&["wgs84","auto"].includes(state.from)){state.from="mgrs";$("#fromSys").value="mgrs";pickOutput(state.from,[]);}
       renderFrom();save();
       const g=splitGrid(text.trim().split(/\r?\n/)[0]);
@@ -1535,7 +1771,16 @@
       const overlay=$("#boundaryOverlay"),focus=document.activeElement;
       const others=[...document.querySelectorAll("body > header,body > main,.overlay.open")].filter(el=>el!==overlay).map(el=>[el,el.inert]);
       for(const [el] of others)el.inert=true;
-      $("#boundaryDetail").textContent=changes.map(c=>PRESETS[c.id].name+": "+c.keys.join(" → ")).join(". ")+". These points cannot share one omitted prefix. Continue to keep the correct full prefix or leading digits for every point.";
+      // A one-square grid (Singapore, Brunei) is told as that square and the points outside
+      // it; grids with areas list the areas the points span.
+      const fixed=changes.filter(c=>PRESETS[c.id].lead),spanning=changes.filter(c=>!PRESETS[c.id].lead);
+      const square=key=>String(key).replace("/"," ");
+      const parts=fixed.map(c=>{
+        const home=PRESETS[c.id].lead.join("/"),away=c.keys.filter(k=>k!==home);
+        return PRESETS[c.id].name+": "+(away.length===1?"a point falls":"points fall")+" in square "+away.map(square).join(", ")+", outside square "+square(home)+" where short references apply. Continue to write every point as a full reference, with its square's digits in front.";
+      });
+      if(spanning.length)parts.push(spanning.map(c=>PRESETS[c.id].name+": "+c.keys.join(" → ")).join(". ")+". These points cannot share one omitted prefix. Continue to keep the correct full prefix or leading digits for every point.");
+      $("#boundaryDetail").textContent=parts.join(" ");
       overlay.classList.add("open");$("#boundaryContinue").focus();
       boundaryReply=ok=>{overlay.classList.remove("open");for(const [el,inert] of others)el.inert=inert;boundaryReply=null;focus?.focus();reply(ok);};
     }
@@ -1564,7 +1809,10 @@
       return "";
     }
     function boundaryMessage(points,id=state.to){
-      return gridBoundary(points,id)?"Points cross a grid boundary. Full prefixes have been retained.":"";
+      if(!gridBoundary(points,id))return "";
+      // A one-square grid has no boundary to cross, only a square to leave.
+      if(PRESETS[id].lead)return PRESETS[id].name.replace(" MGR","")+": "+(points.length===1?"this point is":"some points are")+" outside square "+PRESETS[id].lead.join(" ")+", so full references are shown.";
+      return "Points cross a grid boundary. Full prefixes have been retained.";
     }
     // Output settings as shown: points across areas are written in full, without
     // changing the omission the reader chose.
@@ -1575,32 +1823,60 @@
     function fullMGR(text){
       return /^\s*\d{1,2}\s*[C-HJ-NP-X]\s*[A-HJ-NP-Z]{2}/i.test(text)&&!parseProjected(text);
     }
+    // A label beside a coordinate is its name: "HQ 1.35, 103.82", or the name column of a
+    // spreadsheet or of this app's own Copy. Words that belong to a coordinate are not names.
+    const COORD_WORD=/^(?:lat(?:itude)?|lng|lon(?:g(?:itude)?)?|[NSEW]|utm|band)[:=]?$/i;
+    const nameLike=token=>/[A-Za-zÀ-￿]/.test(token)&&!COORD_WORD.test(token)&&!/^https?:/i.test(token);
+    // Each line becomes {text,name}. A line that yields more than one point cannot say
+    // which point a label belongs to, so it only splits cleanly or not at all.
     function splitBatch(text){
       const valid=value=>{
         if(/^https?:\/\//i.test(value))return !/\s/.test(value);
         const projected=parseProjected(value);if(projected)return !projected.error;
         if(fullMGR(value)){try{return !GlobalGrid.parse(value).error;}catch(_){return false;}}
+        // Square letters and digits under a zone-wide area are one MGRS reference.
+        if(state.from==="mgrs"&&/^[A-HJ-NP-Z]{2}\s*\d/i.test(value)){try{return !GlobalGrid.parse(value,state.settings.mgrs.ao).error;}catch(_){return false;}}
         const grid=splitGrid(value);if(!grid.error&&grid.d>=3)return true;
         return !parseLatLon(value,state.settings.wgs84.order).error;
       };
-      return normalizeMapText(text).trim().split(/\r\n?|\n/).filter(l=>l.trim()).flatMap(line=>{
+      const digits=t=>/^\d+$/.test(t);
+      const lines=normalizeMapText(text).trim().split(/\r\n?|\n/).filter(l=>l.trim())
+        // Dashes, dots or underscores between MGRS parts: 48N-UG-6872-4924.
+        .map(l=>/^\s*\d{1,2}\s*[C-HJ-NP-X][\s._-]*[A-HJ-NP-Z]{2}[\s._-]*\d/i.test(l)?l.replace(/[._-]/g," "):l);
+      // A spreadsheet's column headings are not a coordinate.
+      if(lines.length>1&&!/\d/.test(lines[0])&&/\b(?:lat|lon|lng|long|latitude|longitude|easting|northing|name|mgrs|grid|coordinates?)\b/i.test(lines[0]))lines.shift();
+      return lines.flatMap(line=>{
+        // 12 34, split by a space alone, is a short grid reference; 12, 34 stays a lat/long.
+        if(/^\s*(\d{1,2})[ \t]+(\d{1,2})\s*$/.test(line)&&!splitGrid(line).error)return [{text:line.trim(),name:"",grid:true}];
+        // Spreadsheet and Copy columns: a first or last column with words is the name.
+        const fields=line.split("\t").map(f=>f.trim()).filter(Boolean);
+        if(fields.length>1)for(const [coordinate,label] of [[fields.slice(0,-1).join(" "),fields.at(-1)],[fields.slice(1).join(" "),fields[0]]]){
+          if(/[A-Za-z\u00C0-\uFFFF]/.test(label)&&!/^https?:/i.test(label)&&valid(coordinate))return [{text:coordinate,name:label}];
+        }
         const tokens=line.replace(/[,;|](?=https?:\/\/)/gi," ").match(/https?:\/\/[^\s<>"\]]+|[^\s,;|<>]+/gi)||[];
-        const result=[];
+        const result=[],name=[];let previousName=false;
         for(let start=0;start<tokens.length;){
-          if(/^https?:/i.test(tokens[start])){result.push(tokens[start].replace(/[;,]+$/,""));start++;continue;}
+          if(/^https?:/i.test(tokens[start])){result.push(tokens[start].replace(/[;,]+$/,""));start++;previousName=false;continue;}
           let end=0;
           for(let k=Math.min(tokens.length,start+12);k>start;k--){
             if(tokens.slice(start,k).some(t=>/^https?:/i.test(t)))continue;
+            // Two numbers side by side are one easting and northing, never two references.
+            if(k===start+1&&digits(tokens[start])&&digits(tokens[start+1]??""))continue;
             if(valid(tokens.slice(start,k).join(" "))){end=k;break;}
           }
-          if(!end)return [line.trim()];
-          result.push(tokens.slice(start,end).join(" "));start=end;
+          if(!end){
+            if(nameLike(tokens[start])||previousName&&!digits(tokens[start+1]??"x")){name.push(tokens[start]);previousName=true;start++;continue;}
+            return [{text:line.trim(),name:""}];
+          }
+          result.push(tokens.slice(start,end).join(" "));start=end;previousName=false;
         }
-        return result;
+        if(name.length&&result.length!==1)return [{text:line.trim(),name:""}];
+        const label=name.join(" ").replace(/^[\s(["'*:–-]+|[\s)\]"'*:–-]+$/g,"");
+        return result.map(text=>({text,name:label}));
       });
     }
     let resolving=0;
-    async function resolveShortLink(link,i,rowText){
+    async function resolveShortLink(link,i,rowText,insert){
       const token=++resolving, cell=$("#fromRows").children[i]?.querySelector(".a");
       detect("Following the link…","warn");
       if(cell)cell.classList.add("busy");
@@ -1610,7 +1886,7 @@
         if(token!==resolving)return;
         if(!data.url)throw Error(data.error||"That link could not be followed.");
         // Hand the address it landed on back to the ordinary paste path.
-        onPaste({clipboardData:{getData:()=>rowText.replace(link,data.url)},preventDefault(){}},i);
+        onPaste({clipboardData:{getData:()=>rowText.replace(link,data.url)},preventDefault(){}},i,{insert});
       }catch(error){
         if(token!==resolving)return;
         detect("");
@@ -1619,55 +1895,110 @@
         if(token===resolving){const c=$("#fromRows").children[i]?.querySelector(".a");if(c)c.classList.remove("busy");}
       }
     }
-    function onPaste(e,i){
+    // A full MGRS reference followed by short digits: the digits share its prefix, as a
+    // list of references written under one heading does.
+    function inheritPrefix(lines){
+      let prefix=null;
+      return lines.map(line=>{
+        if(fullMGR(line.text)){prefix=line.text.match(/^\s*0*(\d{1,2})\s*([C-HJ-NP-X])\s*([A-HJ-NP-Z]{2})/i)?.slice(1).join("").toUpperCase()||null;return line;}
+        const g=prefix&&/^[\d\s]+$/.test(line.text)?splitGrid(line.text):null;
+        return g&&!g.error?{...line,text:prefix+" "+g.e+" "+g.n}:line;
+      });
+    }
+    // Two numbers too long to be a short reference: a full country-grid reference, or
+    // projected meters that lost their zone. Only a grid that puts them inside its
+    // country may claim them.
+    function countryPair(text){
+      const m=text.trim().match(/^(\d+)\s+(\d+)$/);
+      if(!m||m[1].length===m[2].length&&m[1].length<=5)return null;
+      const ids=COUNTRY_PRESETS.includes(state.from)?[state.from]:COUNTRY_PRESETS.filter(presetEnabled);
+      const fits=ids.filter(id=>{
+        try{const r=parseCells(id,m[1],m[2],state.settings);return !r.error&&Number.isFinite(r.lat)&&presetContains(id,r.lat,r.lon);}catch(_){return false;}
+      });
+      const likely=fits.filter(id=>{const r=parseCells(id,m[1],m[2],state.settings);return presetLikely(id,r.lat,r.lon);});
+      const pick=likely.length===1?likely[0]:fits.length===1?fits[0]:null;
+      if(pick)return {id:pick,cells:[m[1],m[2]]};
+      if(fits.length)return {error:"These digits fit more than one grid ("+fits.map(id=>PRESETS[id].name.replace(" MGR","")).join(", ")+"). Choose the input system first, then paste them again."};
+      return {error:"These look like projected meters. UTM needs its zone prefix, e.g. 48N 366000 149000."};
+    }
+    // Every paste is two edits a reader may want back: the text as it landed, and the
+    // table before it. Undo steps through both.
+    function onPaste(e,i,opts={}){
       const text=normalizeMapText((e.clipboardData||window.clipboardData).getData("text"));
       if(!text)return;
+      // A real paste lands in one row and adds rows for the rest; a re-read of rows the
+      // table already holds replaces them where they are.
+      const insert=opts.insert??!!e.target;
       readRows();
+      const before=snapshot();
       // A few digits pasted into a grid field are just typing: leave them where they land.
       if(e.target&&state.from!=="auto"&&PRESETS[state.from].kind!=="latlong"&&/^\d[\d ]*$/.test(text.trim())){
         const g=splitGrid(text.trim());if(g.error||g.d<3)return;
       }
-      const lines=splitBatch(text);
-      const short=lines.length&&lines.every(line=>{const g=splitGrid(line);return !g.error&&g.d>=3;});
-      // Every automatic split can be undone, back to the text as it was entered.
+      const lines=inheritPrefix(splitBatch(text));
+      const multiline=lines.length>1;
       const rememberRaw=()=>{
+        if(e.target)rememberSnapshot(before);
+        // A single-line field cannot hold several lines, so only the table before survives.
+        if(e.target&&multiline&&state.from!=="auto")return;
         const r=state.rows[i]||["","",""];
         const raw=[...state.rows];raw[i]=[text.trim(),"",r[2]||"",...r.slice(3)];
         rememberSnapshot(snapshot({rows:raw,from:state.from}));
       };
+      // Two numbers split by a space are one easting and northing, of any width.
+      const short=lines.length&&lines.every(({text:line,grid})=>{const g=splitGrid(line);return !g.error&&(g.d>=3||grid);});
       if(short)rememberRaw();
-      const full=lines.length&&lines.every(line=>fullMGR(line)||(state.from==="mgrs"&&/^\s*[A-HJ-NP-Z]{2}\s*\d/i.test(line)));
-      const projected=lines.map(line=>parseProjected(line));
+      const full=lines.length&&lines.every(({text:line})=>fullMGR(line)||(state.from==="mgrs"&&/^\s*[A-HJ-NP-Z]{2}\s*\d/i.test(line)));
+      const projected=lines.map(({text:line})=>parseProjected(line));
+      const pairs=short||full?[]:lines.map(({text:line})=>countryPair(line));
+      const paired=pairs.length&&pairs.every(p=>p&&!p.error)&&new Set(pairs.map(p=>p.id)).size===1?pairs[0].id:null;
       if(short){
         e.preventDefault();
         if(PRESETS[state.from].lead)state.aoConfirmed=true;
         // Auto-detect has no reference area, even if a previous conversion confirmed one.
         if(state.from==="auto"||!state.aoConfirmed||state.from==="wgs84"||(state.from==="mgrs"&&!state.settings.mgrs.ao)){
-          openCountryChooser(lines.join("\n"),i);return;
+          openCountryChooser(lines.map(l=>l.text).join("\n"),i,{insert,names:lines.map(l=>l.name)});return;
         }
       }
-      let target=full?"mgrs":short?state.from:projected[0]?.target||"wgs84";
-      const parsed=lines.map((line,k)=>{
+      // Lines in different systems (a link, then MGRS, then UTM) still make one table:
+      // each is read in its own system and written as latitude/longitude.
+      const kinds=new Set(lines.map(({text:line},k)=>fullMGR(line)?"mgrs":projected[k]&&!projected[k].error?"utm":"latlon"));
+      const mixed=!short&&!full&&!paired&&kinds.size>1;
+      let target=full?"mgrs":short?state.from:paired||(mixed?"wgs84":projected[0]?.target||"wgs84");
+      const parsed=lines.map(({text:line},k)=>{
         if(full){try{const r=GlobalGrid.parse(line,state.settings.mgrs.ao);if(r.error)return r;const q=GlobalGrid.parts(r.lat,r.lon,r.digits);return {cells:[q.prefix+" "+q.e,q.n],point:r};}catch(error){return {error:error.message};}}
         if(short){const g=splitGrid(line);return {cells:[g.e,g.n]};}
+        if(paired)return {cells:pairs[k].cells};
+        if(mixed&&fullMGR(line)){try{const r=GlobalGrid.parse(line);if(r.error)return r;return {cells:llCells(r.lat,r.lon),point:r};}catch(error){return {error:error.message};}}
+        if(mixed&&projected[k]&&!projected[k].error)return {cells:llCells(projected[k].point.lat,projected[k].point.lon),point:projected[k].point};
         if(projected[k])return projected[k].target&&projected[k].target!==target?{error:"Paste one coordinate format at a time."}:projected[k];
         if(projected.some(Boolean))return {error:"Paste one coordinate format at a time."};
-        if(/^[-+]?\d{6,}(?:\.\d+)?[\s,;]+[-+]?\d+(?:\.\d+)?$/.test(line))return {error:"These look like projected meters. UTM needs its zone prefix."};
+        if(pairs[k]?.error)return pairs[k];
+        if(/^[-+]?\d{6,}(?:\.\d+)?[\s,;]+[-+]?\d+(?:\.\d+)?$/.test(line))return {error:"These look like projected meters. UTM needs its zone prefix, e.g. 48N 366000 149000."};
         const p=parseLatLon(line,state.settings.wgs84.order);
+        if(p.error&&/^\d+$/.test(line.trim()))return {error:"single run"};
         return p.error?p:{cells:llCells(p.lat,p.lon),point:p};
       });
       if(parsed.some(p=>p.error)){
-        e.preventDefault();state.rows[i]=[text,"",state.rows[i]?.[2]||""];state.points=[];renderFrom();renderTo();
-        const failed=parsed.find(p=>p.error);
-        if(failed.shortLink&&failed.link&&LINK_RESOLVER&&typeof fetch==="function"){resolveShortLink(failed.link,i,text);save();return;}
-        setBottomError(failed.error);save();return;
+        e.preventDefault();
+        const k=parsed.findIndex(p=>p.error),failed=parsed[k];
+        // A single-line field shows what failed; several lines stay out of it rather than
+        // run together, and the message names the line.
+        if(!(e.target&&multiline&&state.from!=="auto")){
+          if(e.target)rememberSnapshot(before);
+          state.rows[i]=[text,"",state.rows[i]?.[2]||""];state.points=[];renderFrom();renderTo();
+        }
+        if(failed.shortLink&&failed.link&&LINK_RESOLVER&&typeof fetch==="function"){resolveShortLink(failed.link,i,text,insert);save();return;}
+        setBottomError(explain(failed.error,multiline?k+1:null,multiline?"Line":null));save();return;
       }
       if(!parsed.length)return;
       e.preventDefault();
-      if(target!==state.from&&state.rows.some((r,k)=>(k<i||k>=i+parsed.length)&&(r[0].trim()||r[1].trim()))){
+      const occupied=(r,k)=>(insert?k!==i:(k<i||k>=i+parsed.length))&&(r[0].trim()||r[1].trim());
+      if(target!==state.from&&state.rows.some(occupied)){
         setBottomError("These rows use a different input system. Clear them before pasting this format.");return;
       }
       if(!short)rememberRaw();
+      if(target!==state.from&&COUNTRY_PRESETS.includes(target))pickOutput(target,[]);
       state.from=target;$("#fromSys").value=target;
       delete state.pendingGrid;
       const points=parsed.map(p=>p.point).filter(Boolean);
@@ -1677,7 +2008,7 @@
         state.to=target==="mgrs"?"wgs84":enabledGrid(points)||(presetEnabled("mgrs")?"mgrs":"wgs84");
         $("#toSys").value=state.to;
       }
-      parsed.forEach((r,k)=>{while(state.rows.length<=i+k)state.rows.push(["","",""]);state.rows[i+k]=[...r.cells,state.rows[i+k][2]||""];});
+      writeRows(i,parsed.map((r,k)=>({cells:r.cells,name:lines[k].name})),insert);
       if(points.length){
         autoArea(points);state.aoConfirmed=true;
         // Point 1 sets the input's area unless the area in force already holds it.
@@ -1687,6 +2018,17 @@
       const pasted=[...new Set(parsed.map(r=>r.point&&r.point.warning).filter(Boolean))];
       if(pasted.length){const d=$("#detect");d.textContent=[d.textContent,...pasted].filter(Boolean).join(" ");d.className="detect warn";}
       save();
+    }
+    // A paste fills the row it landed in and adds rows beneath for the rest, so nothing
+    // already in the table is overwritten. That row keeps its name; new rows take any
+    // name the pasted text carried. A re-read writes back over the rows it came from.
+    function writeRows(i,rows,insert){
+      if(insert){
+        const kept=state.rows[i]||["","",""];
+        state.rows.splice(i,1,[...rows[0].cells,kept[2]||rows[0].name||""],...rows.slice(1).map(r=>[...r.cells,r.name||""]));
+        return;
+      }
+      rows.forEach((r,k)=>{while(state.rows.length<=i+k)state.rows.push(["","",""]);state.rows[i+k]=[...r.cells,state.rows[i+k][2]||r.name||""];});
     }
     function flashRows(start,count){
       const rows=$("#fromRows").children;
@@ -1731,14 +2073,26 @@
     function updateRegionChips(){ renderInputArea(); renderOutputArea(); }
 
     /* ---- convert ---- */
+    let rereading=false;
     function convert(){
       state.points=[];renderTo();
       if(pairInvalid()){ updatePairState(); return; }
       setBottomError("");
       $("#fromRows").querySelectorAll(".prefix").forEach(input=>{input.value=input.value.toUpperCase().replace(/^(\d{1,2}[C-HJ-NP-X])\s*([A-HJ-NP-Z]{2})$/,"$1 $2");});
       readRows();
-      if(GLOBAL_FORMATS.includes(state.from)&&state.rows.some((r,i)=>$("#fromRows").children[i].querySelector(".a").value.trim()&&!r[1].trim()&&(/https?:\/\//i.test(r[0])||fullMGR(r[0])||parseProjected(r[0])))){
-        onPaste({clipboardData:{getData:()=>state.rows.map(r=>[r[0],r[1]].filter(Boolean).join(" ")).join("\n")},preventDefault(){}},0);return;
+      // Whatever pasting reads, typing reads too: a link, a full reference or a lat/long
+      // typed into the first field of a grid row is taken in as if it had been pasted.
+      // Digits alone are left to the regrouping below, and never re-read as a coarser grid.
+      const typedWhole=(r,i)=>{
+        const typed=$("#fromRows").children[i].querySelector(".a").value.trim();
+        if(!typed||r[1].trim()||/^[\d\s,;/]+$/.test(typed))return false;
+        return /https?:\/\//i.test(r[0])||fullMGR(r[0])||!!parseProjected(r[0])||!parseLatLon(r[0],state.settings.wgs84.order).error;
+      };
+      if(!rereading&&PRESETS[state.from].kind!=="latlong"&&state.from!=="auto"&&state.rows.some(typedWhole)){
+        // A re-read converts once more on success; that pass must not re-read again.
+        rereading=true;
+        try{onPaste({clipboardData:{getData:()=>state.rows.map(r=>[r[0],r[1]].filter(Boolean).join(" ")).join("\n")},preventDefault(){}},0);}finally{rereading=false;}
+        return;
       }
       if(state.from==="auto"||$("#fromRows").closest(".side").classList.contains("flexible-input")){
         const rows=state.rows.filter(r=>r[0].trim()||r[1].trim());
@@ -1752,6 +2106,9 @@
       if(PRESETS[state.from]&&PRESETS[state.from].kind!=="latlong"){
         let regrouped=false,runError="",runRow=-1;const before=snapshot();
         state.rows.forEach((r,i)=>{
+          // 1234 5678 typed into one field is split as a paste would split it.
+          const typedPair=!r[1].trim()&&r[0].trim().match(/^(\d+)\s*[\s,;/]\s*(\d+)$/);
+          if(typedPair){state.rows[i]=[typedPair[1],typedPair[2],r[2],...r.slice(3)];regrouped=true;return;}
           if(r[1].trim()||!/^\d+$/.test(r[0].trim()))return;
           const g=splitGrid(r[0].trim());
           // An odd run cannot be halved, and saying so beats complaining that a
@@ -1764,7 +2121,7 @@
         if(runError&&!regrouped){
           const cell=$("#fromRows").children[runRow]?.querySelector(".a");
           if(cell)cell.classList.add("bad");
-          detect("");setBottomError(runError.charAt(0).toUpperCase()+runError.slice(1)+". Enter a matching easting and northing, e.g. 1234 5678.");
+          detect("");setBottomError(explain(runError,state.rows.length>1?runRow+1:null));
           return;
         }
       }
@@ -1785,7 +2142,7 @@
         });
         if(unresolved>=0){openCountryChooser(state.rows[unresolved][0]+" "+state.rows[unresolved][1],unresolved);return;}
       }
-      const pts=[]; let bad=false, needPick=null, firstError="", ambiguous=null; const detectedOrders=new Set(), parseNotes=new Set();
+      const pts=[]; let bad=false, needPick=null, firstError="", errorRow=0, ambiguous=null; const detectedOrders=new Set(), parseNotes=new Set();
       const rowsEl=$("#fromRows").children;
       state.rows.forEach((r,i)=>{
         const rowEl=rowsEl[i]; const A=rowEl.querySelector(".a"), B=rowEl.querySelector(".b");
@@ -1793,16 +2150,23 @@
         if(!A.value.trim() && !B.value.trim() && !r[2].trim()&&!isWholeSquareRow(i)) return; // an inherited prefix alone is not a point
         const res=parseRow(r);
         if(res.error==="pick-square"){ if(!needPick) needPick=res.pick||{e:r[0],n:r[1]}; return; }
-        if(res.error){ if(res.empty && !r[2].trim()) return; bad=true;firstError=firstError||res.error; if(res.badA!==false)A.classList.add("bad"); if(res.badB!==false)B.classList.add("bad"); if(res.badSquare)rowEl.querySelector(".area-pill")?.classList.add("bad"); return; }
-        if(!Number.isFinite(res.lat)||!Number.isFinite(res.lon)||Math.abs(res.lat)>90||Math.abs(res.lon)>180){bad=true;firstError="Coordinate out of range.";return;}
+        if(res.error){ if(res.empty && !r[2].trim()) return; bad=true;if(!firstError){firstError=res.empty?"Enter both an easting and a northing.":res.error;errorRow=i+1;} if(res.badA!==false)A.classList.add("bad"); if(res.badB!==false)B.classList.add("bad"); if(res.badSquare)rowEl.querySelector(".area-pill")?.classList.add("bad"); return; }
+        if(!Number.isFinite(res.lat)||!Number.isFinite(res.lon)||Math.abs(res.lat)>90||Math.abs(res.lon)>180){bad=true;if(!firstError){firstError="out of range";errorRow=i+1;}return;}
         if(state.from==="wgs84"&&res.detectedOrder) detectedOrders.add(res.detectedOrder);
         if(res.ambiguous&&!ambiguous)ambiguous=res.ambiguous;
         if(res.warning)parseNotes.add(res.warning);
         pts.push({lat:res.lat,lon:res.lon,name:r[2].trim(),digits:res.digits,cellSize:res.cellSize});
       });
       if(needPick){ showSquarePicker(state.from, needPick); return; }
-      if(bad){ detect("");setBottomError(firstError+" Fix the highlighted fields."); return; }
+      if(bad){ detect("");setBottomError(explain(firstError,state.rows.length>1?errorRow:null)+" Fix the highlighted fields."); return; }
       if(!pts.length){ detect("Enter at least one coordinate.","err"); return; }
+      // MGRS and UTM stop at 80° S and 84° N; the poles use a different grid (UPS).
+      const polar=GLOBAL_FORMATS.includes(state.to)?pts.map((p,k)=>p.lat<-80||p.lat>84?k+1:0).filter(Boolean):[];
+      if(polar.length){
+        state.points=[];renderTo();detect("");
+        setBottomError((polar.length===1?"Point "+polar[0]+" is":"Points "+polar.join(", ")+" are")+" beyond MGRS and UTM coverage (80° S to 84° N). The polar regions use a separate grid (UPS) that this converter does not write. Choose Coordinates as the output.");
+        save();return;
+      }
       // Follow the ground: an output country grid the points do not sit in is
       // corrected to the one that holds them, and coordinates in a country that
       // has a grid are offered it. Pasting has always done this; typing the same
@@ -1857,7 +2221,9 @@
         });
       }
       if(pts.length){
-        const changes=[...new Set([state.from,state.to])].filter(id=>id!=="auto").map(id=>gridBoundary(pts,id)).filter(Boolean);
+        let changes=[];
+        try{changes=[...new Set([state.from,state.to])].filter(id=>id!=="auto").map(id=>gridBoundary(pts,id)).filter(Boolean);}
+        catch(error){state.points=[];pts=[];setBottomError(error.message);}
         const pending=changes.filter(c=>!boundaryAccepted.has(c.key));
         if(pending.length&&!boundaryReply){
           const savedPoints=pts;state.points=[];pts=[];
@@ -1954,7 +2320,7 @@
     const history={past:[],future:[]};
     const HISTORY_KEYS=["rows","from","to","points","settings","lastGridFrom","militaryEnabled","disabledPresets","explicitInput","explicitOutput"];
     function snapshot(overrides={}){const kept={};for(const key of HISTORY_KEYS)kept[key]=key in overrides?overrides[key]:state[key];return JSON.stringify(kept);}
-    function rememberSnapshot(json){history.past.push(json);if(history.past.length>50)history.past.shift();history.future.length=0;updateHistoryButtons();}
+    function rememberSnapshot(json){if(history.past.at(-1)===json)return;history.past.push(json);if(history.past.length>50)history.past.shift();history.future.length=0;updateHistoryButtons();}
     function remember(){rememberSnapshot(snapshot());}
     function updateHistoryButtons(){$("#undoBtn").disabled=!history.past.length;$("#redoBtn").disabled=!history.future.length;}
     function restore(json){
@@ -2039,10 +2405,46 @@
     $("#convertBtn").addEventListener("click",convert);
 
     /* ---- exports ---- */
-    $("#mapsBtn").addEventListener("click",()=>{ if(!state.points||!state.points.length)return; window.open(routeUrl(state.points),"_blank","noopener"); });
+    // Google Maps route links take a start, an end and up to 3 stops between in a mobile
+    // browser, or 9 elsewhere. Longer routes open in parts, each starting where the last
+    // ended, one tap per part so no browser treats them as pop-ups.
+    const mobileBrowser=()=>!!navigator.userAgentData?.mobile||/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Macintosh/.test(navigator.userAgent));
+    const routeLimit=()=>(mobileBrowser()?3:9)+2;
+    function routeParts(count,limit){
+      const parts=[];
+      for(let start=0;start<count-1;){const end=Math.min(count,start+limit);parts.push([start,end]);start=end-1;}
+      return parts;
+    }
+    function closeMaps(){$("#mapsOverlay").classList.remove("open");$("#mapsBtn").focus();}
+    $("#mapsBtn").addEventListener("click",()=>{
+      const pts=state.points||[];if(!pts.length)return;
+      const limit=routeLimit();
+      if(pts.length<=limit){window.open(routeUrl(pts),"_blank","noopener");return;}
+      $("#mapsNote").textContent="Google Maps links hold up to "+limit+" points on this device, and this list has "+pts.length+". Open the route in parts; each part starts where the last one ended.";
+      const holder=$("#mapsParts");holder.replaceChildren();
+      for(const [start,end] of routeParts(pts.length,limit)){
+        const button=document.createElement("button");button.type="button";
+        button.textContent="Points "+(start+1)+"–"+end;
+        button.addEventListener("click",()=>{window.open(routeUrl(pts.slice(start,end)),"_blank","noopener");button.classList.add("visited");});
+        holder.append(button);
+      }
+      $("#mapsOverlay").classList.add("open");holder.firstChild.focus();
+    });
+    $("#mapsCancel").addEventListener("click",closeMaps);
+    $("#mapsGpx").addEventListener("click",()=>{closeMaps();openGpx();});
+    $("#mapsOverlay").addEventListener("keydown",e=>{
+      if(e.key==="Escape"){e.preventDefault();closeMaps();}
+      if(e.key==="Tab"){
+        const nodes=[...$("#mapsOverlay").querySelectorAll("button,a[href]")],first=nodes[0],last=nodes.at(-1);
+        if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+        else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+      }
+    });
     $("#copyBtn").addEventListener("click",()=>{
       if(!state.points||!state.points.length)return;
-      const shown=shownSettings(state.points),text=state.points.map(p=>{ const [a,b]=formatPoint(p.lat,p.lon,state.to,shown,p.digits); return p.name?`${a}  ${b}  ${p.name}`:`${a}  ${b}`; }).join("\n");
+      // Tabs put reference and name in their own spreadsheet columns, and a paste back in
+      // reads the name column as the point's name.
+      const shown=shownSettings(state.points),text=state.points.map(p=>{ const [a,b]=formatPoint(p.lat,p.lon,state.to,shown,p.digits); return [a,b,p.name].filter(Boolean).join("\t"); }).join("\n");
       navigator.clipboard.writeText(text).then(()=>toast("Copied "+state.points.length+" points")).catch(()=>toast("Copy failed",true));
     });
 
@@ -2123,6 +2525,7 @@
         } else if(p.kind==="grid"||p.shortGrid){
           // Reference areas live in the converter: the input chooses one, the output
           // takes point 1's. Settings only shapes how references are written.
+          if(id==="brunei")h+=`<div class="note">Short references are read in square 44 14. A point outside it is written in full, with its square's digits in front (e.g. 436925 140527 in square 43 14), and can be entered the same way.</div>`;
           if(p.large)h+=`<div class="note">Reference areas are set in the converter. Your first point sets them; change an input's area from its reference area chip or a row's ⋯ button.</div>`;
           const digits=s.sgDigits??4, meters=10**(5-digits), precision=meters>=1000?meters/1000+" km":meters+" meters";
           h+=`<section class="settings-section"><h4 class="settings-subhead">Output format</h4>`;

@@ -89,7 +89,7 @@ test('blank MGRS also auto-detects UTM; spaced MGRS gets a dedicated prefix fiel
   assert.match(a.$('#fromRows .prefix').value,/51R TH/);assert.equal(a.$('#fromRows .a').value,'1234');
   a.dom.window.close();
 });
-test('unlabelled projected meters require a zone; removed projection is rejected',()=>{
+test('unlabeled projected meters require a zone; removed projection is rejected',()=>{
   const raw='11553992.183085 151736.075979';const a=app();a.paste(raw);
   assert.equal(a.$('#copyBtn').disabled,true);assert.match(a.$('#badPair').textContent,/zone prefix/);assert.equal(a.$('#fromRows .a').value,raw);
   a.paste('EPSG:3857 '+raw);assert.equal(a.$('#copyBtn').disabled,true);assert.match(a.$('#badPair').textContent,/not supported/);
@@ -1366,6 +1366,7 @@ test('leaving a field takes the digits in without throwing a chooser in the way'
   await new Promise(r=>setTimeout(r,20));
   assert.equal(a.w.mapOptions,before,'blur must not open the chooser over the page');
   assert.match(a.$('#detect').textContent,/Press Convert/,'it should say what to do instead');
+  assert.equal(a.$('#fromRows .a').value,'74353727','a run that may be half typed is left as typed');
   // Convert is the moment the question is actually asked.
   a.$('#convertBtn').click();
   assert.notEqual(a.w.mapOptions,before,'Convert should open the chooser');
@@ -1849,10 +1850,10 @@ test('only actual active input setting changes require conversion again',async()
 });
 
 /* ---- v2 reference areas ---- */
-test('the app reports version 2.2',()=>{
+test('the app reports version 2.3',()=>{
   const a=app();
-  try{assert.equal(a.$('#appVersion').textContent,'v2.2.0');assert.match(read('version.js'),/APP_VERSION = "2\.2\.0"/);
-    const logo=a.$('header h1 .logo');assert.ok(logo,'the header shows the app icon');assert.equal(logo.getAttribute('src'),'icons/icon-192.png');assert.equal(logo.getAttribute('alt'),'');}
+  try{assert.equal(a.$('#appVersion').textContent,'v2.3.0');assert.match(read('version.js'),/APP_VERSION = "2\.3\.0"/);
+    const logo=a.$('header h1 .logo');assert.ok(logo,'the header shows the app icon');assert.equal(logo.getAttribute('src'),'icons/logo-64.png');assert.equal(logo.getAttribute('alt'),'');}
   finally{a.dom.window.close();}
 });
 test('the output reference area follows point 1 and cannot be changed',()=>{
@@ -2146,4 +2147,114 @@ test('saved omission switched off by an old boundary notice is restored once',()
     const s=a.state();
     assert.equal(s.settings.thailand.sgOmit,true);assert.equal(s.settings.mgrs.sgOmit,false);assert.equal(s.omitVersion,2);
   }finally{a.dom.window.close();}
+});
+// ---- 2.3: robust formats, Brunei full references, paste/undo/reorder, maps limits ----
+test('coordinates are read however the copy mangled their marks and separators',()=>{
+  const c=core();
+  const near=(r,lat,lon,t)=>{assert.ok(!r.error,t+': '+r.error);assert.ok(Math.abs(r.lat-lat)<2e-4&&Math.abs(r.lon-lon)<2e-4,t+' -> '+r.lat+','+r.lon);};
+  for(const t of ['1 21 07.6 N 103 49 11.3 E','N 01 21.127 E 103 49.188','1°21’07.6”N 103°49’11.3”E','1˚21\'07.6"N 103˚49\'11.3"E','1Â°21â€²07.6â€³N 103Â°49â€²11.3â€³E',
+    '1&deg;21&prime;07.6&Prime;N 103&deg;49&prime;11.3&Prime;E','1d21m07.6sN 103d49m11.3sE','1:21:07.6N 103:49:11.3E','01°21\'07.6"N103°49\'11.3"E','1,3521 103,8198','1,3521; 103,8198',
+    '１.３５２１, １０３.８１９８','Lat: 1.3521 Long: 103.8198','Long: 103.8198 Lat: 1.3521','{"lat": 1.3521, "lng": 103.8198}','POINT(103.8198 1.3521)','1.3521N103.8198E','(1.3521, 103.8198)','1 21 07.6 103 49 11.3'])
+    near(vm.runInContext('parseLatLon('+JSON.stringify(t)+',"latlon")',c),1.3521,103.8198,t);
+  near(vm.runInContext('parseLatLon("S 22 39 00 E 150 21 00","latlon")',c),-22.65,150.35,'southern DMS');
+  for(const t of ['1.35, 103.82, 50','1 61 00 N 103 00 00 E','91, 103.8','HQ 1.35, 103.82'])assert.ok(vm.runInContext('parseLatLon('+JSON.stringify(t)+',"latlon")',c).error,t+' should be refused');
+});
+test('pasting DMS without symbols makes one point, not three',()=>{
+  const a=app();a.paste('1 21 07.6 N 103 49 11.3 E');
+  assert.equal(a.state().points.length,1);assert.ok(Math.abs(a.state().points[0].lat-1.35211)<1e-4);a.dom.window.close();
+});
+test('Brunei outside square 44 14 is written in full, explained, and read back',()=>{
+  const a=app(undefined,false,false);a.paste('4.5836, 114.2311');
+  assert.equal(a.$('#boundaryOverlay').classList.contains('open'),true);
+  assert.match(a.$('#boundaryDetail').textContent,/square 43 14, outside square 44 14/);
+  a.$('#boundaryContinue').click();
+  const [e,n]=[a.$('#toRows .a').value,a.$('#toRows .b').value];assert.match(e,/^43\d{4}$/);assert.match(n,/^14\d{4}$/);
+  a.dom.window.close();
+  const b=app(undefined,false,false);b.change('#fromSys','brunei');
+  const row=b.$('#fromRows').children[0];row.querySelector('.a').value=e;row.querySelector('.b').value=n;row.querySelector('.a').dispatchEvent(new b.w.Event('input',{bubbles:true}));
+  b.$('#convertBtn').click();if(b.$('#boundaryOverlay').classList.contains('open'))b.$('#boundaryContinue').click();
+  const p=b.state().points[0];assert.ok(p&&Math.abs(p.lat-4.5836)<3e-4&&Math.abs(p.lon-114.2311)<3e-4,'full reference read back: '+b.$('#badPair').textContent);
+  b.dom.window.close();
+});
+test('grid references convert to the center of the square they name',()=>{
+  const c=core();c.S=vm.runInContext('defaultSettings()',c);
+  const r=vm.runInContext('parseCells("sg","424","433",S)',c),q=vm.runInContext('toProjFromWGS('+r.lat+','+r.lon+',"EPSG:3168")',c);
+  assert.ok(Math.abs(q.E-642450)<.01&&Math.abs(q.N-143350)<.01,'100 m square center: '+q.E+','+q.N);
+});
+test('pasting several lines into a middle row adds rows and keeps every name',()=>{
+  const a=app(undefined,false,false);
+  a.paste('1.30, 103.80\n1.31, 103.81\n1.32, 103.82');
+  a.w.document.querySelectorAll('#fromRows .nm').forEach((nm,k)=>{nm.value='ABC'[k];nm.dispatchEvent(new a.w.Event('input',{bubbles:true}));});
+  a.paste('1.40, 103.90\n1.41, 103.91',1);
+  assert.deepEqual(a.state().rows.map(r=>r[2]),['A','B','','C']);
+  assert.match(a.state().rows[1][0],/1\.40/);assert.match(a.state().rows[3][0],/1\.32/,'the row below was not overwritten');
+  a.$('#undoBtn').click();assert.deepEqual(a.state().rows.map(r=>r[2]),['A','B','C'],'one Undo returns the table before the paste');
+  assert.match(a.state().rows[1][0],/1\.31/);a.dom.window.close();
+});
+test('deleting a row and renaming a point can both be undone',()=>{
+  const a=app(undefined,false,false);a.paste('1.30, 103.80\n1.31, 103.81');
+  const nm=a.$('#fromRows').children[1].querySelector('.nm');nm.dispatchEvent(new a.w.Event('focus'));nm.value='OBJ';nm.dispatchEvent(new a.w.Event('input',{bubbles:true}));nm.dispatchEvent(new a.w.Event('change',{bubbles:true}));
+  a.$('#fromRows').children[0].querySelector('.del').click();assert.equal(a.state().rows.length,1);
+  a.$('#undoBtn').click();assert.equal(a.state().rows.length,2);assert.equal(a.state().rows[1][2],'OBJ');
+  a.$('#undoBtn').click();assert.equal(a.state().rows[1][2],'');a.dom.window.close();
+});
+test('Copy is tab separated with names, and pasting it back keeps the names',async()=>{
+  const a=app(undefined,false,false);let copied='';a.w.navigator.clipboard={writeText:async t=>{copied=t;}};
+  a.paste('1.35, 103.82\n1.36, 103.83');const nm=a.$('#fromRows').children[0].querySelector('.nm');nm.value='HQ';nm.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+  a.$('#convertBtn').click();a.$('#copyBtn').click();await new Promise(r=>setTimeout(r,10));
+  assert.match(copied,/^\d{4}\t\d{4}\tHQ\n\d{4}\t\d{4}$/);a.dom.window.close();
+  const b=app(undefined,false,false);b.change('#fromSys','sg');b.paste(copied);
+  assert.equal(b.state().points.length,2);assert.equal(b.state().rows[0][2],'HQ');b.dom.window.close();
+  const c=app();c.paste('HQ\t1.35\t103.82\nRV 1.30, 103.85\n1.31, 103.86 (Objective)');
+  assert.deepEqual(c.state().rows.map(r=>r[2]),['HQ','RV','Objective']);c.dom.window.close();
+});
+test('two long numbers are a full country reference or meters that need a zone, never two references',()=>{
+  const a=app(undefined,false,false);a.paste('366000 149000');
+  assert.equal(a.state().rows.length,1);assert.match(a.$('#badPair').textContent,/zone prefix/);a.dom.window.close();
+  const b=app(undefined,false,false);b.paste('642412 143381');
+  assert.equal(b.$('#fromSys').value,'sg');assert.equal(b.state().points.length,1);b.dom.window.close();
+});
+test('short digits after a full MGRS reference share its prefix',()=>{
+  const a=app();a.paste('48NUG6872249247\n7000 5000');
+  assert.equal(a.state().points.length,2,a.$('#badPair').textContent);assert.match(a.state().rows[1][0],/^48N ?UG/);a.dom.window.close();
+});
+test('polar points with MGRS output say why instead of going blank',()=>{
+  const a=app();a.paste('85, 10');a.change('#toSys','mgrs');
+  assert.match(a.$('#badPair').textContent,/beyond MGRS and UTM coverage/);assert.equal(a.$('#copyBtn').disabled,true);a.dom.window.close();
+});
+test('zero-padded MGRS zones and route links are read',()=>{
+  const c=core();assert.equal(c.GlobalGrid.parse('04QFJ1234567890').prefix,'4QFJ');
+  const end=vm.runInContext('extractMapCoordinate("https://www.google.com/maps/dir/1.3,103.8/1.4,103.9/@1.35,103.85,12z")',c);
+  assert.equal(end.lat,1.4);assert.equal(end.lon,103.9);
+  const named=vm.runInContext('extractMapCoordinate("https://www.google.com/maps/dir/A/B/@1.35,103.85,12z/data=!4m8!4m7!1m2!1m1!1s0x1!1m2!1m1!1s0x2!1d103.99!2d1.36")',c);
+  assert.equal(named.lat,1.36);
+  const pin=vm.runInContext('extractMapCoordinate("https://www.google.com/maps/place/1%C2%B021\'07.6%22N+103%C2%B049\'11.3%22E")',c);
+  assert.ok(Math.abs(pin.lat-1.35211)<1e-4);
+});
+test('one point just outside the country outline does not take the grid from the batch',()=>{
+  const a=app(undefined,false,false);a.paste('-22.65, 150.35\n-22.8125, 150.1326\n-22.14, 150.04\n-22.2, 150.0');
+  assert.equal(a.$('#toSys').value,'australia');a.dom.window.close();
+});
+test('rows reorder by keyboard, undoably, and results follow',()=>{
+  const a=app(undefined,false,false);a.paste('1.30, 103.80\n1.31, 103.81\n1.32, 103.82');
+  const grip=a.$('#fromRows').children[0].querySelector('.grip');assert.ok(grip,'each row has a grip');
+  grip.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));
+  assert.match(a.state().rows[0][0],/1\.31/);assert.match(a.state().rows[1][0],/1\.30/);assert.equal(a.state().points.length,3);
+  assert.equal(a.w.document.activeElement,a.$('#fromRows').children[1].querySelector('.grip'),'focus follows the row');
+  a.$('#undoBtn').click();assert.match(a.state().rows[0][0],/1\.30/);a.dom.window.close();
+});
+test('Open in Maps respects the per-device stop limit and offers parts beyond it',()=>{
+  const a=app(undefined,false,false);const opened=[];a.w.open=u=>{opened.push(u);};
+  a.paste(Array.from({length:12},(_,k)=>`1.3${k%10}, 103.8${k%10}`).join('\n'));a.$('#mapsBtn').click();
+  assert.equal(opened.length,0);assert.equal(a.$('#mapsOverlay').classList.contains('open'),true);
+  const parts=[...a.w.document.querySelectorAll('#mapsParts button')].map(b=>b.textContent);
+  assert.deepEqual(parts,['Points 1–11','Points 11–12']);
+  a.w.document.querySelector('#mapsParts button').click();assert.equal((opened[0].match(/%7C/g)||[]).length,8,'9 waypoints between origin and destination');
+  a.dom.window.close();
+  const c=core();assert.deepEqual(vm.runInContext('0',c),0);
+});
+test('a half-typed run of digits is never split, whatever the preset',()=>{
+  const a=app(undefined,false,false);a.change('#fromSys','sg');
+  const A=a.$('#fromRows .a');A.value='1212';A.dispatchEvent(new a.w.Event('input',{bubbles:true}));a.$('#convertBtn').click();
+  assert.equal(a.$('#fromRows .a').value,'1212');assert.equal(a.$('#fromRows .b').value,'');a.dom.window.close();
 });

@@ -10,14 +10,17 @@
     // is not in the picture.
     const DETAIL_ZOOM=19;
     let coverageKey="",coverageToken=0,coveragePending=false,coverageTimer,coverageFailed=false;
-    let mode="street",countryData=[],countryGeometry,worldKey,cancelTap,busy=false,background=[],tileErrors=new Set();
+    let mode="street",countryData=[],countryGeometry,worldKey,cancelTap,busy=false,background=[],tileErrors=new Set(),slowLayers=new Set();
     const textNode=text=>{const el=document.createElement("span");el.textContent=text;return el;};
     function center(){const p=map.getCenter();return {lat:p.lat,lon:MapSupport.longitude(p.lng)};}
     function toggle(layer,show){if(show&&!map.hasLayer(layer))layer.addTo(map);else if(!show&&map.hasLayer(layer))map.removeLayer(layer);}
     function networkStatus(){
       const active=mode==="satellite"?satellite:streets;
-      $("pointNetwork").hidden=!active||(!tileErrors.has(active)&&navigator.onLine!==false&&!coverageFailed);
-      $("pointNetwork").textContent="Map imagery is unavailable here. Try the other layer or check your connection.";
+      const failed=!!active&&(tileErrors.has(active)||navigator.onLine===false||coverageFailed);
+      $("pointNetwork").hidden=!failed&&!(active&&slowLayers.has(active));
+      // A slow link still works: the crosshair and Add need no imagery at all.
+      $("pointNetwork").textContent=failed?"Map imagery is unavailable here. Try the other layer or check your connection."
+        :"Weak connection: imagery is loading slowly. You can still move the crosshair and add points.";
     }
     function checkCoverage(){
       if(!map||!overlay.classList.contains("open"))return;
@@ -111,9 +114,10 @@
       // Imagery must sit above the offline land; borders remain visible at broad zoom.
       satellite.setZIndex(220);streets.setZIndex(230);
       for(const layer of [streets,satellite]){
-        layer.on("loading",()=>tileErrors.delete(layer));
+        let slowTimer;
+        layer.on("loading",()=>{tileErrors.delete(layer);clearTimeout(slowTimer);slowTimer=setTimeout(()=>{slowLayers.add(layer);networkStatus();},6000);});
         layer.on("tileerror",()=>{tileErrors.add(layer);networkStatus();});
-        layer.on("load",networkStatus);
+        layer.on("load",()=>{clearTimeout(slowTimer);slowLayers.delete(layer);networkStatus();});
       }
       fetch("vendor/countries.geojson").then(r=>{if(!r.ok)throw Error();return r.json();}).then(data=>{
         countryGeometry=data;countryData=data.features.map(f=>f.properties).filter(p=>Number.isFinite(p.LABEL_X)&&Number.isFinite(p.LABEL_Y)&&p.NAME!=="Singapore");

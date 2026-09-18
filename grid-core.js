@@ -17,7 +17,8 @@
   function parse(text,ao){
     const groups=String(text).trim().match(/(\d+)[\s,;/]+(\d+)\s*$/);
     if(groups&&groups[1].length!==groups[2].length)throw new Error("MGRS needs equal easting and northing groups.");
-    const clean=String(text).toUpperCase().replace(/[\s,;/]+/g,"");
+    // GeoTrans and some receivers pad the zone to two digits: 04QFJ is 4QFJ.
+    const clean=String(text).toUpperCase().replace(/[\s,;/]+/g,"").replace(/^0+(?=[1-9][C-HJ-NP-X])/,"");
     const full=clean.match(/^([1-9]|[1-5]\d|60)([C-HJ-NP-X])([A-HJ-NP-Z]{2})(\d{0,10})$/);
     let reference=clean;
     if(!full){
