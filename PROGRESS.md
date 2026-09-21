@@ -124,3 +124,38 @@ Tests
 - The live page carries the Topo button, the View on map button and the OpenTopoMap tile url.
 - npm test 203 passed / 0 failed; npm run test:browser and npm run test:field passed both engines; git diff --check clean.
 - version.js had to move with this release: the service worker keys its cache on APP_VERSION, and cached runtime files changed.
+
+## Version 3.2.0 - map legibility, location, and grid work (2026-09-21)
+
+Map reading
+- OpenTopoMap is drawn for hikers: military land is hatched in red and main roads are orange, both of which shout over the contours. The topo layer now carries filter saturate(.45) contrast(1.06), chosen by comparing rendered tiles over Murai, SAFTI and Temburong. Hatching becomes soft pink, roads become tan, contours and hillshade stay readable. Alternatives were rejected on evidence: OSM Humanitarian mutes well but has no contours and returned a blank tile over Temburong; Esri World Topo is muted but its contours are too faint there.
+- Grid lines gained a white casing (3.4 px at .45) under a stronger line (1.6 px at .9), so they read on satellite imagery as well as street.
+- Easting labels run along the top and northing labels down the left, so the top-left corner belonged to both and they overlapped. Each is now kept out of the other's 48 px strip.
+- Selecting Coordinates and ticking the grid now draws meridians and parallels with degree labels instead of a kilometre grid, at a spacing chosen so several lines are always on screen.
+- Latitude is clamped at the projection edge. Longitude still wraps, so sideways panning stays free across world copies, but the view can no longer be dragged off the top or bottom.
+- The kilometre grid goes quiet when it is out of scale rather than nagging to zoom in.
+
+Controls
+- A slanted-arrow locate button on both maps asks for permission only when pressed, then shows the standard blue dot with an accuracy halo. It never adds a point.
+- Fit points became an Auto-Zoom control sitting with the zoom buttons, on the Point Picker map and the converter's map picker.
+- A red delete-all button sits with undo/redo and clears the table in one undoable step.
+
+Table and text
+- The drag handle is thinner and quieter.
+- Output rows now stand exactly as tall as the input rows they answer: the output cell keeps the input cell's border, invisibly.
+- Distance readouts are small, right-aligned footnotes under the table, and the map picker shows a running distance as points are added.
+- Removed: the Point Picker tagline, the crosshair instructions, the distance and file-handling note, the "Separate points" nag and the "Point N added" commentary.
+
+Grids offered
+- The Point Picker's grid list follows the map: a country grid that cannot write a point here is not offered, and when a local grid does cover the ground a tappable note names it.
+
+Tests
+- npm test 203 passed; test:browser and test:field passed both engines.
+- The field suite's grid check waited a fixed 200 ms while the grid redraws on an animation frame, which was racy on WebKit and became more so once each grid line gained a casing. It now waits for the labels, and also covers the degree graticule.
+
+Still outstanding from this round
+- Point Picker as the converter without a Convert button, with a permanently visible map on desktop.
+- Grid and related settings mirrored into the converter's map picker.
+- A simplified, lighter basemap when zoomed out beyond roughly 5 km.
+- Point Picker output choosing the shortest unambiguous form while points share a square, and warning plus lengthening when they cross one.
+- "Download GPX without connecting a route": export already writes waypoints when not connected, so the reported failure has not been reproduced.

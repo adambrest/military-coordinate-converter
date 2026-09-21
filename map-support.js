@@ -135,15 +135,21 @@
   // Leaflet's maxBounds keeps the whole viewport inside the box, so a zoomed-in
   // crosshair stops well short of a country's edge. Expanding the box by half a
   // screen in every direction limits the map center - the crosshair - instead.
+  const LAT_EDGE=85.0511287798;
+  // A lon span wide enough that worldCopyJump still slides freely across copies.
+  const latitudeOnly=()=>L.latLngBounds(L.latLng(-LAT_EDGE,-1080),L.latLng(LAT_EDGE,1080));
+  function clampLatitude(map){map.setMaxBounds(latitudeOnly());map.options.maxBoundsViscosity=1;}
   function limitCenter(map){
     let box=null,applied=null;
     const apply=()=>{
-      if(!box){if(map.options.maxBounds){applied=null;map.setMaxBounds(null);}return;}
+      // Re-applying bounds can nudge the view, which fires the events that brought us
+      // here, so the latitude clamp is set once and left alone until a box replaces it.
+      if(!box){if(applied!=="lat"){applied="lat";map.setMaxBounds(latitudeOnly());}return;}
       const zoom=map.getZoom(),half=map.getSize().divideBy(2);
       const sw=map.project(box.getSouthWest(),zoom).add([-half.x,half.y]);
       const ne=map.project(box.getNorthEast(),zoom).add([half.x,-half.y]);
       const limit=L.latLngBounds(map.unproject(sw,zoom),map.unproject(ne,zoom));
-      if(applied&&applied.equals(limit,1e-9))return;
+      if(applied&&applied!=="lat"&&applied.equals(limit,1e-9))return;
       applied=limit;map.setMaxBounds(limit);
     };
     map.on("zoomend resize",apply);
@@ -238,7 +244,7 @@
   // Its tiles stop at zoom 17 - 18 and beyond are the same placeholder - so Leaflet
   // enlarges past that rather than asking for tiles OpenTopoMap does not hold.
   const BASEMAPS={
-    topo:{label:"Topo",url:"https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",subdomains:"abc",maxNativeZoom:17,
+    topo:{label:"Topo",url:"https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",subdomains:"abc",maxNativeZoom:17,className:"topo-muted",
       attribution:'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Rendering: &copy; <a href="https://opentopomap.org/">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'},
     street:{label:"Street",url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png",maxNativeZoom:19,
       attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'},
@@ -253,7 +259,77 @@
     const spec=BASEMAPS[basemapId(id)];
     const settings={maxNativeZoom:spec.maxNativeZoom,attribution:spec.attribution,...options};
     if(spec.subdomains)settings.subdomains=spec.subdomains;
+    if(spec.className)settings.className=[spec.className,options&&options.className].filter(Boolean).join(" ");
     return L.tileLayer(spec.url,settings);
   }
-  root.MapSupport={regions,baseView,approximateLocation,tileUrls,prefetchTiles,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,imageryZoom,imageryService,trainingArea,BASEMAPS,DEFAULT_BASEMAP,basemapIds,basemapId,basemap};
+  // A button that asks the device where it is and goes there. The opening view still
+  // uses the coarse IP/timezone estimate, so the permission prompt only ever appears
+  // because someone pressed this - it is never asked for on load.
+  const LOCATE_MESSAGES={
+    1:"Location permission is off for this site. Turn it on to jump to where you are.",
+    2:"Your location is unavailable right now. Try again in the open, or move the map yourself.",
+    3:"Finding your location took too long. Try again, or move the map yourself."
+  };
+  // One shape for every small control that sits with the zoom buttons.
+  function mapButton(map,{position="bottomright",title,label,icon,className="",onClick}){
+    let button;
+    const control=L.control({position});
+    control.onAdd=function(){
+      const box=L.DomUtil.create("div","leaflet-bar map-button "+className);
+      button=L.DomUtil.create("a","",box);
+      button.href="#";button.title=title;
+      button.setAttribute("role","button");button.setAttribute("aria-label",label||title);
+      button.innerHTML=icon;
+      L.DomEvent.disableClickPropagation(box);
+      L.DomEvent.on(button,"click",e=>{L.DomEvent.stop(e);onClick();});
+      return box;
+    };
+    control.addTo(map);
+    return {node:()=>button,busy(on){button&&button.classList.toggle("busy",!!on);},
+            disable(off){button&&button.classList.toggle("off",!!off);}};
+  }
+  // Zooms to hold everything that has been collected, however far apart it is.
+  function autoZoom(map,getPoints,{position="bottomright",maxZoom=16}={}){
+    const button=mapButton(map,{position,className:"map-autozoom",title:"Auto-Zoom to the points",
+      label:"Auto-Zoom to the points",
+      icon:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9V4h5M21 9V4h-5M3 15v5h5M21 15v5h-5"/><circle cx="12" cy="12" r="2.4"/></svg>',
+      onClick(){
+        const points=(getPoints()||[]).filter(p=>p&&Number.isFinite(p.lat)&&Number.isFinite(p.lon));
+        if(!points.length)return;
+        map.fitBounds(L.latLngBounds(points.map(p=>[p.lat,p.lon])),
+          {padding:[35,35],maxZoom:Math.min(maxZoom,map.getMaxZoom()),animate:false});
+      }});
+    const sync=()=>button.disable(!((getPoints()||[]).length));
+    sync();return {sync,go:()=>button.node()&&button.node().click()};
+  }
+  function locate(map,{position="bottomright",onStatus,maxZoom=16}={}){
+    let layer,busy=false;
+    const say=text=>{try{onStatus&&onStatus(text);}catch(_){}};
+    const button=mapButton(map,{position,className:"map-locate",title:"Go to my location",
+      label:"Go to my location",
+      icon:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3 3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/></svg>',
+      onClick(){go();}});
+    function go(){
+      if(busy)return;
+      if(!(globalThis.navigator&&navigator.geolocation)){say("This device cannot report a location.");return;}
+      busy=true;button.busy(true);say("Finding your location…");
+      navigator.geolocation.getCurrentPosition(p=>{
+        busy=false;button.busy(false);
+        const lat=p.coords.latitude,lon=p.coords.longitude;
+        if(!Number.isFinite(lat)||!Number.isFinite(lon)){say(LOCATE_MESSAGES[2]);return;}
+        if(layer)layer.remove();
+        layer=L.layerGroup([
+          L.circle([lat,lon],{radius:Math.max(p.coords.accuracy||0,10),color:"#1a73e8",weight:1,opacity:.35,fillColor:"#1a73e8",fillOpacity:.12,interactive:false}),
+          L.circleMarker([lat,lon],{radius:6,color:"#fff",weight:3,fillColor:"#1a73e8",fillOpacity:1,interactive:false})
+        ]).addTo(map);
+        map.setView([lat,lon],Math.min(maxZoom,map.getMaxZoom()),{animate:false});
+        say("");
+      },error=>{
+        busy=false;button.busy(false);
+        say(LOCATE_MESSAGES[error&&error.code]||LOCATE_MESSAGES[2]);
+      },{enableHighAccuracy:true,timeout:10000,maximumAge:30000});
+    }
+    return {go,clear(){if(layer){layer.remove();layer=null;}}};
+  }
+  root.MapSupport={regions,baseView,approximateLocation,tileUrls,prefetchTiles,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,imageryZoom,imageryService,trainingArea,BASEMAPS,DEFAULT_BASEMAP,basemapIds,basemapId,basemap,locate,mapButton,autoZoom,clampLatitude};
 })(globalThis);

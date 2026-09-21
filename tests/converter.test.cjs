@@ -655,7 +655,15 @@ test('empty Auto-detect ignores hidden names and guards dispatched clear events'
 test('regional point map constrains navigation and global reopening restores world panning',async()=>{
   const a=app(undefined,true);a.change('#fromSys','sg');a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));const map=a.w.pointTestMap;
   assert.equal(a.$('#pointRegion').hidden,true);assert.ok(map.getMinZoom()>1);map.setView([48,2],2,{animate:false,reset:true});assert.ok(map.getCenter().lat<2);assert.ok(map.getCenter().lng>103);
-  a.$('#pointClose').click();a.change('#fromSys','wgs84');a.$('#selectMap').click();assert.equal(a.$('#pointRegion').hidden,false);assert.equal(map.getMinZoom(),1);assert.equal(map.options.maxBounds,null);
+  a.$('#pointClose').click();a.change('#fromSys','wgs84');a.$('#selectMap').click();assert.equal(a.$('#pointRegion').hidden,false);assert.equal(map.getMinZoom(),1);
+  // Longitude wraps, so sideways panning stays free across world copies; latitude does
+  // not wrap, so the view stops at the edge of the projection instead of running off it.
+  const world=map.options.maxBounds;
+  assert.ok(world,'a global view still has to stop at the top and bottom');
+  assert.ok(world.getSouth()<-85&&world.getNorth()>85,'the clamp sits at the projection edge');
+  assert.ok(world.getWest()<=-720&&world.getEast()>=720,'longitude must stay free across world copies');
+  map.setView([89,103.82],4,{animate:false,reset:true});
+  assert.ok(map.getCenter().lat<86,'the view must not pan past the top of the map');
   map.setView([1.35,463.82],5,{animate:false,reset:true});assert.match(a.$('#pointCoordinate').textContent,/103\.820000/);assert.ok(a.$('.singapore-name'));
   a.$('#pointConfirm').click();assert.ok(Math.abs(a.state().points[0].lon-103.82)<.0001);a.dom.window.close();
 });
@@ -2003,9 +2011,9 @@ test('only actual active input setting changes require conversion again',async()
 });
 
 /* ---- v2 reference areas ---- */
-test('the app reports version 3.1',()=>{
+test('the app reports version 3.2',()=>{
   const a=app();
-  try{assert.equal(a.$('#appVersion').textContent,'v3.1.0');assert.match(read('version.js'),/APP_VERSION = "3\.1\.0"/);
+  try{assert.equal(a.$('#appVersion').textContent,'v3.2.0');assert.match(read('version.js'),/APP_VERSION = "3\.2\.0"/);
     const logo=a.$('header h1 .logo');assert.ok(logo,'the header shows the app icon');assert.equal(logo.getAttribute('src'),'icons/logo-64.png');assert.equal(logo.getAttribute('alt'),'');}
   finally{a.dom.window.close();}
 });

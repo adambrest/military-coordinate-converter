@@ -4,7 +4,7 @@
   root.createPointPicker=function({preview,onConfirm,onViewChange}){
     const $=id=>document.getElementById(id),overlay=$("pointOverlay");
     const STREET_ZOOM=7;
-    let map,countries,labels,markers,streets,topo,satellite,options={},returnFocus,frame,stableCenter,limitCenter;
+    let map,countries,labels,markers,streets,topo,satellite,options={},returnFocus,frame,stableCenter,limitCenter,pointAutoZoom;
     // Beyond the imagery a provider actually holds for an area the tiles are only
     // enlarged, so stopping there keeps the crosshair from implying detail that
     // is not in the picture.
@@ -96,6 +96,10 @@
         MapSupport.marker(map,p).addTo(markers);
       }
       $("pointCount").textContent=points.length+(options.readOnly?" output point":" existing point")+(points.length===1?"":"s");
+      pointAutoZoom&&pointAutoZoom.sync();
+      // Adding point by point, the running distance is worth seeing straight away.
+      const run=globalThis.RouteTools&&points.length>1?RouteTools.summary(points.map(p=>({...p,breakBefore:false}))):"";
+      $("pointDistance").textContent=run;
       $("pointUnresolved").hidden=!options.unresolved;
       $("pointUnresolved").textContent=options.unresolved+" incomplete or unresolved row"+(options.unresolved===1?" is":"s are")+" not shown on the map.";
     }
@@ -134,6 +138,11 @@
       map.on("move zoom",()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(update);});
       map.on("moveend zoomend",()=>{const p=map.getCenter();stableCenter={lat:p.lat,lng:p.lng};checkCoverage();layers();update();});
       cancelTap=MapSupport.pointGestures(map);
+      pointAutoZoom=MapSupport.autoZoom(map,()=>options.points||[]);
+      MapSupport.locate(map,{position:"bottomright",onStatus:text=>{
+        const note=$("pointNetwork");
+        if(text){note.hidden=false;note.textContent=text;}else networkStatus();
+      }});
       root.addEventListener("online",networkStatus);root.addEventListener("offline",networkStatus);
       const resize=()=>{
         if(!overlay.classList.contains("open"))return;
