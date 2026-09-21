@@ -1,18 +1,23 @@
 /* Independent map-first point collection. Uses the existing local coordinate engine. */
 (function(root){
 'use strict';
-root.createFieldMap=function({format,projection,presets,onConvert,helper,countryPresets=[],presetName=id=>id,localGrid=()=>null,presetHolds=()=>true}){
+root.createFieldMap=function({formatter,projection,presets,onConvert,helper,countryPresets=[],presetName=id=>id,localGrid=()=>null,presetHolds=()=>true}){
  const $=id=>document.getElementById(id),key='mike-golf-romeo-field-v1';
- let points=[],connected=false,system='mgrs',layer=MapSupport.DEFAULT_BASEMAP,map,markers,route,grid,frame,view,undo=[],bases,autoZoom;
+ let points=[],connected=false,system='mgrs',layer=MapSupport.DEFAULT_BASEMAP,map,markers,route,grid,frame,view,undo=[],bases,autoZoom,written=null;
  try{const s=JSON.parse(localStorage.getItem(key));if(s&&Array.isArray(s.points)){points=s.points.filter(RouteTools.valid).slice(0,20000);connected=!!s.connected;system=presets.includes(s.system)?s.system:'mgrs';layer=MapSupport.basemapId(s.layer);view=s.view;}}catch(_){}
  const status=t=>{$('fieldStatus').textContent=t;};
  function save(){try{localStorage.setItem(key,JSON.stringify({points,connected,system,layer,view}));}catch(_){status('Device storage is full. Export your points before closing.');}}
  function remember(){undo.push(JSON.stringify({points,connected}));if(undo.length>30)undo.shift();}
- function coordinate(p){try{return format(p,system);}catch(e){return e.message;}}
+ // The whole collection decides how each reference is written, so the formatter is
+ // built once per change and reused by the list, the copy and the crosshair readout.
+ function writer(){if(!written)written=formatter(points,system);return written;}
+ function coordinate(p){try{return writer().text(p);}catch(e){return e.message;}}
  function render(){
   $('fieldFormat').value=system;$('fieldRoute').checked=connected;
   $('fieldTotal').textContent=points.length+' points';
   $('fieldDistance').textContent=connected?RouteTools.summary(points):'';
+  $('fieldAreaNote').textContent=writer().notice||'';
+  $('fieldAreaNote').hidden=!writer().notice;
   const list=$('fieldPoints');list.replaceChildren();
   // Large GPX tracks remain complete for calculations/export; bound DOM work.
   points.slice(0,300).forEach((p,i)=>{
@@ -28,35 +33,43 @@ root.createFieldMap=function({format,projection,presets,onConvert,helper,country
   autoZoom&&autoZoom.sync();
   $('fieldUndo').disabled=!undo.length;
  }
- // The list of grids follows the map: a grid that cannot write a point here is not
- // worth offering, and when a local grid does cover this ground it is named.
+ // The list of grids follows the map, but nothing is taken away: a grid that cannot
+ // write a point here is still reachable, just filed under the other heading. Hiding
+ // it outright would mean a grid could not be chosen until the map was already there.
+ const GRID_LABELS={mgrs:'Global MGRS',wgs84:'Coordinates'};
  function offerGrids(){
   const select=$('fieldFormat');if(!select)return;
   const centre=map?map.getCenter():null;
   const lat=centre?centre.lat:null,lon=centre?MapSupport.longitude(centre.lng):null;
   const local=lat===null?null:localGrid(lat,lon);
-  const wanted=presets.filter(id=>{
-   if(!countryPresets.includes(id))return true;          // global grids always apply
-   if(id===system)return true;                           // never hide what is in use
-   return lat!==null&&presetHolds(id,lat,lon);
-  });
-  const current=[...select.options].map(o=>o.value).join(',');
-  if(current!==wanted.join(',')){
-   const labels={mgrs:'Global MGRS',wgs84:'Coordinates'};
-   select.replaceChildren(...wanted.map(id=>new Option(labels[id]||presetName(id),id)));
+  const here=[],elsewhere=[];
+  for(const id of presets){
+   const global=!countryPresets.includes(id);
+   ((global||(lat!==null&&presetHolds(id,lat,lon)))?here:elsewhere).push(id);
+  }
+  const signature=here.join(',')+'|'+elsewhere.join(',');
+  if(select.dataset.signature!==signature){
+   select.dataset.signature=signature;
+   const group=(label,ids)=>{
+    if(!ids.length)return null;
+    const el=document.createElement('optgroup');el.label=label;
+    for(const id of ids)el.append(new Option(GRID_LABELS[id]||presetName(id),id));
+    return el;
+   };
+   select.replaceChildren(...[group('Covers this area',here),group('Other areas',elsewhere)].filter(Boolean));
   }
   select.value=system;
-  // Global MGRS works anywhere, but where a country grid is in use on the ground,
-  // saying so beats letting someone read out a global reference by accident.
   const note=$('fieldLocalGrid');
   if(note){
+   // Global MGRS works anywhere, but where a country grid covers the ground people
+   // are standing on, saying so beats reading out a global reference by accident.
    const mismatch=local&&local!==system&&!countryPresets.includes(system);
    note.hidden=!mismatch;
-   if(mismatch)note.textContent=presetName(local)+' is the local grid here. Tap to switch.';
+   if(mismatch)note.textContent=presetName(local)+' covers this area. Tap to use it.';
    note.dataset.grid=mismatch?local:'';
   }
  }
- function refresh(){render();draw();save();offerGrids();}
+ function refresh(){written=null;render();draw();save();offerGrids();}
  function add(p){if(!RouteTools.valid(p))return;if(points.length>=20000){status('20,000 point limit reached. Export or clear this collection first.');return;}remember();points.push({...p,name:'',breakBefore:points.length===0});refresh();}
  function draw(){if(!map)return;markers.clearLayers();route.clearLayers();
   points.forEach((p,i)=>{if(points.length>1000){L.circleMarker([p.lat,p.lon],{radius:2,weight:0,fillOpacity:.8,fillColor:'#2563eb'}).addTo(markers);return;}
@@ -169,13 +182,13 @@ root.createFieldMap=function({format,projection,presets,onConvert,helper,country
  }
  $('fieldFormat').value=system;
  $('fieldLayer').value=layer;
- $('fieldFormat').onchange=()=>{system=$('fieldFormat').value;refresh();drawGrid();if(map)map.fire('move');};
- $('fieldLocalGrid').onclick=()=>{const id=$('fieldLocalGrid').dataset.grid;if(!id)return;system=id;$('fieldFormat').value=id;refresh();drawGrid();if(map)map.fire('move');};
+ $('fieldFormat').onchange=()=>{system=$('fieldFormat').value;written=null;refresh();drawGrid();if(map)map.fire('move');};
+ $('fieldLocalGrid').onclick=()=>{const id=$('fieldLocalGrid').dataset.grid;if(!id)return;system=id;$('fieldFormat').value=id;written=null;refresh();drawGrid();if(map)map.fire('move');};
  $('fieldRoute').onchange=()=>{remember();connected=$('fieldRoute').checked;if(connected&&points.every(p=>p.breakBefore))points.forEach((p,i)=>p.breakBefore=i===0);refresh();};
  $('fieldGrid').onchange=drawGrid;
  $('fieldUndo').onclick=()=>{const old=undo.pop();if(old){({points,connected}=JSON.parse(old));refresh();}};
  $('fieldClear').onclick=()=>{remember();points=[];refresh();status('Points cleared. Undo restores them.');};
- $('fieldCopy').onclick=async()=>{try{const rows=points.map((p,i)=>{const text=format(p,system);return [text,(p.name||'Point '+(i+1)).replace(/[\t\r\n]/g,' ')].join('\t');}).join('\n');await navigator.clipboard.writeText(rows);status('Copied '+points.length+' points.');}catch(e){status('Could not copy: '+e.message);}};
+ $('fieldCopy').onclick=async()=>{try{const write=writer();const rows=points.map((p,i)=>{const text=write.text(p);return [text,(p.name||'Point '+(i+1)).replace(/[\t\r\n]/g,' ')].join('\t');}).join('\n');await navigator.clipboard.writeText(rows);status('Copied '+points.length+' points.');}catch(e){status('Could not copy: '+e.message);}};
  $('fieldExport').onclick=()=>{const url=URL.createObjectURL(new Blob([RouteTools.gpx(points,connected)],{type:'application/gpx+xml'}));const a=document.createElement('a');a.href=url;a.download='mike-golf-romeo.gpx';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
  $('fieldConvert').onclick=()=>{if(points.length>2000){status('Use GPX export for tracks over 2,000 points. The converter table supports smaller collections.');return;}onConvert(points,connected);};
  $('fieldImport').onclick=()=>$('fieldFile').click();

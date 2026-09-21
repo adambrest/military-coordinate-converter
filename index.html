@@ -79,6 +79,7 @@
   .del:hover{opacity:1;color:var(--danger);background:var(--panel2)}
   .trow.out .del{visibility:hidden}
   .topo-muted{filter:saturate(.45) contrast(1.06)}
+  .area-note{border-left:2px solid var(--warn);padding-left:8px;margin:8px 0}
   .local-grid{display:block;width:100%;margin-top:6px;padding:6px 8px;border:1px solid color-mix(in srgb,var(--warn) 40%,var(--line));border-radius:7px;background:color-mix(in srgb,var(--warn) 8%,transparent);color:var(--text);font:inherit;font-size:11px;text-align:left;cursor:pointer}
   .local-grid:hover{border-color:var(--warn)}
   .route-distance-control{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:6px;font-size:11px;color:var(--muted)}
@@ -291,7 +292,7 @@
  <div class="field-actions"><button id="fieldImport">Import GPX</button><button id="fieldUndo">Undo</button><button id="fieldClear">Clear</button></div><input class="field-import" id="fieldFile" type="file" accept=".gpx,application/gpx+xml">
  <label><input type="checkbox" id="fieldRoute"> Connect points as a route</label><p id="fieldDistance"></p><ol id="fieldPoints"></ol>
  <div class="field-actions"><button id="fieldCopy">Copy points</button><button id="fieldExport">Download GPX</button><button id="fieldConvert">Send to converter</button></div>
- <p id="fieldStatus" role="status"></p>
+ <p class="field-note area-note" id="fieldAreaNote" role="status" hidden></p><p id="fieldStatus" role="status"></p>
  </aside></div></section>
     <!-- SETTINGS -->
     <section class="view" id="view-set"></section>
@@ -2678,9 +2679,41 @@
       countryPresets:COUNTRY_PRESETS,presetName:id=>PRESETS[id].name,
       localGrid:(lat,lon)=>COUNTRY_PRESETS.filter(presetEnabled).find(id=>presetLikely(id,lat,lon))||null,
       presetHolds:(id,lat,lon)=>{try{return presetContains(id,lat,lon);}catch(_){return false;}},
-      format:(p,id)=>{if(COUNTRY_PRESETS.includes(id)&&!presetContains(id,p.lat,p.lon))throw Error("Outside "+PRESETS[id].name);
-        const settings=defaultSettings();if(settings[id]&&id!=="wgs84")settings[id].sgOmit=false;
-        return formatPoint(p.lat,p.lon,id,settings).join(" ");},
+      // The picker is the converter's output by another route, so it writes references
+      // the same way: point 1 fixes the reference area and everything inside it is
+      // written short. A point that crosses out of that area is named and written in
+      // full, rather than quietly reading as though it were next door.
+      formatter:(points,id)=>{
+        const settings=defaultSettings();
+        const plain=p=>{
+          if(COUNTRY_PRESETS.includes(id)&&!presetContains(id,p.lat,p.lon))return "Outside "+PRESETS[id].name;
+          try{return formatPoint(p.lat,p.lon,id,settings).join(" ");}catch(error){return error.message;}
+        };
+        if(id==="wgs84"||!settings[id]||!hasAreas(id))return {text:plain,notice:""};
+        const writable=p=>!COUNTRY_PRESETS.includes(id)||presetContains(id,p.lat,p.lon);
+        const keyAt=p=>{try{return areaKeyAt(id,p.lat,p.lon);}catch(_){return null;}};
+        // A fixed-footprint preset already names its area; otherwise point 1 sets it.
+        const lead=PRESETS[id].lead?PRESETS[id].lead.join("/"):null;
+        const anchor=(points||[]).find(writable);
+        const area=lead||(anchor?keyAt(anchor):null);
+        if(!area)return {text:plain,notice:""};
+        const short={...settings,[id]:{...settings[id],sgOmit:true}};
+        const full={...settings,[id]:{...settings[id],sgOmit:false}};
+        if(id==="mgrs")short[id].ao=area;else short[id].square=area.split("/").map(Number);
+        const outside=[];
+        (points||[]).forEach((p,i)=>{if(writable(p)&&keyAt(p)!==area)outside.push(i+1);});
+        const text=p=>{
+          if(!writable(p))return "Outside "+PRESETS[id].name;
+          const here=keyAt(p)===area;
+          try{return formatPoint(p.lat,p.lon,id,here?short:full).join(" ");}
+          catch(error){return error.message;}
+        };
+        const many=outside.length>1;
+        const notice=outside.length
+          ?`Point${many?"s":""} ${outside.join(", ")} ${many?"are":"is"} outside ${areaLabel(id,area)}, so ${many?"they are":"it is"} written in full.`
+          :"";
+        return {text,notice,area};
+      },
       onConvert:points=>{
         // Transfer is explicit; keep existing converter entries rather than overwriting them.
         const current=existingMapPoints();if(current.unresolved){toast("Resolve converter rows before sending points",true);return;}
