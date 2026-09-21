@@ -79,6 +79,17 @@
   .del:hover{opacity:1;color:var(--danger);background:var(--panel2)}
   .trow.out .del{visibility:hidden}
   .topo-muted{filter:saturate(.45) contrast(1.06)}
+  /* Zooming out, the same map is quietened before it is replaced outright. */
+  /* Fading alone leaves the road colours; a little more desaturation takes the
+     warmth out of them without the flattening that pure contrast changes cause. */
+  .map-quiet .leaflet-tile-pane{opacity:.62;filter:saturate(.6)}
+  .map-faint .leaflet-tile-pane{opacity:.34;filter:saturate(.45)}
+  /* Broad view: cool greys and a soft water blue. Nothing glaring, and the blue
+     of the points stays the only saturated thing on screen. */
+  .map-broad{background:#d9e2e8}
+  .broad-name{color:#4c5a64;font:600 11px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    text-align:center;white-space:normal;pointer-events:none;
+    text-shadow:0 1px 2px #fff,0 -1px 2px #fff,1px 0 2px #fff,-1px 0 2px #fff}
   .area-note{border-left:2px solid var(--warn);padding-left:8px;margin:8px 0}
   .local-grid{display:block;width:100%;margin-top:6px;padding:6px 8px;border:1px solid color-mix(in srgb,var(--warn) 40%,var(--line));border-radius:7px;background:color-mix(in srgb,var(--warn) 8%,transparent);color:var(--text);font:inherit;font-size:11px;text-align:left;cursor:pointer}
   .local-grid:hover{border-color:var(--warn)}

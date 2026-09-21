@@ -15,7 +15,7 @@ await page.route(/tile\.openstreetmap\.org|tile\.opentopomap\.org|services\.arcg
 await page.route('**/beacon.min.js',r=>r.fulfill({contentType:'application/javascript',body:''}));
 await page.addInitScript(()=>{addEventListener('DOMContentLoaded',()=>{const make=L.map;L.map=(...args)=>{const map=make(...args);if(args[0]==='fieldMap')window.fieldTestMap=map;return map;};});});
 await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);await page.click('#tab-field');
-await page.evaluate(()=>fieldTestMap.setView([1.35,103.82],14));
+await page.evaluate(()=>{fieldTestMap.setView([1.35,103.82],14);});
 // The grid redraws on an animation frame, so wait for the labels instead of guessing a delay.
 await page.waitForFunction(()=>document.querySelectorAll('.km-label').length>0,{},{timeout:15000}).catch(()=>{throw new Error('kilometer labels rendered');});
 // Coordinates read in degrees, so their grid is meridians and parallels, not kilometres.
@@ -23,6 +23,32 @@ await page.selectOption('#fieldFormat','wgs84');
 await page.waitForFunction(()=>[...document.querySelectorAll('.km-label')].some(el=>/\u00b0/.test(el.textContent)),{},{timeout:15000}).catch(()=>{throw new Error('latitude/longitude labels rendered');});
 await page.selectOption('#fieldFormat','mgrs');
 await page.waitForFunction(()=>[...document.querySelectorAll('.km-label')].some(el=>/^\d\d$/.test(el.textContent.trim())),{},{timeout:15000}).catch(()=>{throw new Error('kilometre labels returned');});
+// Zooming out drops detail in stages: the map as drawn, then fading over the bundled
+// land, then the outlines alone with no tiles requested at all.
+const stage=async z=>{
+  await page.evaluate(z=>{fieldTestMap.setView([1.40,103.75],z,{animate:false});},z);
+  await page.waitForTimeout(250);
+  return page.evaluate(()=>{
+    const el=document.getElementById('fieldMap');
+    let tiles=0;fieldTestMap.eachLayer(l=>{if(l._url)tiles++;});
+    return {cls:[...el.classList].filter(c=>c.startsWith('map-')).join(' '),
+            tiles,names:document.querySelectorAll('.broad-name').length};
+  });
+};
+let step=await stage(12);
+assert.equal(step.cls,'','close in, the map is drawn as it is');
+assert.equal(step.tiles,1,'tiles are on close in');
+step=await stage(10);
+assert.equal(step.cls,'map-quiet','the map quietens on the way out');
+assert.equal(step.tiles,1);
+step=await stage(8);
+assert.equal(step.cls,'map-faint','further out it fades further');
+step=await stage(5);
+assert.equal(step.cls,'map-broad','at country scale only the outlines remain');
+assert.equal(step.tiles,0,'the broad view must request no tiles at all');
+assert.ok(step.names>0,'the broad view names the countries it shows');
+await page.evaluate(()=>{fieldTestMap.setView([1.35,103.82],14,{animate:false});});
+
 // A reference area is assumed from point 1, so points inside it read short. Crossing
 // out of it is named and written in full rather than reading like the square next door.
 await page.selectOption('#fieldFormat','thailand');
@@ -44,9 +70,9 @@ assert.ok(refs[2].replace(/\D/g,'').length>8,'the point that crossed is written 
 assert.match(await page.locator('#fieldAreaNote').innerText(),/point 3 is outside/i,'crossing an area line must say so');
 await page.click('#fieldClear');await page.click('#fieldUndo');await page.click('#fieldClear');
 await page.selectOption('#fieldFormat','mgrs');
-await page.evaluate(()=>fieldTestMap.setView([1.35,103.82],14,{animate:false}));
+await page.evaluate(()=>{fieldTestMap.setView([1.35,103.82],14,{animate:false});});
 
-await page.click('#fieldAdd');await page.evaluate(()=>fieldTestMap.panTo([1.36,103.83],{animate:false}));await page.click('#fieldAdd');await page.check('#fieldRoute');assert.match(await page.locator('#fieldDistance').innerText(),/1\.57 km/);
+await page.click('#fieldAdd');await page.evaluate(()=>{fieldTestMap.panTo([1.36,103.83],{animate:false});});await page.click('#fieldAdd');await page.check('#fieldRoute');assert.match(await page.locator('#fieldDistance').innerText(),/1\.57 km/);
 await page.locator('#fieldPoints input').first().fill('HQ <test>');await page.locator('#fieldPoints input').first().blur();
 await page.click('#fieldClear');assert.equal(await page.locator('#fieldPoints li').count(),0);await page.click('#fieldUndo');assert.equal(await page.locator('#fieldPoints input').first().inputValue(),'HQ <test>');
 await page.reload();await page.click('#tab-field');assert.equal(await page.locator('#fieldPoints li').count(),2);await page.click('#fieldClear');

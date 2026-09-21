@@ -331,5 +331,64 @@
     }
     return {go,clear(){if(layer){layer.remove();layer=null;}}};
   }
-  root.MapSupport={regions,baseView,approximateLocation,tileUrls,prefetchTiles,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,imageryZoom,imageryService,trainingArea,BASEMAPS,DEFAULT_BASEMAP,basemapIds,basemapId,basemap,locate,mapButton,autoZoom,clampLatitude};
+  // Far enough out, a street map is a whole country's worth of roads and names on a
+  // screen where none of it can be acted on. The bundled outlines say where you are
+  // with none of the clutter and ask nothing of the network. Cool greys and a soft
+  // water blue keep it readable without competing with the points drawn on top.
+  const BROAD = {
+    water:"#d9e2e8", land:"#eceeec", border:"#9fb0bb", coast:"#8da0ad", label:"#4c5a64"
+  };
+  let countryData=null,countryLoad=null;
+  function countryShapes(){
+    if(!countryLoad)countryLoad=fetch("vendor/countries.geojson")
+      .then(r=>{if(!r.ok)throw Error();return r.json();})
+      .then(data=>(countryData=data)).catch(()=>null);
+    return countryLoad;
+  }
+  function broadView(map,{pane="broadLand"}={}){
+    const land=L.geoJSON(null,{pane,interactive:false,
+      style:{color:BROAD.border,weight:.7,fillColor:BROAD.land,fillOpacity:1}});
+    const names=L.layerGroup();
+    let drawnFor="",want={land:false,names:false};
+    function paint(){
+      if(!countryData)return;
+      const copies=worlds(map),key=copies.join(",");
+      if(drawnFor!==key){
+        land.clearLayers();
+        for(const offset of copies)land.addData(repeatGeometry(countryData,offset));
+        drawnFor=key;
+      }
+      names.clearLayers();
+      if(!want.names)return;
+      const zoom=map.getZoom(),bounds=map.getBounds();
+      for(const feature of countryData.features){
+        const p=feature.properties||{};
+        if(!Number.isFinite(p.LABEL_X)||!Number.isFinite(p.LABEL_Y))continue;
+        if(zoom<(p.MIN_LABEL||0))continue;
+        for(const offset of copies){
+          if(!bounds.contains([p.LABEL_Y,p.LABEL_X+offset]))continue;
+          const text=document.createElement("span");text.textContent=p.NAME;
+          L.marker([p.LABEL_Y,p.LABEL_X+offset],{interactive:false,keyboard:false,
+            icon:L.divIcon({className:"broad-name",html:text.outerHTML,iconSize:[120,20],iconAnchor:[60,10]})}).addTo(names);
+        }
+      }
+    }
+    function apply(){
+      const on=(layer,yes)=>{if(yes&&!map.hasLayer(layer))layer.addTo(map);else if(!yes&&map.hasLayer(layer))layer.remove();};
+      on(land,want.land&&!!countryData);
+      on(names,want.names&&!!countryData);
+      if(want.land||want.names)paint();
+    }
+    map.on("zoomend moveend",apply);
+    return {
+      // The caller decides how much of the world to fall back to at each zoom.
+      show(next){
+        want=next;
+        if(!countryData&&(next.land||next.names))countryShapes().then(apply);
+        else apply();
+      },
+      colors:BROAD
+    };
+  }
+  root.MapSupport={regions,baseView,approximateLocation,tileUrls,prefetchTiles,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,imageryZoom,imageryService,trainingArea,BASEMAPS,DEFAULT_BASEMAP,basemapIds,basemapId,basemap,locate,mapButton,autoZoom,clampLatitude,broadView,BROAD_COLORS:BROAD};
 })(globalThis);

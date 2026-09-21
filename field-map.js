@@ -3,7 +3,7 @@
 'use strict';
 root.createFieldMap=function({formatter,projection,presets,onConvert,helper,countryPresets=[],presetName=id=>id,localGrid=()=>null,presetHolds=()=>true}){
  const $=id=>document.getElementById(id),key='mike-golf-romeo-field-v1';
- let points=[],connected=false,system='mgrs',layer=MapSupport.DEFAULT_BASEMAP,map,markers,route,grid,frame,view,undo=[],bases,autoZoom,written=null;
+ let points=[],connected=false,system='mgrs',layer=MapSupport.DEFAULT_BASEMAP,map,markers,route,grid,frame,view,undo=[],bases,autoZoom,written=null,broad;
  try{const s=JSON.parse(localStorage.getItem(key));if(s&&Array.isArray(s.points)){points=s.points.filter(RouteTools.valid).slice(0,20000);connected=!!s.connected;system=presets.includes(s.system)?s.system:'mgrs';layer=MapSupport.basemapId(s.layer);view=s.view;}}catch(_){}
  const status=t=>{$('fieldStatus').textContent=t;};
  function save(){try{localStorage.setItem(key,JSON.stringify({points,connected,system,layer,view}));}catch(_){status('Device storage is full. Export your points before closing.');}}
@@ -155,6 +155,7 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   const guess=MapSupport.approximateLocation({helper});const initial=RouteTools.valid(view)?view:guess.current();
   map=L.map('fieldMap',{preferCanvas:true,worldCopyJump:true,maxZoom:19,zoomControl:false}).setView([initial.lat,initial.lon],initial.zoom||10);
   MapSupport.clampLatitude(map);
+  map.createPane('broadLand').style.zIndex='160';
   L.control.zoom({position:'bottomright'}).addTo(map);
   MapSupport.locate(map,{position:'bottomright',onStatus:text=>{if(text||!$('fieldStatus').textContent.startsWith('Finding'))status(text);}});
   autoZoom=MapSupport.autoZoom(map,()=>points);MapSupport.pointGestures(map);map.createPane('offlineLand').style.zIndex='150';MapSupport.context(map);MapSupport.trainingArea(map);L.control.scale({imperial:false}).addTo(map);
@@ -164,11 +165,27 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
    bases[id].on('tileerror',()=>status('Some map tiles are unavailable. Your points and coordinate calculations still work.'));
   }
   bases[layer].addTo(map);
-  $('fieldLayer').onchange=()=>{
-   const next=MapSupport.basemapId($('fieldLayer').value);
-   if(next===layer)return;
-   map.removeLayer(bases[layer]);layer=next;bases[layer].addTo(map);$('fieldLayer').value=layer;save();
-  };
+  // Three steps out. Close in, the map as drawn. Further out, the bundled land and
+  // water show through fading tiles, so roads and names ghost instead of turning to
+  // mud. Further out still the tiles go entirely and only the outlines remain, which
+  // asks nothing of the network and leaves the points the only saturated thing on it.
+  const QUIET_ZOOM=11,FAINT_ZOOM=9,BROAD_ZOOM=6;
+  function detail(){
+    const zoom=map.getZoom();
+    const simple=zoom<BROAD_ZOOM,faint=!simple&&zoom<FAINT_ZOOM,quiet=!simple&&!faint&&zoom<QUIET_ZOOM;
+    // The bundled land sits under the tiles from the moment they start to fade, so what
+    // shows through is the sleek base rather than the page behind the map.
+    broad.show({land:simple||faint||quiet,names:simple});
+    const wrap=$('fieldMap');
+    wrap.classList.toggle('map-quiet',quiet);
+    wrap.classList.toggle('map-faint',faint);
+    wrap.classList.toggle('map-broad',simple);
+    const tiles=bases[layer];
+    if(simple){if(map.hasLayer(tiles))map.removeLayer(tiles);}
+    else if(!map.hasLayer(tiles))tiles.addTo(map);
+  }
+  broad=MapSupport.broadView(map);
+  map.on('zoomend',detail);
   markers=L.layerGroup().addTo(map);route=L.layerGroup().addTo(map);grid=L.layerGroup().addTo(map);
   MapSupport.navigation(map,$('fieldRegion'),null,{snap:false});
   let touched=false;map.on('movestart',()=>{touched=true;});
@@ -178,7 +195,7 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   map.on('click',e=>{if($('fieldTap').checked)add({lat:e.latlng.lat,lon:MapSupport.longitude(e.latlng.lng)});});
   $('fieldAdd').onclick=()=>{const p=map.getCenter();add({lat:p.lat,lon:MapSupport.longitude(p.lng)});};
   new ResizeObserver(()=>{map.invalidateSize({pan:false});drawGrid();}).observe($('fieldMap'));
-  draw();if(points.length)fit();map.fire('move');offerGrids();
+  draw();if(points.length)fit();map.fire('move');offerGrids();detail();
  }
  $('fieldFormat').value=system;
  $('fieldLayer').value=layer;
