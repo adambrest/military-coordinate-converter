@@ -263,7 +263,7 @@ test('cross-AO batch forces prefixes and red warning even after format toggles',
   const s=a.state();s.settings.mgrs.sgOmit=true;s.militaryVersion=3;s.omitVersion=2;
   a.dom.window.close();const b=app(s);b.paste('48.8582,2.2945\n51.5074,-0.1278');
   assert.equal(b.$('#boundaryOverlay').classList.contains('open'),true);assert.equal(b.$('#copyBtn').disabled,true);b.$('#boundaryContinue').click();
-  assert.match(b.$('#badPair').textContent,/grid boundary/);assert.equal(b.state().settings.mgrs.sgOmit,true,'crossing must not change the saved setting');
+  assert.match(b.$('#badPair').textContent,/is outside .+, so it is written in full/);assert.equal(b.state().settings.mgrs.sgOmit,true,'crossing must not change the saved setting');
   assert.match(b.$('#toRows').children[0].querySelector('.prefix').value,/^31U DQ/);assert.match(b.$('#toRows').children[1].querySelector('.prefix').value,/^30U/);b.dom.window.close();
 });
 test('complete MGRS input needs no AO, exports location',()=>{
@@ -304,7 +304,7 @@ test('dismissed chooser preserves input and Convert asks again',()=>{
 test('complete global inputs across AOs warn even with latitude/longitude output',()=>{
   const a=app();a.paste('31UDQ 4825 1193\n30UXC 9931 1016');
   assert.equal(a.$('#boundaryOverlay').classList.contains('open'),true);a.$('#boundaryContinue').click();
-  assert.match(a.$('#badPair').textContent,/grid boundary/);assert.equal(a.$('#copyBtn').disabled,false);a.dom.window.close();
+  assert.match(a.$('#badPair').textContent,/is outside .+, so it is written in full/);assert.equal(a.$('#copyBtn').disabled,false);a.dom.window.close();
 });
 test('global formatting does not invent finer grid precision',()=>{
   const c=core();assert.deepEqual(Array.from(vm.runInContext('formatPoint(48.8582,2.2945,"mgrs",defaultSettings(),3)',c)),['31U DQ 482','119']);
@@ -317,7 +317,7 @@ test('source settings changes invalidate previous results',()=>{
 test('boundary guard cannot be bypassed by the output-prefix checkbox',async()=>{
   const a=app();a.paste('48.8582,2.2945\n51.5074,-0.1278');a.$('#boundaryContinue').click();a.$('#tab-set').click();a.$('[data-head="mgrs"]').click();
   await new Promise(resolve=>setTimeout(resolve,10));
-  a.$('#om_mgrs').click();assert.equal(a.$('#om_mgrs').checked,true);assert.match(a.$('#badPair').textContent,/grid boundary/);
+  a.$('#om_mgrs').click();assert.equal(a.$('#om_mgrs').checked,true);assert.match(a.$('#badPair').textContent,/is outside .+, so it is written in full/);
   assert.match(a.$('#toRows').children[0].querySelector('.prefix').value,/^31U DQ/,'omission must not apply across areas');
   assert.match(a.$('#toRows').children[1].querySelector('.prefix').value,/^30U/);a.dom.window.close();
 });
@@ -2011,9 +2011,9 @@ test('only actual active input setting changes require conversion again',async()
 });
 
 /* ---- v2 reference areas ---- */
-test('the app reports version 3.3',()=>{
+test('the app reports version 3.4',()=>{
   const a=app();
-  try{assert.equal(a.$('#appVersion').textContent,'v3.3.0');assert.match(read('version.js'),/APP_VERSION = "3\.3\.0"/);
+  try{assert.equal(a.$('#appVersion').textContent,'v3.4.0');assert.match(read('version.js'),/APP_VERSION = "3\.4\.0"/);
     const logo=a.$('header h1 .logo');assert.ok(logo,'the header shows the app icon');assert.equal(logo.getAttribute('src'),'icons/logo-64.png');assert.equal(logo.getAttribute('alt'),'');}
   finally{a.dom.window.close();}
 });

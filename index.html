@@ -226,20 +226,20 @@
   <header>
     <h1><img class="logo" id="logo" alt="" width="32" height="32"><span class="title-text">Mike Golf Romeo</span></h1><span class="version" id="appVersion"></span>
     <nav class="tabs">
-      <button id="tab-field">Point Picker</button>
-      <button id="tab-conv" class="on">Converter</button>
+      <button id="tab-field" class="on">Point Picker</button>
+      <button id="tab-conv">Converter</button>
       <button id="tab-set">Settings</button>
     </nav>
     <div class="topright">
       <button class="update-msg" id="updateMsg" title="A new version is ready — click to update" hidden>Update available</button>
       <a class="feedback" href="https://github.com/adambrest/military-coordinate-converter" target="_blank" rel="noopener noreferrer" title="View the source code and README">GitHub</a>
-      <a class="feedback" href="https://github.com/adambrest/military-coordinate-converter/issues/new?title=Converter%20feedback&amp;body=Describe%20your%20feedback%20here%3A%0A" target="_blank" rel="noopener noreferrer" title="Send feedback through GitHub (sign-in required)">Feedback</a>
+      <a class="feedback" href="https://github.com/adambrest/military-coordinate-converter/issues/new?labels=bug&amp;title=Bug%3A%20&amp;body=What%20happened%3A%0A%0AWhat%20you%20expected%3A%0A%0AWhat%20you%20pasted%20or%20tapped%3A%0A%0ADevice%20and%20browser%3A%0A" target="_blank" rel="noopener noreferrer" title="Report a bug on GitHub (sign-in required)">Report a bug</a>
     </div>
   </header>
 
   <main>
     <!-- CONVERTER -->
-    <section class="view on" id="view-conv">
+    <section class="view" id="view-conv">
       <div class="workspace">
         <!-- INPUT -->
         <div class="side">
@@ -280,7 +280,7 @@
       <div class="badpair" id="badPair" hidden>Two different grids can't be converted — set one side to Global Lat/Long.</div>
     </section>
 
-<section class="view" id="view-field">
+<section class="view on" id="view-field">
  <div class="field-head"><h2>Point Picker</h2></div>
  <div class="field-layout"><div class="field-map-panel">
  <div class="field-tools"><label>Map <select id="fieldLayer"><option value="topo">Topo</option><option value="street">Street</option><option value="satellite">Satellite</option></select></label><select id="fieldRegion" aria-label="Jump to region"></select><label><input type="checkbox" id="fieldGrid" checked> 1 km grid</label><label><input type="checkbox" id="fieldTap"> Tap to add</label></div>
@@ -1853,11 +1853,31 @@
       }
       return "";
     }
+    // A point that leaves the reference area is described the same way wherever it is
+    // read, so the converter and the Point Picker share this one sentence.
+    function areaNotice(id,area,outside,total){
+      if(!outside.length)return "";
+      const name=PRESETS[id].name.replace(" MGR","");
+      // A one-square grid has no boundary to cross, only its square to leave.
+      const where=PRESETS[id].lead?"square "+PRESETS[id].lead.join(" "):areaLabel(id,area);
+      const many=outside.length>1;
+      const which=outside.length===total
+        ?(many?"these points are":"this point is")
+        :(many?"points "+outside.join(", ")+" are":"point "+outside[0]+" is");
+      return `${name}: ${which} outside ${where}, so ${many?"they are":"it is"} written in full.`;
+    }
+    function areaOutside(points,id,area){
+      const outside=[];
+      if(!area)return outside;
+      points.forEach((p,i)=>{try{if(areaKeyAt(id,p.lat,p.lon)!==area)outside.push(i+1);}catch(_){}});
+      return outside;
+    }
     function boundaryMessage(points,id=state.to){
       if(!gridBoundary(points,id))return "";
-      // A one-square grid has no boundary to cross, only a square to leave.
-      if(PRESETS[id].lead)return PRESETS[id].name.replace(" MGR","")+": "+(points.length===1?"this point is":"some points are")+" outside square "+PRESETS[id].lead.join(" ")+", so full references are shown.";
-      return "Points cross a grid boundary. Full prefixes have been retained.";
+      const s=state.settings[id]||{};
+      const area=PRESETS[id].lead?PRESETS[id].lead.join("/"):(id==="mgrs"?s.ao:(s.square||[]).join("/"))||null;
+      const notice=areaNotice(id,area,areaOutside(points,id,area),points.length);
+      return notice||"Points cross a grid boundary. Full prefixes have been retained.";
     }
     // Output settings as shown: points across areas are written in full, without
     // changing the omission the reader chose.
@@ -2708,11 +2728,7 @@
           try{return formatPoint(p.lat,p.lon,id,here?short:full).join(" ");}
           catch(error){return error.message;}
         };
-        const many=outside.length>1;
-        const notice=outside.length
-          ?`Point${many?"s":""} ${outside.join(", ")} ${many?"are":"is"} outside ${areaLabel(id,area)}, so ${many?"they are":"it is"} written in full.`
-          :"";
-        return {text,notice,area};
+        return {text,notice:areaNotice(id,area,outside,(points||[]).length),area};
       },
       onConvert:points=>{
         // Transfer is explicit; keep existing converter entries rather than overwriting them.
@@ -2722,8 +2738,14 @@
         const prior=state.importedRoute?.signature===sig?state.importedRoute.points:current.points;
         const incoming=points.map((p,i)=>({...p,breakBefore:i===0||p.breakBefore}));
         importPoints([...prior,...incoming],document.getElementById("fieldRoute").checked);
+        // Sending points across is a request to look at them there.
+        switchTab("conv");
       }});
     $("#tab-field").addEventListener("click",()=>switchTab("field"));
+    // The Point Picker is the opening view, and it needs switchTab to build its map.
+    // Waiting for the document keeps a Leaflet map from being built mid-parse.
+    if(document.readyState==="loading")addEventListener("DOMContentLoaded",()=>switchTab("field"),{once:true});
+    else switchTab("field");
     /* ---- tabs ---- */
     $("#tab-conv").addEventListener("click",()=>switchTab("conv"));
     $("#tab-set").addEventListener("click",()=>switchTab("set"));
