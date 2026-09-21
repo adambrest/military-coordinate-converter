@@ -24,7 +24,7 @@ Paste a single point or a whole batch. Formats can be mixed in one paste.
 
 Point 1 fixes the reference area, so references stay short while every point shares it. A point that crosses out of that area is named and written in full.
 
-Maps come from OpenStreetMap, OpenTopoMap (CC-BY-SA) and Esri imagery. Contours are SRTM-derived, so they show the shape of the ground rather than surveyed heights.
+Street maps from OpenStreetMap are the default. OpenTopoMap (CC-BY-SA) and Esri imagery are also available. Contours are SRTM-derived, so they show the shape of the ground rather than surveyed heights.
 
 ## License
 

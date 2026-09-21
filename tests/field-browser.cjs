@@ -16,6 +16,10 @@ await page.route('**/beacon.min.js',r=>r.fulfill({contentType:'application/javas
 await page.addInitScript(()=>{addEventListener('DOMContentLoaded',()=>{const make=L.map;L.map=(...args)=>{const map=make(...args);if(args[0]==='fieldMap')window.fieldTestMap=map;return map;};});});
 await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);await page.click('#tab-field');
 await page.evaluate(()=>{fieldTestMap.setView([1.35,103.82],14);});
+assert.equal(await page.locator('#fieldFormat').inputValue(),'sg','empty Singapore view selects its local grid');
+assert.equal(await page.locator('#fieldLayer').inputValue(),'street','Street is the default');
+assert.equal(await page.locator('#fieldLocalGrid').isVisible(),false);
+assert.equal(await page.locator('#fieldGridNote').count(),0,'no grid confirmation under the map');
 // The grid redraws on an animation frame, so wait for the labels instead of guessing a delay.
 await page.waitForFunction(()=>document.querySelectorAll('.km-label').length>0,{},{timeout:15000}).catch(()=>{throw new Error('kilometer labels rendered');});
 // Coordinates read in degrees, so their grid is meridians and parallels, not kilometres.
@@ -23,6 +27,39 @@ await page.selectOption('#fieldFormat','wgs84');
 await page.waitForFunction(()=>[...document.querySelectorAll('.km-label')].some(el=>/\u00b0/.test(el.textContent)),{},{timeout:15000}).catch(()=>{throw new Error('latitude/longitude labels rendered');});
 await page.selectOption('#fieldFormat','mgrs');
 await page.waitForFunction(()=>[...document.querySelectorAll('.km-label')].some(el=>/^\d\d$/.test(el.textContent.trim())),{},{timeout:15000}).catch(()=>{throw new Error('kilometre labels returned');});
+// With existing points the choice stays put, and a suggestion is offered instead.
+await page.click('#fieldAdd');
+assert.equal(await page.locator('#fieldFormat').inputValue(),'mgrs');
+assert.equal(await page.locator('#fieldLocalGrid').isVisible(),true);
+await page.locator('#fieldLocalGrid').click();
+assert.equal(await page.locator('#fieldFormat').inputValue(),'sg');
+assert.equal(await page.locator('#fieldPoints .nm').getAttribute('placeholder'),'Optional');
+// Double-click a collected point as well as empty ground; neither may swallow zoom.
+await page.check('#fieldTap');
+for(const centered of [true,false]){
+ await page.evaluate(()=>fieldTestMap.setView([1.35,103.82],14,{animate:false}));
+ const box=await page.locator('#fieldMap').boundingBox(),x=box.x+box.width*(centered?.5:.7),y=box.y+box.height*.5;
+ for(let step=1;step<=3;step++){
+  const target=await page.evaluate(({x,y})=>{const r=fieldTestMap.getContainer().getBoundingClientRect();return fieldTestMap.containerPointToLatLng([x-r.left,y-r.top]);},{x,y});
+  await page.mouse.dblclick(x,y,{delay:30});
+  assert.equal(await page.evaluate(()=>fieldTestMap.getZoom()),14+step,'double click applies immediately, including over a point');
+  const drift=await page.evaluate(({x,y,target})=>{const r=fieldTestMap.getContainer().getBoundingClientRect();return fieldTestMap.latLngToContainerPoint(target).distanceTo(L.point(x-r.left,y-r.top));},{x,y,target});
+  assert.ok(drift<3,'zoom remains anchored');
+ }
+}
+for(const delay of [80,280,380]){
+ await page.evaluate(()=>fieldTestMap.setView([1.35,103.82],14,{animate:false}));
+ await page.waitForTimeout(800);
+ const box=await page.locator('#fieldMap').boundingBox(),x=box.x+box.width*.65,y=box.y+box.height*.5;
+ await page.touchscreen.tap(x,y);await page.waitForTimeout(delay);await page.touchscreen.tap(x,y);
+ await page.waitForTimeout(450);
+ assert.equal(await page.evaluate(()=>fieldTestMap.getZoom()),15,'double tap zooms exactly once');
+}
+await page.waitForTimeout(450);
+assert.equal(await page.locator('#fieldPoints .trow').count(),1,'double-click does not add points');
+await page.uncheck('#fieldTap');
+await page.click('#fieldClear');
+assert.equal(await page.locator('#fieldFormat').inputValue(),'sg');
 // Zooming out drops detail in stages: the map as drawn, then fading over the bundled
 // land, then the outlines alone with no tiles requested at all.
 const stage=async z=>{
@@ -64,17 +101,17 @@ for(const [id,host] of [['street','openstreetmap'],['satellite','arcgisonline'],
 await page.selectOption('#fieldFormat','thailand');
 const addAt=async(lat,lon)=>{await page.evaluate(({lat,lon})=>fieldTestMap.setView([lat,lon],13,{animate:false}),{lat,lon});await page.click('#fieldAdd');};
 await addAt(14.00287,99.24459);
-await page.waitForFunction(()=>document.querySelectorAll('#fieldPoints code').length===1);
-let refs=await page.locator('#fieldPoints code').allInnerTexts();
+await page.waitForFunction(()=>document.querySelectorAll('#fieldPoints .trow').length===1);
+let refs=await page.locator('#fieldPoints .trow').evaluateAll(rows=>rows.map(row=>[row.querySelector('.a').value,row.querySelector('.b').value].join(' ')));
 assert.match(refs[0],/^\d{4} \d{4}$/,'one point should assume its own area and read short: '+refs[0]);
 await addAt(14.02,99.26);
-await page.waitForFunction(()=>document.querySelectorAll('#fieldPoints code').length===2);
-refs=await page.locator('#fieldPoints code').allInnerTexts();
+await page.waitForFunction(()=>document.querySelectorAll('#fieldPoints .trow').length===2);
+refs=await page.locator('#fieldPoints .trow').evaluateAll(rows=>rows.map(row=>[row.querySelector('.a').value,row.querySelector('.b').value].join(' ')));
 assert.match(refs[1],/^\d{4} \d{4}$/,'a point in the same square stays short: '+refs[1]);
 assert.equal(await page.locator('#fieldAreaNote').isVisible(),false,'nothing has crossed an area line yet');
 await addAt(14.02,100.30);
-await page.waitForFunction(()=>document.querySelectorAll('#fieldPoints code').length===3);
-refs=await page.locator('#fieldPoints code').allInnerTexts();
+await page.waitForFunction(()=>document.querySelectorAll('#fieldPoints .trow').length===3);
+refs=await page.locator('#fieldPoints .trow').evaluateAll(rows=>rows.map(row=>[row.querySelector('.a').value,row.querySelector('.b').value].join(' ')));
 assert.match(refs[0],/^\d{4} \d{4}$/,'the points inside keep their short form');
 assert.ok(refs[2].replace(/\D/g,'').length>8,'the point that crossed is written in full: '+refs[2]);
 assert.match(await page.locator('#fieldAreaNote').innerText(),/point 3 is outside/i,'crossing an area line must say so');
@@ -83,17 +120,26 @@ await page.selectOption('#fieldFormat','mgrs');
 await page.evaluate(()=>{fieldTestMap.setView([1.35,103.82],14,{animate:false});});
 
 await page.click('#fieldAdd');await page.evaluate(()=>{fieldTestMap.panTo([1.36,103.83],{animate:false});});await page.click('#fieldAdd');await page.check('#fieldRoute');assert.match(await page.locator('#fieldDistance').innerText(),/1\.57 km/);
-await page.locator('#fieldPoints input').first().fill('HQ <test>');await page.locator('#fieldPoints input').first().blur();
-await page.click('#fieldClear');assert.equal(await page.locator('#fieldPoints li').count(),0);await page.click('#fieldUndo');assert.equal(await page.locator('#fieldPoints input').first().inputValue(),'HQ <test>');
+await page.locator('#fieldPoints .nm').first().fill('HQ <test>');await page.locator('#fieldPoints .nm').first().blur();
+await page.click('#fieldClear');assert.equal(await page.locator('#fieldPoints li').count(),0);await page.click('#fieldUndo');assert.equal(await page.locator('#fieldPoints .nm').first().inputValue(),'HQ <test>');
 await page.reload();await page.click('#tab-field');assert.equal(await page.locator('#fieldPoints li').count(),2);await page.click('#fieldClear');
 await page.setInputFiles('#fieldFile',{name:'segments.gpx',mimeType:'application/gpx+xml',buffer:Buffer.from(gpx)});await page.waitForFunction(()=>document.getElementById('fieldTotal').textContent==='4 points');assert.match(await page.locator('#fieldDistance').innerText(),/3\.14 km/);
 await page.click('#fieldConvert');assert.match(await page.locator('#routeDistance').innerText(),/3\.14 km/);assert.equal(await page.locator('#toRows .trow').count(),4);
 await page.reload();await page.click('#tab-conv');await page.click('#convertBtn');if(await page.locator('#countryGridContinue').isVisible())await page.click('#countryGridContinue');assert.match(await page.locator('#routeDistance').innerText(),/3\.14 km/,'segment breaks survive converter reload');
-await page.click('#tab-field');await page.selectOption('#fieldFormat','wgs84');assert.match(await page.locator('#fieldPoints code').first().innerText(),/1\.350000/);
+await page.click('#tab-field');await page.selectOption('#fieldFormat','wgs84');assert.match(await page.locator('#fieldPoints .a').first().inputValue(),/1\.350000/);
 await page.setInputFiles('#fieldFile',{name:'bad.gpx',mimeType:'application/gpx+xml',buffer:Buffer.from('<gpx><wpt lat="999" lon="0"/></gpx>')});await page.waitForFunction(()=>document.getElementById('fieldStatus').textContent.includes('Invalid coordinate'));assert.equal(await page.locator('#fieldPoints li').count(),4);
-await page.evaluate(()=>{navigator.clipboard.writeText=async text=>{window.copiedPoints=text;};});await page.click('#fieldCopy');assert.equal((await page.evaluate(()=>window.copiedPoints)).split('\n').length,4);
+await page.evaluate(()=>{navigator.clipboard.writeText=async text=>{window.copiedPoints=text;};});await page.click('#fieldCopy');const copied=(await page.evaluate(()=>window.copiedPoints)).split('\n');assert.equal(copied.length,4);assert.equal(copied[0].split('\t').length,2,'unnamed points copy only coordinate columns, just like converter');
 const download=page.waitForEvent('download');await page.click('#fieldExport');const d=await download;assert.equal(d.suggestedFilename(),'mike-golf-romeo.gpx');
 await page.selectOption('#fieldLayer','satellite');await context.setOffline(true);await page.click('#fieldAdd');assert.equal(await page.locator('#fieldPoints li').count(),5,'adding coordinates works without tiles');await context.setOffline(false);
+// Upgrading an old saved picker changes the basemap, never its collected points/grid.
+await page.evaluate(()=>{const key='mike-golf-romeo-field-v1',s=JSON.parse(localStorage.getItem(key));s.layer='topo';s.system='wgs84';delete s.basemapRevision;localStorage.setItem(key,JSON.stringify(s));});
+await page.reload();
+assert.equal(await page.locator('#fieldLayer').inputValue(),'street');
+assert.equal(await page.locator('#fieldFormat').inputValue(),'wgs84');
+assert.equal(await page.locator('#fieldPoints .trow').count(),5);
+assert.equal(await page.locator('#fieldLocalGrid').isVisible(),true);
+await page.selectOption('#fieldLayer','topo');await page.reload();
+assert.equal(await page.locator('#fieldLayer').inputValue(),'topo','an explicit new choice persists');
 await page.screenshot({path:`/tmp/mgr-field-${device.replaceAll(' ','-')}.png`,fullPage:true});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'no horizontal overflow');assert.deepEqual(errors,[]);console.log(device+': add, name, undo, persistence, grids, GPX, segment distance, converter transfer/reload, export passed');
 }finally{await browser.close();}}
 }finally{server.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

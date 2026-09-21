@@ -3,30 +3,33 @@
 'use strict';
 root.createFieldMap=function({formatter,projection,presets,onConvert,helper,countryPresets=[],presetName=id=>id,localGrid=()=>null,presetHolds=()=>true}){
  const $=id=>document.getElementById(id),key='mike-golf-romeo-field-v1';
- let points=[],connected=false,system='mgrs',layer=MapSupport.DEFAULT_BASEMAP,map,markers,route,grid,frame,view,undo=[],bases,autoZoom,written=null,broad;
- try{const s=JSON.parse(localStorage.getItem(key));if(s&&Array.isArray(s.points)){points=s.points.filter(RouteTools.valid).slice(0,20000);connected=!!s.connected;system=presets.includes(s.system)?s.system:'mgrs';layer=MapSupport.basemapId(s.layer);view=s.view;}}catch(_){}
+ let points=[],connected=false,system='mgrs',layer=MapSupport.DEFAULT_BASEMAP,map,markers,route,grid,frame,view,undo=[],bases,autoZoom,written=null,broad,lastLocal=null;
+ try{const s=JSON.parse(localStorage.getItem(key));if(s&&Array.isArray(s.points)){points=s.points.filter(RouteTools.valid).slice(0,20000);connected=!!s.connected;system=presets.includes(s.system)?s.system:'mgrs';layer=MapSupport.basemapId(s.basemapRevision===2?s.layer:(s.layer==='topo'?'street':s.layer));view=s.view;}}catch(_){}
  const status=t=>{$('fieldStatus').textContent=t;};
- function save(){try{localStorage.setItem(key,JSON.stringify({points,connected,system,layer,view}));}catch(_){status('Device storage is full. Export your points before closing.');}}
- function remember(){undo.push(JSON.stringify({points,connected}));if(undo.length>30)undo.shift();}
+ function save(){try{localStorage.setItem(key,JSON.stringify({points,connected,system,layer,view,basemapRevision:2}));}catch(_){status('Device storage is full. Export your points before closing.');}}
+ function remember(){undo.push(JSON.stringify({points,connected,system}));if(undo.length>30)undo.shift();}
  // The whole collection decides how each reference is written, so the formatter is
  // built once per change and reused by the list, the copy and the crosshair readout.
  function writer(){if(!written)written=formatter(points,system);return written;}
  function coordinate(p){try{return writer().text(p);}catch(e){return e.message;}}
  function render(){
   $('fieldFormat').value=system;$('fieldRoute').checked=connected;
-  $('fieldTotal').textContent=points.length+' points';
+  $('fieldTotal').textContent=points.length+(points.length===1?' point':' points');
   $('fieldDistance').textContent=connected?RouteTools.summary(points):'';
   $('fieldAreaNote').textContent=writer().notice||'';
   $('fieldAreaNote').hidden=!writer().notice;
   const list=$('fieldPoints');list.replaceChildren();
+  const headings=writer().columns||['Easting','Northing'];
+  $('fieldEastHead').textContent=headings[0];$('fieldNorthHead').textContent=headings[1];
   // Large GPX tracks remain complete for calculations/export; bound DOM work.
   points.slice(0,300).forEach((p,i)=>{
-   const li=document.createElement('li');li.className='field-point';
-   const number=document.createElement('span');number.textContent=i+1;
-   const input=document.createElement('input');input.value=p.name||'';input.placeholder='Point '+(i+1);input.setAttribute('aria-label','Point '+(i+1)+' name');input.addEventListener('change',()=>{remember();p.name=input.value;save();draw();});
-   const remove=document.createElement('button');remove.textContent='×';remove.setAttribute('aria-label','Remove point '+(i+1));remove.onclick=()=>{remember();if(p.breakBefore&&points[i+1])points[i+1].breakBefore=true;points.splice(i,1);refresh();};
-   const code=document.createElement('code');code.textContent=coordinate(p);
-   li.append(number,input,remove,code);list.append(li);
+   const li=document.createElement('li');li.className='trow field-point';
+   const number=document.createElement('span');number.className='n';number.textContent=i+1;
+   const input=document.createElement('input');input.className='cell nm';input.value=p.name||'';input.placeholder='Optional';input.setAttribute('aria-label','Point '+(i+1)+' name');input.addEventListener('change',()=>{remember();p.name=input.value;save();draw();});
+   const remove=document.createElement('button');remove.className='del';remove.textContent='×';remove.setAttribute('aria-label','Remove point '+(i+1));remove.onclick=()=>{remember();if(p.breakBefore&&points[i+1])points[i+1].breakBefore=true;points.splice(i,1);if(!points.length)lastLocal=null;refresh();};
+   const values=writer().cells(p);
+   const cells=values.map((value,j)=>{const cell=document.createElement('input');cell.className='cell '+(j?'b':'a');cell.readOnly=true;cell.value=value;cell.setAttribute('aria-label',headings[j]);return cell;});
+   li.append(number,...cells,input,remove);list.append(li);
   });
   if(points.length>300){const li=document.createElement('li');li.textContent=`Showing first 300 of ${points.length} points. All points are included in distance, copy and GPX.`;list.append(li);}
   for(const id of ['fieldCopy','fieldExport','fieldConvert','fieldClear'])$(id).disabled=!points.length;
@@ -42,6 +45,11 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   const centre=map?map.getCenter():null;
   const lat=centre?centre.lat:null,lon=centre?MapSupport.longitude(centre.lng):null;
   const local=lat===null?null:localGrid(lat,lon);
+  if(!points.length&&local==='sg'&&lastLocal!=='sg'){
+   system='sg';written=null;render();save();
+   if(map){$('fieldCoordinate').textContent=coordinate({lat,lon});scheduleGrid();}
+  }
+  lastLocal=local;
   const here=[],elsewhere=[];
   for(const id of presets){
    const global=!countryPresets.includes(id);
@@ -63,20 +71,19 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   if(note){
    // Global MGRS works anywhere, but where a country grid covers the ground people
    // are standing on, saying so beats reading out a global reference by accident.
-   const mismatch=local&&local!==system&&!countryPresets.includes(system);
+   const mismatch=points.length>0&&local&&local!==system;
    note.hidden=!mismatch;
-   if(mismatch)note.textContent=presetName(local)+' covers this area. Tap to use it.';
+   if(mismatch)note.textContent=presetName(local)+' covers this area. Change the grid for your '+(points.length===1?'point':'points')+'?';
    note.dataset.grid=mismatch?local:'';
   }
  }
  function refresh(){written=null;render();draw();save();offerGrids();}
  function add(p){if(!RouteTools.valid(p))return;if(points.length>=20000){status('20,000 point limit reached. Export or clear this collection first.');return;}remember();points.push({...p,name:'',breakBefore:points.length===0});refresh();}
  function draw(){if(!map)return;markers.clearLayers();route.clearLayers();
-  points.forEach((p,i)=>{if(points.length>1000){L.circleMarker([p.lat,p.lon],{radius:2,weight:0,fillOpacity:.8,fillColor:'#2563eb'}).addTo(markers);return;}
-   const el=document.createElement('span');el.textContent=p.name||'Point '+(i+1);
-   L.marker([p.lat,p.lon],{icon:L.divIcon({className:'field-index',html:String(i+1),iconSize:[24,24],iconAnchor:[12,12]})}).bindTooltip(el).addTo(markers);
+  points.forEach((p,i)=>{if(points.length>1000){L.circleMarker([p.lat,p.lon],{radius:2,weight:0,fillOpacity:.8,fillColor:'#2563eb',interactive:false}).addTo(markers);return;}
+   MapSupport.marker(map,{...p,number:i+1}).addTo(markers);
   });
-  if(connected){let segment=[];const flush=()=>{if(segment.length>1)L.polyline(segment,{color:'#2563eb',weight:3}).addTo(route);segment=[];};for(const p of points){if(p.breakBefore)flush();segment.push([p.lat,p.lon]);}flush();}
+  if(connected){let segment=[];const flush=()=>{if(segment.length>1)L.polyline(segment,{color:'#2563eb',weight:3,interactive:false}).addTo(route);segment=[];};for(const p of points){if(p.breakBefore)flush();segment.push([p.lat,p.lon]);}flush();}
  }
  function fit(){if(points.length&&map)map.fitBounds(L.latLngBounds(points.map(p=>[p.lat,p.lon])),{padding:[35,35],maxZoom:16});}
  // Coordinates are read in degrees, so their grid is meridians and parallels. A
@@ -95,7 +102,6 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
    const mark=Math.abs(value).toFixed(places);
    return mark+'\u00b0'+(axis==='lat'?(value<0?'S':'N'):(value<0?'W':'E'));
   };
-  $('fieldGridNote').textContent='Latitude/longitude grid \u00b7 '+(step>=1?step+'\u00b0':step.toFixed(places)+'\u00b0')+' spacing';
   const west=b.getWest(),east=b.getEast();
   const lines=[];
   for(let lat=Math.ceil(b.getSouth()/step)*step;lat<=b.getNorth();lat+=step)
@@ -117,22 +123,21 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   }
  }
  function drawGrid(){
-  if(!map)return;grid.clearLayers();if(!$('fieldGrid').checked){$('fieldGridNote').textContent='';return;}
+  if(!map)return;grid.clearLayers();if(!$('fieldGrid').checked)return;
   if(system==='wgs84'){drawGraticule();return;}
   // Past a kilometre grid's useful scale there is nothing worth drawing, so it goes
   // quietly rather than nagging about zoom.
-  if(map.getZoom()<11){$('fieldGridNote').textContent='';return;}
+  if(map.getZoom()<11)return;
   const b=map.getBounds(),center=map.getCenter();
   try{
    const global=system==='mgrs'||system==='wgs84'||system==='globalutm';
    const info=global?GlobalGrid.at(center.lat,MapSupport.longitude(center.lng)):null;
    const proj=info?info.proj:projection(system),clip=info?GlobalGrid.zoneBounds(info.zone,info.band):null;
-   if(!info)format({lat:center.lat,lon:MapSupport.longitude(center.lng)},system);
+   if(!info&&!presetHolds(system,center.lat,MapSupport.longitude(center.lng)))return;
    const size=map.getSize(),sample=[];
    for(let i=0;i<=8;i++)for(const xy of [[size.x*i/8,0],[size.x*i/8,size.y],[0,size.y*i/8],[size.x,size.y*i/8]]){const p=map.containerPointToLatLng(xy);sample.push(proj4('WGS84',proj,[MapSupport.longitude(p.lng),p.lat]));}
    const es=sample.map(p=>p[0]),ns=sample.map(p=>p[1]),e0=Math.floor(Math.min(...es)/1000)*1000,e1=Math.ceil(Math.max(...es)/1000)*1000,n0=Math.floor(Math.min(...ns)/1000)*1000,n1=Math.ceil(Math.max(...ns)/1000)*1000;
-   if((e1-e0+n1-n0)/1000>160){$('fieldGridNote').textContent='';return;}
-   $('fieldGridNote').textContent='1 km grid · '+(info?info.zone+info.band:system.toUpperCase())+(info?' · center zone':'');
+   if((e1-e0+n1-n0)/1000>160)return;
    function line(value,easting){
     const coords=[];for(let i=0;i<=32;i++){const p=proj4(proj,'WGS84',easting?[value,n0+(n1-n0)*i/32]:[e0+(e1-e0)*i/32,value]);coords.push(p);}
     // Clip line segments at the MGRS zone/band limits; never continue a zone grid into its neighbor.
@@ -149,8 +154,9 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
     }
    }
    for(let e=e0;e<=e1;e+=1000)line(e,true);for(let n=n0;n<=n1;n+=1000)line(n,false);
-  }catch(_){$('fieldGridNote').textContent='Grid unavailable here for this coordinate system.';}
+  }catch(_){grid.clearLayers();}
  }
+ function scheduleGrid(){cancelAnimationFrame(frame);frame=requestAnimationFrame(drawGrid);}
  function init(){
   const guess=MapSupport.approximateLocation({helper});const initial=RouteTools.valid(view)?view:guess.current();
   map=L.map('fieldMap',{preferCanvas:true,worldCopyJump:true,maxZoom:19,zoomControl:false}).setView([initial.lat,initial.lon],initial.zoom||10);
@@ -196,11 +202,18 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   MapSupport.navigation(map,$('fieldRegion'),null,{snap:false});
   let touched=false;map.on('movestart',()=>{touched=true;});
   guess.ready.then(p=>{if(!touched&&!view&&!points.length)map.setView([p.lat,p.lon],p.zoom);});
-  map.on('move',()=>{const p=map.getCenter();$('fieldCoordinate').textContent=coordinate({lat:p.lat,lon:MapSupport.longitude(p.lng)});cancelAnimationFrame(frame);frame=requestAnimationFrame(drawGrid);});
-  map.on('moveend',()=>{const p=map.getCenter();view={lat:p.lat,lon:MapSupport.longitude(p.lng),zoom:map.getZoom()};save();offerGrids();});
-  map.on('click',e=>{if($('fieldTap').checked)add({lat:e.latlng.lat,lon:MapSupport.longitude(e.latlng.lng)});});
+  map.on('move',()=>{const p=map.getCenter();$('fieldCoordinate').textContent=coordinate({lat:p.lat,lon:MapSupport.longitude(p.lng)});});
+  map.on('moveend',()=>{const p=map.getCenter();view={lat:p.lat,lon:MapSupport.longitude(p.lng),zoom:map.getZoom()};save();offerGrids();scheduleGrid();});
+  let clickTimer;
+  const cancelAdd=()=>clearTimeout(clickTimer);
+  map.on('dblclick zoomstart dragstart',cancelAdd);
+  map.on('click',e=>{
+   cancelAdd();if(!$('fieldTap').checked||e.originalEvent?.detail>1)return;
+   // Wait for a possible second tap: a zoom gesture must not also add points.
+   clickTimer=setTimeout(()=>add({lat:e.latlng.lat,lon:MapSupport.longitude(e.latlng.lng)}),420);
+  });
   $('fieldAdd').onclick=()=>{const p=map.getCenter();add({lat:p.lat,lon:MapSupport.longitude(p.lng)});};
-  new ResizeObserver(()=>{map.invalidateSize({pan:false});drawGrid();}).observe($('fieldMap'));
+  new ResizeObserver(()=>{map.invalidateSize({pan:false});scheduleGrid();}).observe($('fieldMap'));
   draw();if(points.length)fit();map.fire('move');offerGrids();detail();
  }
  $('fieldFormat').value=system;
@@ -209,13 +222,13 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
  $('fieldLocalGrid').onclick=()=>{const id=$('fieldLocalGrid').dataset.grid;if(!id)return;system=id;$('fieldFormat').value=id;written=null;refresh();drawGrid();if(map)map.fire('move');};
  $('fieldRoute').onchange=()=>{remember();connected=$('fieldRoute').checked;if(connected&&points.every(p=>p.breakBefore))points.forEach((p,i)=>p.breakBefore=i===0);refresh();};
  $('fieldGrid').onchange=drawGrid;
- $('fieldUndo').onclick=()=>{const old=undo.pop();if(old){({points,connected}=JSON.parse(old));refresh();}};
- $('fieldClear').onclick=()=>{remember();points=[];refresh();status('Points cleared. Undo restores them.');};
- $('fieldCopy').onclick=async()=>{try{const write=writer();const rows=points.map((p,i)=>{const text=write.text(p);return [text,(p.name||'Point '+(i+1)).replace(/[\t\r\n]/g,' ')].join('\t');}).join('\n');await navigator.clipboard.writeText(rows);status('Copied '+points.length+' points.');}catch(e){status('Could not copy: '+e.message);}};
+ $('fieldUndo').onclick=()=>{const old=undo.pop();if(old){({points,connected,system}=JSON.parse(old));refresh();}};
+ $('fieldClear').onclick=()=>{remember();points=[];lastLocal=null;refresh();status('Points cleared. Undo restores them.');};
+ $('fieldCopy').onclick=async()=>{try{const write=writer();const rows=points.map(p=>[...write.cells(p),(p.name||'').replace(/[\t\r\n]/g,' ')].filter(Boolean).join('\t')).join('\n');await navigator.clipboard.writeText(rows);status('Copied '+points.length+' points.');}catch(e){status('Could not copy: '+e.message);}};
  $('fieldExport').onclick=()=>{const url=URL.createObjectURL(new Blob([RouteTools.gpx(points,connected)],{type:'application/gpx+xml'}));const a=document.createElement('a');a.href=url;a.download='mike-golf-romeo.gpx';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
  $('fieldConvert').onclick=()=>{if(points.length>2000){status('Use GPX export for tracks over 2,000 points. The converter table supports smaller collections.');return;}onConvert(points,connected);};
  $('fieldImport').onclick=()=>$('fieldFile').click();
  $('fieldFile').onchange=async()=>{const file=$('fieldFile').files[0];$('fieldFile').value='';if(!file)return;try{if(file.size>20*1024*1024)throw Error('GPX files must be smaller than 20 MB.');const result=RouteTools.parse(await file.text());if(points.length+result.points.length>20000)throw Error('Import would exceed 20,000 points. Clear or export the current collection first.');remember();points.push(...result.points);connected=connected||result.connected;refresh();fit();status(`Imported ${result.points.length} points from ${file.name}.`);}catch(e){status(e.message);}};
- render();return {open(){if(!map)init();requestAnimationFrame(()=>map.invalidateSize({pan:false}));},getPoints:()=>points.map(p=>({...p}))};
+ render();return {open(){if(!map)init();written=null;render();map.fire('move');requestAnimationFrame(()=>{map.invalidateSize({pan:false});scheduleGrid();});},getPoints:()=>points.map(p=>({...p}))};
 };
 })(globalThis);

@@ -472,8 +472,8 @@ test('real crosshair picker cancels cleanly and Add & continue adds distinct new
 test('street layer persists through overview zoom and satellite toggle preserves center',async()=>{
   const a=app(undefined,true);a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));
   const activeTiles=()=>{const layers=[];a.w.pointTestMap.eachLayer(l=>{if(l instanceof a.w.L.TileLayer)layers.push(l);});return layers;};
-  // Topo is the opening layer; this test is about what street does afterwards.
-  assert.equal(activeTiles().length,1);assert.match(activeTiles()[0]._url,/opentopomap/);
+  // Street is the opening layer and stays selected through zooms.
+  assert.equal(activeTiles().length,1);assert.match(activeTiles()[0]._url,/openstreetmap/);
   a.$('#pointStreet').click();
   a.w.pointTestMap.setView([20,100],4,{animate:false});assert.equal(activeTiles().length,1);assert.equal(a.$('#pointMapScale'),null);assert.ok(a.$('.singapore-name'));
   const streets=activeTiles()[0];a.w.pointTestMap.setZoom(7,{animate:false});assert.equal(activeTiles().length,1);assert.equal(activeTiles()[0],streets);assert.match(streets._url,/openstreetmap/);
@@ -2011,9 +2011,9 @@ test('only actual active input setting changes require conversion again',async()
 });
 
 /* ---- v2 reference areas ---- */
-test('the app reports version 3.5.1',()=>{
+test('the app reports version 3.6.0',()=>{
   const a=app();
-  try{assert.equal(a.$('#appVersion').textContent,'v3.5.1');assert.match(read('version.js'),/APP_VERSION = "3\.5\.1"/);
+  try{assert.equal(a.$('#appVersion').textContent,'v3.6.0');assert.match(read('version.js'),/APP_VERSION = "3\.6\.0"/);
     const logo=a.$('header h1 .logo');assert.ok(logo,'the header shows the app icon');assert.equal(logo.getAttribute('src'),'icons/logo-64.png');assert.equal(logo.getAttribute('alt'),'');}
   finally{a.dom.window.close();}
 });

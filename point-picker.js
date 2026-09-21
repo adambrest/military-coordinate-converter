@@ -10,7 +10,7 @@
     // is not in the picture.
     const DETAIL_ZOOM=19;
     let coverageKey="",coverageToken=0,coveragePending=false,coverageTimer,coverageFailed=false;
-    let mode="topo",countryData=[],countryGeometry,worldKey,cancelTap,busy=false,background=[],tileErrors=new Set(),slowLayers=new Set();
+    let mode=MapSupport.DEFAULT_BASEMAP,countryData=[],countryGeometry,worldKey,cancelTap,busy=false,background=[],tileErrors=new Set(),slowLayers=new Set();
     const textNode=text=>{const el=document.createElement("span");el.textContent=text;return el;};
     function center(){const p=map.getCenter();return {lat:p.lat,lon:MapSupport.longitude(p.lng)};}
     function toggle(layer,show){if(show&&!map.hasLayer(layer))layer.addTo(map);else if(!show&&map.hasLayer(layer))map.removeLayer(layer);}

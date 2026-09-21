@@ -92,6 +92,7 @@
     text-shadow:0 1px 2px #fff,0 -1px 2px #fff,1px 0 2px #fff,-1px 0 2px #fff}
   .area-note{border-left:2px solid var(--warn);padding-left:8px;margin:8px 0}
   .local-grid{display:block;width:100%;margin-top:6px;padding:6px 8px;border:1px solid color-mix(in srgb,var(--warn) 40%,var(--line));border-radius:7px;background:color-mix(in srgb,var(--warn) 8%,transparent);color:var(--text);font:inherit;font-size:11px;text-align:left;cursor:pointer}
+  .local-grid[hidden]{display:none}
   .local-grid:hover{border-color:var(--warn)}
   .route-distance-control{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:6px;font-size:11px;color:var(--muted)}
   .route-distance-control label{display:inline-flex;align-items:center;gap:4px}
@@ -294,14 +295,13 @@
 <section class="view on" id="view-field">
  <div class="field-head"><h2>Point Picker</h2></div>
  <div class="field-layout"><div class="field-map-panel">
- <div class="field-tools"><label>Map <select id="fieldLayer"><option value="topo">Topo</option><option value="street">Street</option><option value="satellite">Satellite</option></select></label><select id="fieldRegion" aria-label="Jump to region"></select><label><input type="checkbox" id="fieldGrid" checked> 1 km grid</label><label><input type="checkbox" id="fieldTap"> Tap to add</label></div>
+ <div class="field-tools"><label>Map <select id="fieldLayer"><option value="street">Street</option><option value="topo">Topo</option><option value="satellite">Satellite</option></select></label><select id="fieldRegion" aria-label="Jump to region"></select><label><input type="checkbox" id="fieldGrid" checked> Grid</label><label><input type="checkbox" id="fieldTap"> Tap to add</label></div>
  <div class="field-map-wrap"><div id="fieldMap" aria-label="Point Picker map"></div><span class="field-crosshair" aria-hidden="true">+</span></div>
  <div class="field-readout"><output id="fieldCoordinate"></output><button id="fieldAdd">Add center point</button></div>
- <p class="field-note" id="fieldGridNote"></p>
  </div><aside class="field-output"><h3 id="fieldTotal">0 points</h3>
  <label>Output &amp; grid <select id="fieldFormat"><option value="mgrs">Global MGRS</option><option value="wgs84">Coordinates</option><option value="sg">Singapore MGR</option><option value="brunei">Brunei MGR</option><option value="taiwan">Taiwan MGR</option><option value="thailand">Thailand MGR</option><option value="australia">Australia MGR</option></select></label><button type="button" id="fieldLocalGrid" class="local-grid" hidden></button>
  <div class="field-actions"><button id="fieldImport">Import GPX</button><button id="fieldUndo">Undo</button><button id="fieldClear">Clear</button></div><input class="field-import" id="fieldFile" type="file" accept=".gpx,application/gpx+xml">
- <label><input type="checkbox" id="fieldRoute"> Connect points as a route</label><p id="fieldDistance"></p><ol id="fieldPoints"></ol>
+ <label><input type="checkbox" id="fieldRoute"> Connect points as a route</label><p id="fieldDistance"></p><div class="tbl"><div class="thead"><span>#</span><span id="fieldEastHead">Easting</span><span id="fieldNorthHead">Northing</span><span>Name</span><span></span></div><ol id="fieldPoints"></ol></div>
  <div class="field-actions"><button id="fieldCopy">Copy points</button><button id="fieldExport">Download GPX</button><button id="fieldConvert">Send to converter</button></div>
  <p class="field-note area-note" id="fieldAreaNote" role="status" hidden></p><p id="fieldStatus" role="status"></p>
  </aside></div></section>
@@ -1044,6 +1044,10 @@
           for(const id of new Set([...Object.keys(defaults),...Object.keys(saved)]))
             j.settings[id]={...(defaults[id]||{}),...(saved[id]||{})};
           delete j.settings.australia.datum;
+          if(j.basemapRevision!==2){
+            if(j.pointMapView?.layer==="topo")j.pointMapView.layer="street";
+            j.basemapRevision=2;
+          }
           // Military grids became opt-in; existing installs start with them off.
           if(j.militaryVersion!==3){j.militaryEnabled=false;j.militaryVersion=3;}
           if(!GLOBAL_FORMATS.includes(j.settings.mgrs.format))j.settings.mgrs.format="mgrs";
@@ -1071,7 +1075,7 @@
           return j;
         }
       }catch(_){}
-      return { from:"auto", to:"wgs84", rows:[["","",""]], out:null, points:[], settings:defaultSettings(), aoSelectionVersion:2, omitVersion:2 };
+      return { from:"auto", to:"wgs84", rows:[["","",""]], out:null, points:[], settings:defaultSettings(), basemapRevision:2, aoSelectionVersion:2, omitVersion:2 };
     }
     function save(){ try{ localStorage.setItem(STORAGE, JSON.stringify(state)); }catch(_){} }
 
@@ -2708,38 +2712,39 @@
     });
     const field=globalThis.createFieldMap?.({helper:MAP_HELPER,presets:["mgrs","wgs84",...COUNTRY_PRESETS],projection:projectionFor,
       countryPresets:COUNTRY_PRESETS,presetName:id=>PRESETS[id].name,
-      localGrid:(lat,lon)=>COUNTRY_PRESETS.filter(presetEnabled).find(id=>presetLikely(id,lat,lon))||null,
+      localGrid:(lat,lon)=>COUNTRY_PRESETS.find(id=>presetLikely(id,lat,lon))||null,
       presetHolds:(id,lat,lon)=>{try{return presetContains(id,lat,lon);}catch(_){return false;}},
       // The picker is the converter's output by another route, so it writes references
       // the same way: point 1 fixes the reference area and everything inside it is
       // written short. A point that crosses out of that area is named and written in
       // full, rather than quietly reading as though it were next door.
       formatter:(points,id)=>{
-        const settings=defaultSettings();
+        const settings=JSON.parse(JSON.stringify(state.settings));
+        const columns=colsFor(id,settings);
         const plain=p=>{
-          if(COUNTRY_PRESETS.includes(id)&&!presetContains(id,p.lat,p.lon))return "Outside "+PRESETS[id].name;
-          try{return formatPoint(p.lat,p.lon,id,settings).join(" ");}catch(error){return error.message;}
+          if(COUNTRY_PRESETS.includes(id)&&!presetContains(id,p.lat,p.lon))return ["Outside "+PRESETS[id].name,""];
+          try{return formatPoint(p.lat,p.lon,id,settings);}catch(error){return [error.message,""];}
         };
-        if(id==="wgs84"||!settings[id]||!hasAreas(id))return {text:plain,notice:""};
+        if(id==="wgs84"||!settings[id]||!hasAreas(id))return {text:p=>plain(p).join(" "),cells:plain,columns,notice:""};
         const writable=p=>!COUNTRY_PRESETS.includes(id)||presetContains(id,p.lat,p.lon);
         const keyAt=p=>{try{return areaKeyAt(id,p.lat,p.lon);}catch(_){return null;}};
         // A fixed-footprint preset already names its area; otherwise point 1 sets it.
         const lead=PRESETS[id].lead?PRESETS[id].lead.join("/"):null;
         const anchor=(points||[]).find(writable);
         const area=lead||(anchor?keyAt(anchor):null);
-        if(!area)return {text:plain,notice:""};
+        if(!area)return {text:p=>plain(p).join(" "),cells:plain,columns,notice:""};
         const short={...settings,[id]:{...settings[id],sgOmit:true}};
         const full={...settings,[id]:{...settings[id],sgOmit:false}};
         if(id==="mgrs")short[id].ao=area;else short[id].square=area.split("/").map(Number);
         const outside=[];
         (points||[]).forEach((p,i)=>{if(writable(p)&&keyAt(p)!==area)outside.push(i+1);});
-        const text=p=>{
-          if(!writable(p))return "Outside "+PRESETS[id].name;
+        const cells=p=>{
+          if(!writable(p))return ["Outside "+PRESETS[id].name,""];
           const here=keyAt(p)===area;
-          try{return formatPoint(p.lat,p.lon,id,here?short:full).join(" ");}
-          catch(error){return error.message;}
+          try{return formatPoint(p.lat,p.lon,id,here?short:full);}
+          catch(error){return [error.message,""];}
         };
-        return {text,notice:areaNotice(id,area,outside,(points||[]).length),area};
+        return {text:p=>cells(p).join(" "),cells,columns,notice:areaNotice(id,area,outside,(points||[]).length),area};
       },
       onConvert:points=>{
         // Transfer is explicit; keep existing converter entries rather than overwriting them.
