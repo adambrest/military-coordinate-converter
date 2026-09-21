@@ -4,6 +4,10 @@ const CACHE = `mgr-conv-v${self.APP_VERSION}`;
 // Map tiles outlive any one app version, so they keep their own cache.
 const TILE_CACHE = "mgr-tiles-v1";
 const TILE_HOSTS = ["tile.openstreetmap.org","services.arcgisonline.com"];
+// OpenTopoMap answers from a, b and c subdomains, so match its domain rather
+// than listing each host and missing whichever one a tile happens to come from.
+const TILE_DOMAINS = ["tile.opentopomap.org"];
+const isTileHost = host => TILE_HOSTS.includes(host) || TILE_DOMAINS.some(d => host === d || host.endsWith("." + d));
 const TILE_LIMIT = 1400;
 const ASSETS = ["./","./index.html","./route-tools.js","./field-map.js","./field-map.css","./version.js","./proj4.js","./map-context.js","./grid-core.js","./map-support.js","./map-picker.js","./map-picker.css","./point-picker.js","./point-picker.css","./vendor/countries.geojson","./vendor/shoalwater.geojson","./vendor/mgrs.js","./vendor/leaflet.js","./vendor/leaflet.css","./vendor/land.geojson","./manifest.webmanifest","./icons/favicon-32.png","./icons/logo-64.png"];
 self.addEventListener("install", e => e.waitUntil(
@@ -33,7 +37,7 @@ self.addEventListener("fetch", e => {
   // A reachability probe must never be answered from a cache, wherever it is
   // addressed, or it reports the network is up while the device is in a tunnel.
   if(url.searchParams.has("connectivity")){ e.respondWith(fetch(req,{cache:"no-store"})); return; }
-  if(url.origin!==self.location.origin){ if(TILE_HOSTS.includes(url.hostname)) e.respondWith(tile(req)); return; }
+  if(url.origin!==self.location.origin){ if(isTileHost(url.hostname)) e.respondWith(tile(req)); return; }
   if(req.mode==="navigate"){
     e.respondWith(fetch(req,{cache:"no-store"}).then(res=>{ if(res&&res.ok){ const c=res.clone(); caches.open(CACHE).then(x=>x.put(req,c)); } return res; }).catch(()=>caches.match(req).then(hit=>hit||caches.match("./index.html"))));
     return;

@@ -11,7 +11,7 @@ await page.route('**/where',r=>r.fulfill({json:{lat:1.35,lon:103.82,timezone:'As
 await page.route('**/beacon.min.js',r=>r.fulfill({contentType:'application/javascript',body:''}));
 await page.addInitScript(()=>{addEventListener('DOMContentLoaded',()=>{const make=L.map;L.map=(...args)=>{const map=make(...args);if(args[0]==='fieldMap')window.fieldTestMap=map;return map;};});});
 await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);await page.click('#tab-field');
-await page.evaluate(()=>fieldTestMap.setView([1.35,103.82],14));await page.waitForTimeout(200);assert.ok(await page.locator('.km-label').count()>0,'kilometre labels rendered');
+await page.evaluate(()=>fieldTestMap.setView([1.35,103.82],14));await page.waitForTimeout(200);assert.ok(await page.locator('.km-label').count()>0,'kilometer labels rendered');
 await page.click('#fieldAdd');await page.evaluate(()=>fieldTestMap.panTo([1.36,103.83],{animate:false}));await page.click('#fieldAdd');await page.check('#fieldRoute');assert.match(await page.locator('#fieldDistance').innerText(),/1\.57 km/);
 await page.locator('#fieldPoints input').first().fill('HQ <test>');await page.locator('#fieldPoints input').first().blur();
 await page.click('#fieldClear');assert.equal(await page.locator('#fieldPoints li').count(),0);await page.click('#fieldUndo');assert.equal(await page.locator('#fieldPoints input').first().inputValue(),'HQ <test>');

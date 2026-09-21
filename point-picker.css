@@ -23,6 +23,11 @@
 .point-status{margin:5px 0 0;font-size:11px;line-height:1.4;color:var(--muted)}#pointAdded{color:var(--accent)}
 .point-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:10px}
 .point-actions button{min-height:40px}.point-actions button:disabled{opacity:.45;cursor:default}
+/* Viewing output points: there is nothing to aim at and nothing to add, so the
+   crosshair, the crosshair readout and both add buttons all go away. */
+.overlay.viewing .point-crosshair,.overlay.viewing .point-actions,
+.overlay.viewing #pointCoordinate,.overlay.viewing #pointFormatPreview{display:none}
+.overlay.viewing .point-footer:not(:has(.point-status:not([hidden]):not(:empty))){padding:0;border-top:0}
 @media(max-width:600px){.modal.point-modal{width:100%;height:100dvh;max-height:100dvh;border-radius:0}.overlay:has(.point-modal){padding:0}.point-heading{padding:max(12px,env(safe-area-inset-top)) 12px 8px}.point-toolbar{padding:0 12px 8px;gap:6px}.point-footer{padding:10px 12px max(12px,env(safe-area-inset-bottom))}.point-actions{gap:5px}.point-actions button{padding:8px 10px;font-size:12px}.point-map-wrap{min-height:140px}}
 @media(max-height:500px){.modal.point-modal{width:100%;height:100dvh;max-height:100dvh;border-radius:0}.overlay:has(.point-modal){padding:0}.point-heading{padding:6px 12px 4px}.point-heading h3{font-size:16px;margin-bottom:2px}.point-heading p{font-size:11px}.point-toolbar{padding:0 12px 6px}.point-layers button{padding:5px 10px}.point-map-wrap{min-height:70px}.point-footer{padding:6px 12px max(8px,env(safe-area-inset-bottom))}.point-actions{margin-top:5px}.point-actions button{min-height:34px;padding:6px 10px}}
 

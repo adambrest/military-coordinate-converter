@@ -3,10 +3,10 @@
 'use strict';
 root.createFieldMap=function({format,projection,presets,onConvert,helper}){
  const $=id=>document.getElementById(id),key='mike-golf-romeo-field-v1';
- let points=[],connected=false,system='mgrs',map,markers,route,grid,frame,view,undo=[];
- try{const s=JSON.parse(localStorage.getItem(key));if(s&&Array.isArray(s.points)){points=s.points.filter(RouteTools.valid).slice(0,20000);connected=!!s.connected;system=presets.includes(s.system)?s.system:'mgrs';view=s.view;}}catch(_){}
+ let points=[],connected=false,system='mgrs',layer=MapSupport.DEFAULT_BASEMAP,map,markers,route,grid,frame,view,undo=[],bases;
+ try{const s=JSON.parse(localStorage.getItem(key));if(s&&Array.isArray(s.points)){points=s.points.filter(RouteTools.valid).slice(0,20000);connected=!!s.connected;system=presets.includes(s.system)?s.system:'mgrs';layer=MapSupport.basemapId(s.layer);view=s.view;}}catch(_){}
  const status=t=>{$('fieldStatus').textContent=t;};
- function save(){try{localStorage.setItem(key,JSON.stringify({points,connected,system,view}));}catch(_){status('Device storage is full. Export your points before closing.');}}
+ function save(){try{localStorage.setItem(key,JSON.stringify({points,connected,system,layer,view}));}catch(_){status('Device storage is full. Export your points before closing.');}}
  function remember(){undo.push(JSON.stringify({points,connected}));if(undo.length>30)undo.shift();}
  function coordinate(p){try{return format(p,system);}catch(e){return e.message;}}
  function render(){
@@ -50,10 +50,10 @@ root.createFieldMap=function({format,projection,presets,onConvert,helper}){
    for(let i=0;i<=8;i++)for(const xy of [[size.x*i/8,0],[size.x*i/8,size.y],[0,size.y*i/8],[size.x,size.y*i/8]]){const p=map.containerPointToLatLng(xy);sample.push(proj4('WGS84',proj,[MapSupport.longitude(p.lng),p.lat]));}
    const es=sample.map(p=>p[0]),ns=sample.map(p=>p[1]),e0=Math.floor(Math.min(...es)/1000)*1000,e1=Math.ceil(Math.max(...es)/1000)*1000,n0=Math.floor(Math.min(...ns)/1000)*1000,n1=Math.ceil(Math.max(...ns)/1000)*1000;
    if((e1-e0+n1-n0)/1000>160){$('fieldGridNote').textContent='Zoom in for 1 km grid lines.';return;}
-   $('fieldGridNote').textContent='1 km grid · '+(info?info.zone+info.band:system.toUpperCase())+(info?' · centre zone':'');
+   $('fieldGridNote').textContent='1 km grid · '+(info?info.zone+info.band:system.toUpperCase())+(info?' · center zone':'');
    function line(value,easting){
     const coords=[];for(let i=0;i<=32;i++){const p=proj4(proj,'WGS84',easting?[value,n0+(n1-n0)*i/32]:[e0+(e1-e0)*i/32,value]);coords.push(p);}
-    // Clip line segments at the MGRS zone/band limits; never continue a zone grid into its neighbour.
+    // Clip line segments at the MGRS zone/band limits; never continue a zone grid into its neighbor.
     const segments=[];let part=[];
     for(const p of coords){const inZone=!clip||(p[0]>=clip.west&&p[0]<=clip.east&&p[1]>=clip.south&&p[1]<=clip.north);if(inZone)part.push([p[1],p[0]]);else if(part.length){segments.push(part);part=[];}}if(part.length)segments.push(part);
     for(const seg of segments){if(seg.length<2)continue;L.polyline(seg,{color:'#40658e',weight:1,opacity:.55,interactive:false}).addTo(grid);
@@ -70,10 +70,17 @@ root.createFieldMap=function({format,projection,presets,onConvert,helper}){
   const guess=MapSupport.approximateLocation({helper});const initial=RouteTools.valid(view)?view:guess.current();
   map=L.map('fieldMap',{preferCanvas:true,worldCopyJump:true,maxZoom:19,zoomControl:false}).setView([initial.lat,initial.lon],initial.zoom||10);
   L.control.zoom({position:'bottomright'}).addTo(map);MapSupport.pointGestures(map);map.createPane('offlineLand').style.zIndex='150';MapSupport.context(map);MapSupport.trainingArea(map);L.control.scale({imperial:false}).addTo(map);
-  const street=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxNativeZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
-  const satellite=L.tileLayer(MapSupport.imageryService+'/tile/{z}/{y}/{x}',{maxNativeZoom:17,maxZoom:19,attribution:'Imagery © Esri, Vantor, Earthstar Geographics, GIS User Community'});
-  for(const layer of [street,satellite])layer.on('tileerror',()=>status('Some map tiles are unavailable. Your points and coordinate calculations still work.'));
-  $('fieldLayer').onchange=()=>{map.removeLayer($('fieldLayer').value==='street'?satellite:street);($('fieldLayer').value==='street'?street:satellite).addTo(map);};
+  bases={};
+  for(const id of MapSupport.basemapIds){
+   bases[id]=MapSupport.basemap(id,{maxZoom:19});
+   bases[id].on('tileerror',()=>status('Some map tiles are unavailable. Your points and coordinate calculations still work.'));
+  }
+  bases[layer].addTo(map);
+  $('fieldLayer').onchange=()=>{
+   const next=MapSupport.basemapId($('fieldLayer').value);
+   if(next===layer)return;
+   map.removeLayer(bases[layer]);layer=next;bases[layer].addTo(map);$('fieldLayer').value=layer;save();
+  };
   markers=L.layerGroup().addTo(map);route=L.layerGroup().addTo(map);grid=L.layerGroup().addTo(map);
   MapSupport.navigation(map,$('fieldRegion'),null,{snap:false});
   let touched=false;map.on('movestart',()=>{touched=true;});
@@ -86,6 +93,7 @@ root.createFieldMap=function({format,projection,presets,onConvert,helper}){
   draw();if(points.length)fit();map.fire('move');
  }
  $('fieldFormat').value=system;
+ $('fieldLayer').value=layer;
  $('fieldFormat').onchange=()=>{system=$('fieldFormat').value;refresh();drawGrid();if(map)map.fire('move');};
  $('fieldRoute').onchange=()=>{remember();connected=$('fieldRoute').checked;if(connected&&points.every(p=>p.breakBefore))points.forEach((p,i)=>p.breakBefore=i===0);refresh();};
  $('fieldGrid').onchange=drawGrid;

@@ -118,7 +118,8 @@ const server=http.createServer((req,res)=>{
    // Hold street tiles in flight and issue mouse double clicks without waiting
    // for either their resolution or a previous zoom animation.
    const heldTiles=[],holdTile=route=>{heldTiles.push(route);};
-   await page.route('https://tile.openstreetmap.org/**',holdTile);
+   const TILE_ROUTES=['https://tile.openstreetmap.org/**','https://*.tile.opentopomap.org/**'];
+   for(const pattern of TILE_ROUTES)await page.route(pattern,holdTile);
    await reset();await page.waitForTimeout(800);
    for(let step=1;step<=3;step++){
     const zoomAnchor=await page.evaluate(({x,y})=>{const r=testMap.getContainer().getBoundingClientRect();return testMap.containerPointToLatLng([x-r.left,y-r.top]);},{x,y});
@@ -128,7 +129,7 @@ const server=http.createServer((req,res)=>{
     assert.ok(zoomDrift<3,`${name}: double click anchor drift ${zoomDrift}`);
    }
    assert.ok(heldTiles.length,'zoom must run while tile requests are pending');
-   await page.unroute('https://tile.openstreetmap.org/**',holdTile);
+   for(const pattern of TILE_ROUTES)await page.unroute(pattern,holdTile);
    await Promise.all(heldTiles.map(route=>route.abort()));
    if(name==='Chromium'){
     await reset();await page.waitForTimeout(800);const cdp=await context.newCDPSession(page);
@@ -157,6 +158,13 @@ const server=http.createServer((req,res)=>{
    assert.deepEqual(tooDeep,[],'imagery was requested deeper than coverage reaches: '+tooDeep);
    await page.screenshot({path:`/tmp/saf-${name}-satellite.png`});
    await page.locator('#pointStreet').click();assert.equal(await page.evaluate(()=>testMap.getMaxZoom()),19);
+   // Topo is the default and must come back cleanly after the other two.
+   await page.locator('#pointTopo').click();
+   assert.equal(await page.locator('#pointTopo').getAttribute('aria-pressed'),'true');
+   assert.ok(await page.evaluate(()=>{let found=false;testMap.eachLayer(l=>{if(l._url?.includes('opentopomap'))found=true;});return found;}),
+     'the topo layer must be on the map when Topo is pressed');
+   assert.equal(await page.evaluate(()=>{let z=0;testMap.eachLayer(l=>{if(l._url?.includes('opentopomap'))z=l.options.maxNativeZoom;});return z;}),17,
+     'topo tiles stop at zoom 17; past that Leaflet must enlarge rather than request');
    await page.locator('#pointClose').click();
    await page.locator('#fromRows .a').fill('1.35,103.82');await page.locator('#convertBtn').click();
    await page.locator('#toSys').selectOption('mgrs');

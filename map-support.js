@@ -232,5 +232,28 @@
     map.on('zoomend',update);
     map.attributionControl.addAttribution('© <a href="https://spatial-gis.information.qld.gov.au/arcgis/rest/services/Location/Places/FeatureServer/17">State of Queensland</a>');
   }
-  root.MapSupport={regions,baseView,approximateLocation,tileUrls,prefetchTiles,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,imageryZoom,imageryService,trainingArea};
+  // Shared basemaps, so every map surface agrees on url, zoom ceiling and credit.
+  // Topo is the default: contours and hillshade are what a navigator on the ground
+  // reads, and OpenTopoMap renders both over the training areas this app is used in.
+  // Its tiles stop at zoom 17 - 18 and beyond are the same placeholder - so Leaflet
+  // enlarges past that rather than asking for tiles OpenTopoMap does not hold.
+  const BASEMAPS={
+    topo:{label:"Topo",url:"https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",subdomains:"abc",maxNativeZoom:17,
+      attribution:'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Rendering: &copy; <a href="https://opentopomap.org/">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'},
+    street:{label:"Street",url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png",maxNativeZoom:19,
+      attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'},
+    satellite:{label:"Satellite",url:imageryService+"/tile/{z}/{y}/{x}",maxNativeZoom:17,
+      attribution:'Imagery &copy; <a href="https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9">Esri, Vantor, Earthstar Geographics, GIS User Community</a>'}
+  };
+  const DEFAULT_BASEMAP="topo";
+  const basemapIds=Object.keys(BASEMAPS);
+  // An unknown or dropped id falls back to the default rather than leaving a blank map.
+  function basemapId(value){return BASEMAPS[value]?value:DEFAULT_BASEMAP;}
+  function basemap(id,options){
+    const spec=BASEMAPS[basemapId(id)];
+    const settings={maxNativeZoom:spec.maxNativeZoom,attribution:spec.attribution,...options};
+    if(spec.subdomains)settings.subdomains=spec.subdomains;
+    return L.tileLayer(spec.url,settings);
+  }
+  root.MapSupport={regions,baseView,approximateLocation,tileUrls,prefetchTiles,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,imageryZoom,imageryService,trainingArea,BASEMAPS,DEFAULT_BASEMAP,basemapIds,basemapId,basemap};
 })(globalThis);

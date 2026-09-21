@@ -253,6 +253,7 @@
           <div class="route-distance-control"><label><input type="checkbox" id="measureRoute" checked> Measure points in order</label><p id="routeDistance" aria-live="polite"></p></div>
           <div class="exportbar">
             <button class="maps" id="mapsBtn" disabled>Open in Maps</button>
+            <button id="viewBtn" disabled>View on map</button>
             <button id="gpxBtn" disabled>Download GPX</button>
             <button id="copyBtn" disabled>Copy</button>
           </div>
@@ -264,9 +265,9 @@
 <section class="view" id="view-field">
  <div class="field-head"><h2>Point Picker</h2><p>Choose places. Get grid references. Take your points with you.</p></div>
  <div class="field-layout"><div class="field-map-panel">
- <div class="field-tools"><label>Map <select id="fieldLayer"><option value="street">Street</option><option value="satellite">Satellite</option></select></label><select id="fieldRegion" aria-label="Jump to region"></select><label><input type="checkbox" id="fieldGrid" checked> 1 km grid</label><label><input type="checkbox" id="fieldTap"> Tap to add</label></div>
+ <div class="field-tools"><label>Map <select id="fieldLayer"><option value="topo">Topo</option><option value="street">Street</option><option value="satellite">Satellite</option></select></label><select id="fieldRegion" aria-label="Jump to region"></select><label><input type="checkbox" id="fieldGrid" checked> 1 km grid</label><label><input type="checkbox" id="fieldTap"> Tap to add</label></div>
  <div class="field-map-wrap"><div id="fieldMap" aria-label="Point Picker map"></div><span class="field-crosshair" aria-hidden="true">+</span></div>
- <div class="field-readout"><output id="fieldCoordinate"></output><button id="fieldAdd">Add centre point</button></div>
+ <div class="field-readout"><output id="fieldCoordinate"></output><button id="fieldAdd">Add center point</button></div>
  <p class="field-note" id="fieldGridNote"></p><p class="field-note">Move the map beneath the crosshair, then add a point. Your opening view uses an approximate location without a GPS permission request.</p>
  </div><aside class="field-output"><h3 id="fieldTotal">0 points</h3>
  <label>Output &amp; grid <select id="fieldFormat"><option value="mgrs">Global MGRS</option><option value="wgs84">Coordinates</option><option value="sg">Singapore MGR</option><option value="brunei">Brunei MGR</option><option value="taiwan">Taiwan MGR</option><option value="thailand">Thailand MGR</option><option value="australia">Australia MGR</option></select></label>
@@ -327,7 +328,7 @@
   <div class="overlay" id="pointOverlay" role="dialog" aria-modal="true" aria-labelledby="pointTitle">
     <div class="modal point-modal">
       <div class="point-heading"><h3 id="pointTitle">Select a point</h3><button id="pointClose" aria-label="Close point map">×</button></div>
-      <div class="point-toolbar"><div class="point-layers" role="group" aria-label="Map layer"><button id="pointStreet" aria-pressed="true">Street</button><button id="pointSatellite" aria-pressed="false">Satellite</button></div><select id="pointRegion" class="map-region" aria-label="Jump to"></select><span id="pointPreset"></span><span id="pointCount"></span></div>
+      <div class="point-toolbar"><div class="point-layers" role="group" aria-label="Map layer"><button id="pointTopo" aria-pressed="true">Topo</button><button id="pointStreet" aria-pressed="false">Street</button><button id="pointSatellite" aria-pressed="false">Satellite</button></div><select id="pointRegion" class="map-region" aria-label="Jump to"></select><span id="pointPreset"></span><span id="pointCount"></span></div>
       <div class="point-map-wrap"><div id="pointMap" tabindex="0" aria-label="Point map. Arrow keys move the crosshair location; plus and minus zoom; Enter adds the point."></div><svg class="point-crosshair" aria-hidden="true" viewBox="0 0 32 32"><path class="crosshair-edge" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/><path class="crosshair-core" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/></svg></div>
       <div class="point-footer"><div id="pointCoordinate"></div><div id="pointFormatPreview" aria-live="polite"></div><p class="point-status" id="pointUnresolved" hidden></p><p class="point-status" id="pointNetwork" hidden></p><p class="point-status" id="pointAdded" role="status"></p><div class="point-actions"><button class="setting-action" id="pointContinue">Add and add another</button><button class="setting-action primary" id="pointConfirm">Add</button></div></div>
     </div>
@@ -637,6 +638,9 @@
       .replace(/\\?&#(?:x0*a|0*10);/gi,"\n").replace(/\\?&#(?:x0*d|0*13);/gi,"\n")
       .replace(/&nbsp;|&#(?:x20|32);/gi," ")
       .replace(/\[[^\]]*\]\((https?:\/\/[^\s]+?)\)/gi,"$1").replace(/\*\*/g,"")
+      // "MLP3https://…" is a name run onto its link. Only a letter or digit splits,
+      // so a parameter that carries a url ("continue=https://…") is left whole.
+      .replace(/([A-Za-z0-9])(?=https?:\/\/)/g,"$1 ")
       .replace(/(^|[\s,;|(<])((?:(?:www\.)?google\.[a-z.]+\/maps|maps\.google\.[a-z.]+\/|maps\.app\.goo\.gl\/|goo\.gl\/maps|maps\.apple(?:\.com)?\/))/gi,"$1https://$2");
   }
   // Extract coordinates from full Google/Apple Maps URLs before the general number parser sees
@@ -1157,6 +1161,9 @@
         }
         const delEl=div.querySelector(".del");
         if(delEl) delEl.addEventListener("click",()=>{
+          // Cancel first: a row waiting on a link has nothing in it yet, so the empty-row
+          // shortcut below would otherwise leave that wait with no way to call it off.
+          stopResolving(i);
           if(state.from==="auto"&&!div.querySelector(".a").value.trim())return;
           readRows();remember();
           if(state.rows.length===1){state.rows=[["","",""]];state.from="auto";$("#fromSys").value="auto";delete state.pendingGrid;state.explicitInput=false;}
@@ -1167,7 +1174,7 @@
         const A=div.querySelector(".a"),B=div.querySelector(".b"),NM=div.querySelector(".nm");
         const prefix=div.querySelector(".prefix,.square");
         if(prefix)prefix.addEventListener("input",()=>{prefix.closest(".area-pill")?.classList.remove("bad");readRows();state.points=[];renderTo();updateRegionChips();setBottomError("");save();});
-        [A,B,NM].forEach(inp=>inp.addEventListener("input",()=>{ readRows(); updatePasteHint(); setBottomError(""); state.points=[];renderTo();save(); }));
+        [A,B,NM].forEach(inp=>inp.addEventListener("input",()=>{ if(inp!==NM)stopResolving(i); readRows(); updatePasteHint(); setBottomError(""); state.points=[];renderTo();save(); }));
         [A,B].forEach(inp=>inp.addEventListener("blur",()=>{ inp.classList.remove("bad"); }));
         // A finished edit to any field is one step for Undo, however many keys it took.
         [A,B,NM,prefix].forEach(inp=>{
@@ -1400,7 +1407,7 @@
       const previous=last&&(!p.bbox||presetContains(id,last.lat,last.lon))?last:null;
       const fallback=p.anchor?{lat:p.anchor[0],lon:p.anchor[1]}:p.bbox?{lat:(p.bbox[0]+p.bbox[1])/2,lon:(p.bbox[2]+p.bbox[3])/2}:guessLocation();
       const nav=p.browseBbox||p.bbox;
-      pointOptions={...current,autoDetect:state.from==="auto",presetId:id,presetLabel:p.name,bounds:nav?[[nav[0],nav[2]],[nav[1],nav[3]]]:null,detailZoom:DETAIL_ZOOM,center:previous||fallback,zoom:(previous?state.pointMapView?.zoom:0)||(previous?15:COUNTRY_PRESETS.includes(id)?9:fallback.zoom||4),layer:state.pointMapView?.layer||"street"};
+      pointOptions={...current,autoDetect:state.from==="auto",presetId:id,presetLabel:p.name,bounds:nav?[[nav[0],nav[2]],[nav[1],nav[3]]]:null,detailZoom:DETAIL_ZOOM,center:previous||fallback,zoom:(previous?state.pointMapView?.zoom:0)||(previous?15:COUNTRY_PRESETS.includes(id)?9:fallback.zoom||4),layer:state.pointMapView?.layer||MapSupport.DEFAULT_BASEMAP};
       pointPicker.open(pointOptions);
     });
 
@@ -1894,7 +1901,61 @@
         return result.map(text=>({text,name:label}));
       });
     }
-    let resolving=0;
+    let resolving=0,resolvingBusy=false,resolvingRow=-1;
+    // Nothing may keep waiting on text that is no longer there: deleting or rewriting
+    // the row that started a link abandons it, and takes its busy mark with it. Another
+    // row's edit, or a name typed while waiting, leaves the link alone.
+    function stopResolving(row){
+      if(!resolvingBusy||(row!==undefined&&row!==resolvingRow))return;
+      resolving++;resolvingBusy=false;resolvingRow=-1;detect("");
+      for(const c of $("#fromRows").querySelectorAll(".a.busy"))c.classList.remove("busy");
+    }
+    const LINK_LIMIT=25;
+    // Every opaque short link in one paste, in the order it appears, asked for once.
+    function shortMapLinks(text){
+      const found=[];
+      // Links run together by a separator are several, not one long address.
+      const separated=text.replace(/[,;|](?=https?:\/\/)/gi," ");
+      for(let token of (separated.match(/https?:\/\/[^\s<>"\]]+/gi)||[])){
+        token=token.replace(/[),.;]+$/g,"");
+        let u;try{u=new URL(token);}catch(_){continue;}
+        const host=u.hostname.toLowerCase();
+        if((host==="maps.app.goo.gl"||(host==="goo.gl"&&u.pathname.startsWith("/maps"))
+           ||host==="maps.apple"||host.endsWith(".maps.apple"))&&!found.includes(token))found.push(token);
+      }
+      return found.slice(0,LINK_LIMIT);
+    }
+    async function followLink(link){
+      const r=await fetch(LINK_RESOLVER+(LINK_RESOLVER.includes("?")?"&":"?")+"url="+encodeURIComponent(link),{signal:AbortSignal.timeout(8000)});
+      const data=await r.json();
+      if(!data.url)throw Error(data.error||"That link could not be followed.");
+      return data.url;
+    }
+    // Following them all before anything is read means one wait rather than one per
+    // link, and a line the converter cannot read can no longer strand the rest.
+    async function resolveShortLinks(links,i,rowText,insert){
+      const token=++resolving;resolvingBusy=true;resolvingRow=i;
+      const cell=$("#fromRows").children[i]?.querySelector(".a");
+      detect(links.length>1?"Following "+links.length+" links…":"Following the link…","warn");
+      if(cell)cell.classList.add("busy");
+      try{
+        const results=await Promise.all(links.map(link=>followLink(link).then(url=>({link,url}),error=>({link,error}))));
+        if(token!==resolving)return;
+        const failed=results.filter(r=>!r.url);
+        if(failed.length===results.length)throw failed[0].error;
+        let next=rowText;
+        for(const r of results)if(r.url)next=next.split(r.link).join(r.url);
+        detect("");
+        onPaste({clipboardData:{getData:()=>next},preventDefault(){}},i,{insert,linksResolved:true});
+        if(failed.length)setBottomError(failed.length+" of "+results.length+" links could not be followed. Open them and paste the address they land on.");
+      }catch(error){
+        if(token!==resolving)return;
+        detect("");
+        setBottomError(error&&error.name==="TimeoutError"?"The link took too long to follow. Open it and paste the address it lands on.":"That link could not be followed. Open it and paste the address it lands on.");
+      }finally{
+        if(token===resolving){resolvingBusy=false;resolvingRow=-1;const c=$("#fromRows").children[i]?.querySelector(".a");if(c)c.classList.remove("busy");}
+      }
+    }
     async function resolveShortLink(link,i,rowText,insert){
       const token=++resolving, cell=$("#fromRows").children[i]?.querySelector(".a");
       detect("Following the link…","warn");
@@ -1964,6 +2025,21 @@
         const raw=[...state.rows];raw[i]=[text.trim(),"",r[2]||"",...r.slice(3)];
         rememberSnapshot(snapshot({rows:raw,from:state.from}));
       };
+      // Short links are opaque: the address they land on is what gets read. Follow every
+      // one of them first, so a line the converter cannot read cannot strand the rest.
+      if(!opts.linksResolved&&LINK_RESOLVER&&typeof fetch==="function"){
+        const links=shortMapLinks(text);
+        if(links.length){
+          e.preventDefault();setBottomError("");
+          // The row holds the pasted text while it waits, as a failed read does, so it
+          // can still be undone or deleted - and deleting it calls the wait off.
+          if(!(e.target&&multiline&&state.from!=="auto")){
+            if(e.target)rememberSnapshot(before);
+            state.rows[i]=[text,"",state.rows[i]?.[2]||""];state.points=[];renderFrom();renderTo();
+          }
+          resolveShortLinks(links,i,text,insert);save();return;
+        }
+      }
       // Two numbers split by a space are one easting and northing, of any width.
       const short=lines.length&&lines.every(({text:line,grid})=>{const g=splitGrid(line);return !g.error&&(g.d>=3||grid);});
       if(short)rememberRaw();
@@ -1981,7 +2057,14 @@
       }
       // Lines in different systems (a link, then MGRS, then UTM) still make one table:
       // each is read in its own system and written as latitude/longitude.
-      const kinds=new Set(lines.map(({text:line},k)=>fullMGR(line)?"mgrs":projected[k]&&!projected[k].error?"utm":"latlon"));
+      // Digits alone are a grid reference. On their own every line is one and the
+      // chooser asks where they are; beside a link, the link already says where.
+      const bareGrid=lines.map(({text:line})=>{
+        if(!/^[\d\s]+$/.test(line))return null;
+        const g=splitGrid(line);
+        return !g.error&&g.d>=3?g:null;
+      });
+      const kinds=new Set(lines.map(({text:line},k)=>fullMGR(line)?"mgrs":projected[k]&&!projected[k].error?"utm":bareGrid[k]?"grid":"latlon"));
       const mixed=!short&&!full&&!paired&&kinds.size>1;
       let target=full?"mgrs":short?state.from:paired||(mixed?"wgs84":projected[0]?.target||"wgs84");
       const parsed=lines.map(({text:line},k)=>{
@@ -1989,6 +2072,7 @@
         if(short){const g=splitGrid(line);return {cells:[g.e,g.n]};}
         if(paired)return {cells:pairs[k].cells};
         if(mixed&&fullMGR(line)){try{const r=GlobalGrid.parse(line);if(r.error)return r;return {cells:llCells(r.lat,r.lon),point:r};}catch(error){return {error:error.message};}}
+        if(mixed&&bareGrid[k])return null;
         if(mixed&&projected[k]&&!projected[k].error)return {cells:llCells(projected[k].point.lat,projected[k].point.lon),point:projected[k].point};
         if(projected[k])return projected[k].target&&projected[k].target!==target?{error:"Paste one coordinate format at a time."}:projected[k];
         if(projected.some(Boolean))return {error:"Paste one coordinate format at a time."};
@@ -1998,6 +2082,25 @@
         if(p.error&&/^\d+$/.test(line.trim()))return {error:"single run"};
         return p.error?p:{cells:llCells(p.lat,p.lon),point:p};
       });
+      // Second pass: a prefixless reference takes its area from the points pasted with
+      // it, so auto-detect reads the whole paste instead of stopping at the digits.
+      if(mixed&&bareGrid.some(Boolean)){
+        const known=parsed.map(r=>r&&r.point).filter(Boolean);
+        const anchor=known[0];
+        const id=anchor?(enabledGrid(known)||(presetEnabled("mgrs")?"mgrs":null)):null;
+        for(let k=0;k<parsed.length;k++){
+          if(parsed[k]||!bareGrid[k])continue;
+          if(!id){parsed[k]={error:"pick-square"};continue;}
+          try{
+            const S={...state.settings,[id]:{...state.settings[id]}};
+            const key=areaKeyAt(id,anchor.lat,anchor.lon);
+            if(id==="mgrs")S.mgrs={...S.mgrs,ao:key};
+            else S[id].square=key.split("/").map(Number);
+            const r=parseCells(id,bareGrid[k].e,bareGrid[k].n,S);
+            parsed[k]=r.error?r:{cells:llCells(r.lat,r.lon),point:r};
+          }catch(error){parsed[k]={error:error.message};}
+        }
+      }
       if(parsed.some(p=>p.error)){
         e.preventDefault();
         const k=parsed.findIndex(p=>p.error),failed=parsed[k];
@@ -2007,7 +2110,7 @@
           if(e.target)rememberSnapshot(before);
           state.rows[i]=[text,"",state.rows[i]?.[2]||""];state.points=[];renderFrom();renderTo();
         }
-        if(failed.shortLink&&failed.link&&LINK_RESOLVER&&typeof fetch==="function"){resolveShortLink(failed.link,i,text,insert);save();return;}
+        if(!opts.linksResolved&&failed.shortLink&&failed.link&&LINK_RESOLVER&&typeof fetch==="function"){resolveShortLink(failed.link,i,text,insert);save();return;}
         setBottomError(explain(failed.error,multiline?k+1:null,multiline?"Line":null));save();return;
       }
       if(!parsed.length)return;
@@ -2292,7 +2395,7 @@
         rowsEl.appendChild(div);
       });
       const has=pts.length>0;
-      $("#mapsBtn").disabled=!has; $("#gpxBtn").disabled=!has; $("#copyBtn").disabled=!has;
+      $("#mapsBtn").disabled=!has; $("#viewBtn").disabled=!has; $("#gpxBtn").disabled=!has; $("#copyBtn").disabled=!has;
       if(globalThis.RouteTools){
         const signature=JSON.stringify(pts.map(p=>[Number(p.lat.toFixed(8)),Number(p.lon.toFixed(8))]));
         const source=state.importedRoute?.signature===signature?state.importedRoute.points:pts;
@@ -2454,6 +2557,16 @@
         holder.append(button);
       }
       $("#mapsOverlay").classList.add("open");holder.firstChild.focus();
+    });
+    $("#viewBtn").addEventListener("click",()=>{
+      const pts=state.points||[];if(!pts.length)return;
+      // Numbered here because the output rows carry no number of their own, and the
+      // shared marker falls back to one for any point that was never named.
+      const points=pts.map((p,i)=>({lat:p.lat,lon:p.lon,name:p.name,number:i+1}));
+      const middle=points[Math.floor(points.length/2)];
+      pointPicker.open({points,readOnly:true,title:"Output points",unresolved:0,
+        presetId:state.to==="auto"?"wgs84":state.to,presetLabel:"",
+        center:{lat:middle.lat,lon:middle.lon},zoom:14,layer:state.pointMapView?.layer||MapSupport.DEFAULT_BASEMAP});
     });
     $("#mapsCancel").addEventListener("click",closeMaps);
     $("#mapsGpx").addEventListener("click",()=>{closeMaps();openGpx();});

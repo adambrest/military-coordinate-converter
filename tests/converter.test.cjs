@@ -472,11 +472,56 @@ test('real crosshair picker cancels cleanly and Add & continue adds distinct new
 test('street layer persists through overview zoom and satellite toggle preserves center',async()=>{
   const a=app(undefined,true);a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));
   const activeTiles=()=>{const layers=[];a.w.pointTestMap.eachLayer(l=>{if(l instanceof a.w.L.TileLayer)layers.push(l);});return layers;};
+  // Topo is the opening layer; this test is about what street does afterwards.
+  assert.equal(activeTiles().length,1);assert.match(activeTiles()[0]._url,/opentopomap/);
+  a.$('#pointStreet').click();
   a.w.pointTestMap.setView([20,100],4,{animate:false});assert.equal(activeTiles().length,1);assert.equal(a.$('#pointMapScale'),null);assert.ok(a.$('.singapore-name'));
   const streets=activeTiles()[0];a.w.pointTestMap.setZoom(7,{animate:false});assert.equal(activeTiles().length,1);assert.equal(activeTiles()[0],streets);assert.match(streets._url,/openstreetmap/);
   const center=a.w.pointTestMap.getCenter();a.$('#pointSatellite').click();await new Promise(r=>setTimeout(r,250));assert.equal(activeTiles().length,1);assert.match(activeTiles()[0]._url,/World_Imagery/);assert.equal(a.w.pointTestMap.getCenter().lat,center.lat);
   activeTiles()[0].fire('tileerror');assert.equal(a.$('#pointNetwork').hidden,false);
   a.$('#pointStreet').click();assert.equal(a.$('#pointNetwork').hidden,true);a.dom.window.close();
+});
+
+test('the output map view shows every point, adds nothing and has no crosshair',async()=>{
+  const a=app(undefined,true);a.paste('1.35,103.82\n1.36,103.83\n1.37,103.84');
+  a.$('#fromRows .nm').value='Start';a.$('#fromRows .nm').dispatchEvent(new a.w.Event('input',{bubbles:true}));
+  a.$('#convertBtn').click();await new Promise(r=>setTimeout(r,20));
+  assert.equal(a.$('#viewBtn').disabled,false,'a converted output must be viewable');
+  const rowsBefore=a.state().rows.length;
+  a.$('#viewBtn').click();await new Promise(r=>setTimeout(r,30));
+  const overlay=a.$('#pointOverlay');
+  assert.equal(overlay.classList.contains('open'),true);
+  assert.equal(overlay.classList.contains('viewing'),true,'the read-only view needs its own class to drop the crosshair');
+  assert.equal(a.$('#pointTitle').textContent,'Output points');
+  assert.match(a.$('#pointCount').textContent,/3 output points/);
+  // Every point is drawn, and an unnamed one still gets its number. The offline
+  // landmark pins share this class, so match our own labels rather than count them.
+  const labels=[...a.w.document.querySelectorAll('.chosen-point-label')].map(el=>el.textContent);
+  assert.ok(labels.includes('Start'),'the named output point keeps its name');
+  assert.ok(labels.includes('Point 2')&&labels.includes('Point 3'),'unnamed output points are numbered');
+  assert.equal(labels.filter(t=>/^Point \d+$/.test(t)&&Number(t.slice(6))>3).length,0,'no point beyond the output is drawn');
+  // Nothing in this view may add a point.
+  assert.equal(a.$('#pointConfirm').disabled,true);assert.equal(a.$('#pointContinue').disabled,true);
+  a.$('#pointConfirm').click();a.$('#pointContinue').click();
+  a.$('#pointMap').dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+  await new Promise(r=>setTimeout(r,30));
+  assert.equal(a.state().rows.length,rowsBefore,'viewing output must never add a row');
+  // The view fits the points rather than opening on one of them.
+  const bounds=a.w.pointTestMap.getBounds();
+  assert.ok(bounds.contains([1.35,103.82])&&bounds.contains([1.37,103.84]),'all output points must be in view');
+  a.$('#pointClose').click();
+  assert.equal(overlay.classList.contains('viewing'),false,'closing must clear the read-only dressing');
+  a.dom.window.close();
+});
+
+test('a read-only view does not overwrite the view the input picker returns to',async()=>{
+  const a=app(undefined,true);a.paste('1.35,103.82');a.$('#convertBtn').click();await new Promise(r=>setTimeout(r,20));
+  a.$('#selectMap').click();a.w.pointTestMap.setView([1.40,103.90],15,{animate:false});a.$('#pointClose').click();
+  const saved=JSON.parse(JSON.stringify(a.state().pointMapView));
+  a.$('#viewBtn').click();await new Promise(r=>setTimeout(r,30));
+  a.w.pointTestMap.setView([-33,18],6,{animate:false});a.$('#pointClose').click();
+  assert.deepEqual(a.state().pointMapView,saved,'panning a read-only view must not move the input picker');
+  a.dom.window.close();
 });
 
 test('past-point labels render names as text and number unnamed points',async()=>{
@@ -1684,7 +1729,115 @@ test('mixed full and shortened Google and Apple links resolve without losing ord
     assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
     assert.equal(a.state().points.length,5);
     assert.deepEqual(a.state().points.map(p=>Number(p.lat.toFixed(6))),[1.386791,1.36,1.37,1.384841,1.36]);
-    assert.deepEqual(asked,['https://maps.app.goo.gl/first','https://maps.apple/second','https://maps.app.goo.gl/first']);
+    // The same link twice is one question and two points: every occurrence is replaced.
+    assert.deepEqual(asked,['https://maps.app.goo.gl/first','https://maps.apple/second']);
+  }finally{a.dom.window.close();}
+});
+
+test('a name run onto its link survives, and every link is followed in one pass',async()=>{
+  const a=app(undefined,false,true,'https://resolver.test');
+  const asked=[],PLACES={one:[1.3848414,103.9828407],two:[1.3702,103.9601],three:[1.3555,103.9402]};
+  a.w.fetch=async url=>{
+    const link=new URL(url).searchParams.get('url');asked.push(link);
+    const id=Object.keys(PLACES).find(k=>link.endsWith('/'+k));
+    const [lat,lon]=PLACES[id];
+    return {ok:true,json:async()=>({url:`https://maps.google.com/?q=${lat},${lon}`})};
+  };
+  try{
+    // MLP3 is pasted straight onto its link, with no space between them.
+    a.paste(['MLP1 https://maps.app.goo.gl/one','MLP2 https://maps.app.goo.gl/two','MLP3https://maps.app.goo.gl/three'].join('\n'));
+    for(let i=0;i<40&&a.$('#copyBtn').disabled;i++)await new Promise(r=>setTimeout(r,10));
+    assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
+    assert.deepEqual(asked,['https://maps.app.goo.gl/one','https://maps.app.goo.gl/two','https://maps.app.goo.gl/three']);
+    assert.deepEqual(a.state().rows.map(r=>r[2]),['MLP1','MLP2','MLP3'],'each label names its own point');
+    assert.deepEqual(a.state().points.map(p=>Number(p.lat.toFixed(6))),[1.384841,1.3702,1.3555]);
+    assert.equal(a.$('#detect').textContent,'','the following-link message must not outlive the wait');
+    assert.equal(a.w.document.querySelectorAll('#fromRows .a.busy').length,0);
+  }finally{a.dom.window.close();}
+});
+
+test('a link still being followed is abandoned when its row is deleted or edited',async()=>{
+  for(const [what,act] of [['deleted',a=>a.$('#fromRows .del').click()],
+                           ['edited',a=>{const c=a.$('#fromRows .a');c.value='1.35,103.82';c.dispatchEvent(new a.w.Event('input',{bubbles:true}));}]]){
+    const a=app(undefined,false,true,'https://resolver.test');
+    let release;
+    a.w.fetch=()=>new Promise(r=>{release=r;});      // a link that never comes back on its own
+    try{
+      a.paste('https://maps.app.goo.gl/slow');
+      assert.equal(a.$('#fromRows .a').classList.contains('busy'),true,what+': the wait should be visible');
+      assert.match(a.$('#detect').textContent,/Following the link/);
+      act(a);
+      assert.equal(a.w.document.querySelectorAll('#fromRows .a.busy').length,0,what+': the busy mark must go');
+      assert.equal(a.$('#detect').textContent,'',what+': the following-link message must go');
+      // Even if the answer arrives later, it belongs to text that is gone.
+      release?.({ok:true,json:async()=>({url:'https://maps.google.com/?q=1.36,103.83'})});
+      await new Promise(r=>setTimeout(r,40));
+      assert.equal(a.w.document.querySelectorAll('#fromRows .a.busy').length,0,what+': a late answer must not revive the wait');
+      assert.equal(a.$('#detect').textContent,'',what+': a late answer must not revive the message');
+    }finally{a.dom.window.close();}
+  }
+});
+
+test('a link keeps being followed through a name edit and another row\'s edit',async()=>{
+  const a=app(undefined,false,true,'https://resolver.test');
+  let release;
+  try{
+    // Two ordinary points first, so there is a second row to work in later.
+    a.paste('1.35,103.82\n1.36,103.83');
+    assert.equal(a.w.document.querySelectorAll('#fromRows .trow').length,2);
+    a.w.fetch=()=>new Promise(r=>{release=r;});
+    a.paste('https://maps.app.goo.gl/slow');
+    assert.equal(a.$('#fromRows .a').classList.contains('busy'),true,'the wait should be visible');
+    // Naming the point while it is being followed is not a reason to stop.
+    const name=a.$('#fromRows .nm');
+    name.value='MLP1';name.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+    assert.equal(a.$('#fromRows .a').classList.contains('busy'),true,'a name must not call the link off');
+    assert.match(a.$('#detect').textContent,/Following the link/);
+    // Neither is work in a different row.
+    const rows=a.w.document.querySelectorAll('#fromRows .trow');
+    assert.ok(rows.length>1,'a second row is needed for this check');
+    const other=rows[1].querySelector('.a');
+    other.value='1.35,103.82';other.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+    assert.equal(rows[0].querySelector('.a').classList.contains('busy'),true,"another row's edit must not call the link off");
+    // The row that started it still can.
+    const own=rows[0].querySelector('.a');
+    own.value='';own.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+    assert.equal(a.w.document.querySelectorAll('#fromRows .a.busy').length,0,'its own row must still call it off');
+    assert.equal(a.$('#detect').textContent,'');
+    release?.({ok:true,json:async()=>({url:'https://maps.google.com/?q=1.36,103.83'})});
+    await new Promise(r=>setTimeout(r,40));
+    assert.equal(a.w.document.querySelectorAll('#fromRows .a.busy').length,0,'a late answer must not revive the wait');
+  }finally{a.dom.window.close();}
+});
+
+test('auto-detect reads links and prefixless grid references from one paste',async()=>{
+  const a=app(undefined,false,true,'https://resolver.test');
+  const PLACES={one:[1.3848414,103.9828407],two:[1.3702,103.9601]};
+  a.w.fetch=async url=>{
+    const link=new URL(url).searchParams.get('url');
+    const [lat,lon]=PLACES[Object.keys(PLACES).find(k=>link.endsWith('/'+k))];
+    return {ok:true,json:async()=>({url:`https://maps.google.com/?q=${lat},${lon}`})};
+  };
+  try{
+    // Each point is a labelled link with its grid reference on the next line.
+    a.paste(['MLP1 https://maps.app.goo.gl/one','3136 5148','MLP2 https://maps.app.goo.gl/two','3131 5067'].join('\n'));
+    for(let i=0;i<40&&a.$('#copyBtn').disabled;i++)await new Promise(r=>setTimeout(r,10));
+    assert.equal(a.$('#badPair').hidden,true,'nothing in this paste should be rejected: '+a.$('#badPair').textContent);
+    const rows=a.state().rows;
+    assert.equal(rows.length,4,'every line is its own point');
+    assert.deepEqual(rows.map(r=>r[2]),['MLP1','','MLP2',''],'each label stays with the link it was pasted on');
+    const points=a.state().points;
+    assert.equal(points.length,4);
+    assert.equal(Number(points[0].lat.toFixed(6)),1.384841);
+    assert.equal(Number(points[2].lat.toFixed(6)),1.3702);
+    // The prefixless digits are read as a grid reference in the area the links establish,
+    // not as a latitude and longitude, which is what used to reject them.
+    for(const k of [1,3]){
+      assert.ok(Number.isFinite(points[k].lat)&&Number.isFinite(points[k].lon),'row '+(k+1)+' has no position');
+      assert.ok(points[k].lat>1&&points[k].lat<2&&points[k].lon>103&&points[k].lon<105,
+        'row '+(k+1)+' should land in the area the links establish, got '+points[k].lat+','+points[k].lon);
+    }
+    assert.notEqual(Number(points[1].lat.toFixed(6)),Number(points[3].lat.toFixed(6)),'different digits are different points');
   }finally{a.dom.window.close();}
 });
 
@@ -1850,9 +2003,9 @@ test('only actual active input setting changes require conversion again',async()
 });
 
 /* ---- v2 reference areas ---- */
-test('the app reports version 3.0',()=>{
+test('the app reports version 3.1',()=>{
   const a=app();
-  try{assert.equal(a.$('#appVersion').textContent,'v3.0.0');assert.match(read('version.js'),/APP_VERSION = "3\.0\.0"/);
+  try{assert.equal(a.$('#appVersion').textContent,'v3.1.0');assert.match(read('version.js'),/APP_VERSION = "3\.1\.0"/);
     const logo=a.$('header h1 .logo');assert.ok(logo,'the header shows the app icon');assert.equal(logo.getAttribute('src'),'icons/logo-64.png');assert.equal(logo.getAttribute('alt'),'');}
   finally{a.dom.window.close();}
 });

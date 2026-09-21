@@ -4,18 +4,19 @@
   root.createPointPicker=function({preview,onConfirm,onViewChange}){
     const $=id=>document.getElementById(id),overlay=$("pointOverlay");
     const STREET_ZOOM=7;
-    let map,countries,labels,markers,streets,satellite,options={},returnFocus,frame,stableCenter,limitCenter;
+    let map,countries,labels,markers,streets,topo,satellite,options={},returnFocus,frame,stableCenter,limitCenter;
     // Beyond the imagery a provider actually holds for an area the tiles are only
     // enlarged, so stopping there keeps the crosshair from implying detail that
     // is not in the picture.
     const DETAIL_ZOOM=19;
     let coverageKey="",coverageToken=0,coveragePending=false,coverageTimer,coverageFailed=false;
-    let mode="street",countryData=[],countryGeometry,worldKey,cancelTap,busy=false,background=[],tileErrors=new Set(),slowLayers=new Set();
+    let mode="topo",countryData=[],countryGeometry,worldKey,cancelTap,busy=false,background=[],tileErrors=new Set(),slowLayers=new Set();
     const textNode=text=>{const el=document.createElement("span");el.textContent=text;return el;};
     function center(){const p=map.getCenter();return {lat:p.lat,lon:MapSupport.longitude(p.lng)};}
     function toggle(layer,show){if(show&&!map.hasLayer(layer))layer.addTo(map);else if(!show&&map.hasLayer(layer))map.removeLayer(layer);}
+    function activeLayer(){return mode==="satellite"?satellite:mode==="topo"?topo:streets;}
     function networkStatus(){
-      const active=mode==="satellite"?satellite:streets;
+      const active=activeLayer();
       const failed=!!active&&(tileErrors.has(active)||navigator.onLine===false||coverageFailed);
       $("pointNetwork").hidden=!failed&&!(active&&slowLayers.has(active));
       // A slow link still works: the crosshair and Add need no imagery at all.
@@ -59,7 +60,7 @@
       const zoom=map.getZoom(),broad=zoom<STREET_ZOOM;
       // Keep the same tile layer throughout pinch zoom; the offline country
       // geometry stays underneath while new tiles load.
-      toggle(streets,mode==="street");toggle(satellite,mode==="satellite");
+      toggle(streets,mode==="street");toggle(topo,mode==="topo");toggle(satellite,mode==="satellite");
       const worlds=MapSupport.worlds(map),key=worlds.join(',');
       if(countryGeometry&&worldKey!==key){countries.clearLayers();for(const offset of worlds)countries.addData(MapSupport.repeatGeometry(countryGeometry,offset));worldKey=key;}
       toggle(labels,broad);labels.clearLayers();
@@ -67,17 +68,21 @@
         const bounds=map.getBounds();
         for(const p of countryData)for(const offset of worlds){
           if(zoom<p.MIN_LABEL||!bounds.contains([p.LABEL_Y,p.LABEL_X+offset]))continue;
-          if(mode==="street"&&p.NAME!=="Singapore"&&!tileErrors.has(streets))continue;
+          // Street and topo both carry their own names; only imagery needs ours.
+          if(mode!=="satellite"&&p.NAME!=="Singapore"&&!tileErrors.has(activeLayer()))continue;
           if(p.NAME==="Singapore")L.circleMarker([p.LABEL_Y,p.LABEL_X+offset],{radius:3,color:'#fff',weight:1,fillColor:'#334155',fillOpacity:1,interactive:false}).addTo(labels);
           L.marker([p.LABEL_Y,p.LABEL_X+offset],{interactive:false,keyboard:false,icon:L.divIcon({className:"country-name"+(p.NAME==="Singapore"?" singapore-name":""),html:textNode(p.NAME),iconSize:[110,20],iconAnchor:[55,p.NAME==="Singapore"?26:10]})}).addTo(labels);
         }
       }
+      $("pointTopo").setAttribute("aria-pressed",String(mode==="topo"));
       $("pointStreet").setAttribute("aria-pressed",String(mode==="street"));
       $("pointSatellite").setAttribute("aria-pressed",String(mode==="satellite"));
       networkStatus();
     }
     function update(){
       if(!map||!overlay.classList.contains("open"))return;
+      // Viewing results has no crosshair, so there is no candidate point to preview.
+      if(options.readOnly){$("pointCoordinate").textContent="";$("pointFormatPreview").textContent="";$("pointFormatPreview").classList.remove("invalid");$("pointConfirm").disabled=true;$("pointContinue").disabled=true;return;}
       const p=center(),result=preview(p,options);
       $("pointCoordinate").textContent=result.error?"":result.cells.join(" ");
       $("pointFormatPreview").textContent=result.error||result.area||"";
@@ -90,7 +95,7 @@
       for(const p of points){
         MapSupport.marker(map,p).addTo(markers);
       }
-      $("pointCount").textContent=points.length+" existing point"+(points.length===1?"":"s");
+      $("pointCount").textContent=points.length+(options.readOnly?" output point":" existing point")+(points.length===1?"":"s");
       $("pointUnresolved").hidden=!options.unresolved;
       $("pointUnresolved").textContent=options.unresolved+" incomplete or unresolved row"+(options.unresolved===1?" is":"s are")+" not shown on the map.";
     }
@@ -111,9 +116,10 @@
       // where there is more. Guessing high the other way asks Esri for tiles it does
       // not have, and a hole is worse to look at than a softened one.
       satellite=L.tileLayer("https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxNativeZoom:18,maxZoom:22,attribution:'Imagery © <a href="https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9">Esri, Vantor, Earthstar Geographics, GIS User Community</a>'});
+      topo=MapSupport.basemap("topo",{minZoom:1,maxZoom:22});
       // Imagery must sit above the offline land; borders remain visible at broad zoom.
-      satellite.setZIndex(220);streets.setZIndex(230);
-      for(const layer of [streets,satellite]){
+      satellite.setZIndex(220);streets.setZIndex(230);topo.setZIndex(230);
+      for(const layer of [streets,topo,satellite]){
         let slowTimer;
         layer.on("loading",()=>{tileErrors.delete(layer);clearTimeout(slowTimer);slowTimer=setTimeout(()=>{slowLayers.add(layer);networkStatus();},6000);});
         layer.on("tileerror",()=>{tileErrors.add(layer);networkStatus();});
@@ -139,12 +145,13 @@
       if(root.ResizeObserver)new ResizeObserver(resize).observe($("pointMap"));else root.addEventListener("resize",resize);
     }
     function close(){
-      if(map)onViewChange?.({...center(),zoom:map.getZoom(),layer:mode,presetId:options.presetId});
-      cancelTap?.();clearTimeout(coverageTimer);coverageToken++;coverageKey="";map?.stop();overlay.classList.remove("open");cancelAnimationFrame(frame);
+      if(map&&!options.readOnly)onViewChange?.({...center(),zoom:map.getZoom(),layer:mode,presetId:options.presetId});
+      cancelTap?.();clearTimeout(coverageTimer);coverageToken++;coverageKey="";map?.stop();overlay.classList.remove("open","viewing");cancelAnimationFrame(frame);
       for(const [el,inert] of background)el.inert=inert;
       background=[];returnFocus?.focus();
     }
     async function confirm(keepOpen){
+      if(options.readOnly)return;
       if(busy||!overlay.classList.contains("open")||$("pointConfirm").disabled)return;
       let failure;
       busy=true;update();
@@ -161,11 +168,12 @@
     }
     $("pointClose").addEventListener("click",close);
     $("pointConfirm").addEventListener("click",()=>confirm(false));$("pointContinue").addEventListener("click",()=>confirm(true));
+    $("pointTopo").addEventListener("click",()=>{mode="topo";checkCoverage();layers();});
     $("pointStreet").addEventListener("click",()=>{mode="street";checkCoverage();layers();});
     $("pointSatellite").addEventListener("click",()=>{mode="satellite";checkCoverage();layers();});
     overlay.addEventListener("keydown",e=>{
       if(e.key==="Escape"&&!busy){e.preventDefault();close();}
-      if(e.key==="Enter"&&e.target===$("pointMap")){e.preventDefault();confirm(false);}
+      if(e.key==="Enter"&&e.target===$("pointMap")&&!options.readOnly){e.preventDefault();confirm(false);}
       if(e.key==="Tab"){
         const nodes=[...overlay.querySelectorAll('button:not(:disabled),[tabindex="0"],a[href]')].filter(el=>el.getClientRects().length);
         if(e.shiftKey&&document.activeElement===nodes[0]){e.preventDefault();nodes.at(-1)?.focus();}
@@ -173,8 +181,12 @@
       }
     });
     return {open(opts){
-      options=opts;returnFocus=document.activeElement;mode=opts.layer||mode;busy=false;coverageKey="";coveragePending=mode==="satellite";
-      overlay.classList.add("open");$("pointAdded").textContent="";
+      options=opts;returnFocus=document.activeElement;mode=MapSupport.basemapId(opts.layer||mode);busy=false;coverageKey="";coveragePending=mode==="satellite";
+      overlay.classList.add("open");overlay.classList.toggle("viewing",!!opts.readOnly);$("pointAdded").textContent="";
+      $("pointTitle").textContent=opts.title||"Select a point";
+      $("pointMap").setAttribute("aria-label",opts.readOnly
+        ?"Output points on a map. Arrow keys pan; plus and minus zoom."
+        :"Point map. Arrow keys move the crosshair location; plus and minus zoom; Enter adds the point.");
       background=[...document.querySelectorAll("body > header, body > main")].map(el=>{const previous=el.inert;el.inert=true;return [el,previous];});
       if(!map)init();
       limitCenter(null);map.setMinZoom(1);map.setMaxZoom(opts.detailZoom||DETAIL_ZOOM);map.invalidateSize({pan:false});
@@ -185,7 +197,12 @@
       $("pointPreset").textContent=opts.presetLabel;
       map.invalidateSize();map.setView([opts.center.lat,opts.center.lon],Math.min(map.getMaxZoom(),Math.max(map.getMinZoom(),opts.zoom||12)),{animate:false});
       drawPoints(opts.points||[]);checkCoverage();layers();update();
-      map.invalidateSize({pan:false,animate:false});map.setView([opts.center.lat,opts.center.lon],Math.min(map.getMaxZoom(),Math.max(map.getMinZoom(),opts.zoom||map.getZoom())),{animate:false,reset:true});$("pointMap").focus();
+      map.invalidateSize({pan:false,animate:false});map.setView([opts.center.lat,opts.center.lon],Math.min(map.getMaxZoom(),Math.max(map.getMinZoom(),opts.zoom||map.getZoom())),{animate:false,reset:true});
+      if(opts.readOnly&&opts.points?.length){
+       const bounds=L.latLngBounds(opts.points.map(p=>[p.lat,p.lon]));
+       map.fitBounds(bounds,{padding:[40,40],maxZoom:Math.min(map.getMaxZoom(),16),animate:false});
+      }
+      $("pointMap").focus();
     }};
   };
 })(globalThis);

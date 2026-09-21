@@ -8,18 +8,19 @@ Converts between latitude/longitude, global MGRS and UTM, and the Singapore, Bru
 
 ## Point Picker and GPX
 
-The **Point Picker** tab is a separate map-first workspace. Move the crosshair and choose **Add centre point**, or enable **Tap to add**. Choose global MGRS, coordinates, or a country MGR preset; name your points, copy them, download GPX, or send them to the converter. The collection is saved on this device. Clear and delete can be undone during the current visit.
+The **Point Picker** tab is a separate map-first workspace. Move the crosshair and choose **Add center point**, or enable **Tap to add**. Choose global MGRS, coordinates, or a country MGR preset; name your points, copy them, download GPX, or send them to the converter. The collection is saved on this device. Clear and delete can be undone during the current visit.
 
-- Street and satellite views use the existing OpenStreetMap and Esri services. There is no MapTiler account, key, dependency or subscription.
+- **Topo**, **Street** and **Satellite** are selectable on both the Point Picker map and the converter's map picker. Topo is the default. It uses OpenTopoMap (contours and hillshading, CC-BY-SA, SRTM-derived), street uses OpenStreetMap and satellite uses Esri. None of the three needs an account or key, and there is no MapTiler dependency or subscription.
+- OpenTopoMap renders to zoom 17; past that the map enlarges its tiles rather than requesting detail that does not exist. Its contours come from SRTM at roughly 30 m, so they show the shape of the ground, not surveyed heights. Its tiles come from volunteer servers with no uptime guarantee.
 - The opening view uses an approximate IP/timezone location. No precise geolocation permission is requested.
-- At zoom 11 and above, the **1 km grid** shows two-digit kilometre labels with a fading white background at the top (eastings) and left (northings). Country presets use their own projection. Coordinates/global MGRS use the map centre's UTM zone and latitude band; the grid is limited to that zone/band and updates when the centre changes. It is not a simultaneous multi-zone grid.
+- At zoom 11 and above, the **1 km grid** shows two-digit kilometer labels with a fading white background at the top (eastings) and left (northings). Country presets use their own projection. Coordinates/global MGRS use the map center's UTM zone and latitude band; the grid is limited to that zone/band and updates when the center changes. It is not a simultaneous multi-zone grid.
 - **Connect points as a route** draws the supplied sequence and shows horizontal distance. It does not find a route or snap to paths. Imported GPX segment breaks remain separate. Connecting a collection consisting only of separate waypoints explicitly joins those waypoints in order.
 - **Import GPX** accepts waypoints, routes and tracks locally. Point Picker appends imports and retains up to 20,000 points (20 MB file limit). The list displays the first 300; calculations, copying and export use every point. Converter imports/transfers are capped at 2,000 points to keep the editable table responsive.
 - Converter output shows distance along point order when **Measure points in order** is enabled. An imported track retains its breaks while the coordinate sequence is unchanged; editing/reordering the sequence makes it a new ordered point route.
 - Point Picker GPX export preserves track segments when connected; otherwise it exports waypoints. The converter's existing GPX download exports waypoints.
 - Training-area context includes the existing simplified Shoalwater Bay boundary and approximate landmarks. Additional training boundaries are not invented.
 
-The current map renderer is 2D. Outdoor/Topo styles, new contour data and 3D terrain were not added after the MapTiler migration was cancelled. Online map providers can still be unavailable; local conversion and saved points remain usable.
+The current map renderer is 2D. A topographic basemap is now available through OpenTopoMap, but no new contour dataset is bundled and 3D terrain was not added after the MapTiler migration was canceled. Online map providers can still be unavailable; local conversion and saved points remain usable.
 
 ## Offline use
 
@@ -38,6 +39,7 @@ Paste into the input box, or type and press Convert. Typing and pasting are read
 - **Global MGRS** at any precision (`48NUG6872249247`, `48N UG 6872 4924`, zero-padded zones like `04QFJ…`, dashes between parts) and **UTM** with its zone (`48N 366000 149000`).
 - **Country grid references:** short (`4241 4338`) or full, with the 100 km square's digits in front (`436925 140527`).
 - **Google and Apple Maps links:** shared places, dropped pins, searches, directions (read as where the route ends) and short links (followed online). Links with no coordinates, such as an address search, explain what to share instead.
+- A label pasted with its link is kept as the point's name, whether or not there is a space between them (`MLP1 https://…` and `MLP3https://…` both work). Every short link in one paste is followed together, so a list of links costs a single wait and one unreadable line cannot strand the rest. Deleting or editing a row calls off a link it is still following.
 - **Batches:** one point per line, or separated by commas, semicolons or tabs. Batches can mix formats, and spreadsheet columns work too. A column header row is skipped.
 - **Names:** text beside a coordinate becomes the point's name: `HQ 1.35, 103.82`, `1.35, 103.82 (Objective)`, or a name column from a spreadsheet or from this app's own Copy.
 
