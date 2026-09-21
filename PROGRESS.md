@@ -61,3 +61,8 @@ Version 3.0.0 is ready. Commit/push to the existing main branch and verify GitHu
 - Optional simultaneous neighbouring-zone grid rendering, and improved imagery coverage handling in the new workspace.
 - Large-track point-list virtualisation/editing beyond the first 300 visible entries.
 - True offline basemap packages would require a separate implementation; existing online providers are still a network dependency.
+
+## Published source
+Release commit: 3b1b6b3, pushed to origin/main on 2026-09-21.
+GitHub Pages run: https://github.com/adambrest/military-coordinate-converter/actions/runs/35585376526
+At this journal checkpoint the Pages runner is queued; source is published, but the public site still serves 2.3.0. To resume deployment verification, inspect the latest Pages run and request https://adambrest.github.io/military-coordinate-converter/version.js with a cache-busting query. Expected version: 3.0.0. No implementation work remains for the release scope.
