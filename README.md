@@ -1,8 +1,25 @@
-# Coordinate Converter
+# Mike Golf Romeo
+
+A coordinate converter and map point picker.
 
 **[Open the app](https://adambrest.github.io/military-coordinate-converter/)** in your browser. Paste coordinates, a grid reference or a map link, then convert.
 
 Converts between latitude/longitude, global MGRS and UTM, and the Singapore, Brunei, Taiwan, Thailand and Australia MGR presets. It runs entirely in the browser; only map links and the map picker use the network.
+
+## Point Picker and GPX
+
+The **Point Picker** tab is a separate map-first workspace. Move the crosshair and choose **Add centre point**, or enable **Tap to add**. Choose global MGRS, coordinates, or a country MGR preset; name your points, copy them, download GPX, or send them to the converter. The collection is saved on this device. Clear and delete can be undone during the current visit.
+
+- Street and satellite views use the existing OpenStreetMap and Esri services. There is no MapTiler account, key, dependency or subscription.
+- The opening view uses an approximate IP/timezone location. No precise geolocation permission is requested.
+- At zoom 11 and above, the **1 km grid** shows two-digit kilometre labels with a fading white background at the top (eastings) and left (northings). Country presets use their own projection. Coordinates/global MGRS use the map centre's UTM zone and latitude band; the grid is limited to that zone/band and updates when the centre changes. It is not a simultaneous multi-zone grid.
+- **Connect points as a route** draws the supplied sequence and shows horizontal distance. It does not find a route or snap to paths. Imported GPX segment breaks remain separate. Connecting a collection consisting only of separate waypoints explicitly joins those waypoints in order.
+- **Import GPX** accepts waypoints, routes and tracks locally. Point Picker appends imports and retains up to 20,000 points (20 MB file limit). The list displays the first 300; calculations, copying and export use every point. Converter imports/transfers are capped at 2,000 points to keep the editable table responsive.
+- Converter output shows distance along point order when **Measure points in order** is enabled. An imported track retains its breaks while the coordinate sequence is unchanged; editing/reordering the sequence makes it a new ordered point route.
+- Point Picker GPX export preserves track segments when connected; otherwise it exports waypoints. The converter's existing GPX download exports waypoints.
+- Training-area context includes the existing simplified Shoalwater Bay boundary and approximate landmarks. Additional training boundaries are not invented.
+
+The current map renderer is 2D. Outdoor/Topo styles, new contour data and 3D terrain were not added after the MapTiler migration was cancelled. Online map providers can still be unavailable; local conversion and saved points remain usable.
 
 ## Offline use
 
@@ -68,6 +85,7 @@ npm ci
 npm test
 npx playwright install chromium webkit
 npm run test:browser
+npm run test:field
 ```
 
 The optional Cloudflare Worker in `worker/` follows short map links and gives the map an approximate opening view. To host your own, add your site to the allowed origins in `worker/resolve-link.js`, deploy from `worker/` with Wrangler, and set `MAP_HELPER` in `index.html`. Update `version.js` whenever cached app files change.
@@ -75,3 +93,7 @@ The optional Cloudflare Worker in `worker/` follows short map links and gives th
 ## Reproduction
 
 Reproductions must credit the original creator and link to this repository. See [reuse permission](LICENSE.md) and [third-party credits](vendor/README.md).
+
+## Development handoff
+
+See [PROGRESS.md](PROGRESS.md) for the implementation journal, verification and remaining work. The original repository and Pages URL are retained after the rebrand.

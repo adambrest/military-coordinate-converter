@@ -1,9 +1,10 @@
 {
-  "name": "military-coordinate-converter",
+  "name": "mike-golf-romeo",
   "private": true,
   "scripts": {
     "test": "node --test tests/*.test.cjs",
-    "test:browser": "node tests/mobile-browser.cjs"
+    "test:browser": "node tests/mobile-browser.cjs",
+    "test:field": "node tests/field-browser.cjs"
   },
   "devDependencies": {
     "jsdom": "26.1.0",

@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
-<title>Military Coordinate Converter</title>
-<meta name="description" content="Convert latitude/longitude, global WGS 84 MGRS and country military grids.">
+<title>Mike Golf Romeo — Coordinate Converter</title>
+<meta name="description" content="Pick points, import GPX trails and convert coordinates or military grid references.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin>
 <link rel="preconnect" href="https://services.arcgisonline.com" crossorigin>
@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="vendor/leaflet.css">
 <link rel="stylesheet" href="map-picker.css">
 <link rel="stylesheet" href="point-picker.css">
+<link rel="stylesheet" href="field-map.css">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -205,8 +206,9 @@
 </head>
 <body>
   <header>
-    <h1><img class="logo" id="logo" alt="" width="32" height="32"><span class="title-text"><span class="wide-title">Military </span>Coordinate Converter</span></h1><span class="version" id="appVersion"></span>
+    <h1><img class="logo" id="logo" alt="" width="32" height="32"><span class="title-text">Mike Golf Romeo</span></h1><span class="version" id="appVersion"></span>
     <nav class="tabs">
+      <button id="tab-field">Point Picker</button>
       <button id="tab-conv" class="on">Converter</button>
       <button id="tab-set">Settings</button>
     </nav>
@@ -230,7 +232,7 @@
           <div class="regionchip" id="regionChip" hidden></div>
           <div class="tbl"><div class="thead" id="fromHead"></div><div id="fromRows"></div></div>
           <div class="detect" id="detect"></div>
-          <div class="row-actions"><button class="addrow" id="addRow">+ Add row</button><button class="select-map" id="selectMap" type="button">Select from map</button><span class="history"><button class="histbtn" id="undoBtn" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-5 5 5 5M4 10h10a6 6 0 0 1 6 6v3"/></svg></button><button class="histbtn" id="redoBtn" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 5 5-5 5M20 10H10a6 6 0 0 0-6 6v3"/></svg></button></span></div>
+          <div class="row-actions"><button id="importGpx" class="select-map" type="button">Import GPX</button><input type="file" id="importGpxFile" accept=".gpx,application/gpx+xml" hidden><button class="addrow" id="addRow">+ Add row</button><button class="select-map" id="selectMap" type="button">Select from map</button><span class="history"><button class="histbtn" id="undoBtn" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-5 5 5 5M4 10h10a6 6 0 0 1 6 6v3"/></svg></button><button class="histbtn" id="redoBtn" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 5 5-5 5M20 10H10a6 6 0 0 0-6 6v3"/></svg></button></span></div>
           <p class="map-offline" id="mapOffline" hidden>Select from map needs an internet connection.</p>
           <p class="map-offline" id="mapWeak" hidden>Weak connection: the map may load slowly.</p>
         </div>
@@ -248,6 +250,7 @@
           <label class="format-choice" id="toFormatWrap" hidden>Format <select id="toFormat" aria-label="Global output format"><option value="mgrs">MGRS</option><option value="globalutm">UTM</option></select></label>
           <div class="regionchip" id="regionChipTo" hidden></div>
           <div class="tbl"><div class="thead" id="toHead"></div><div id="toRows"></div></div>
+          <div class="route-distance-control"><label><input type="checkbox" id="measureRoute" checked> Measure points in order</label><p id="routeDistance" aria-live="polite"></p></div>
           <div class="exportbar">
             <button class="maps" id="mapsBtn" disabled>Open in Maps</button>
             <button id="gpxBtn" disabled>Download GPX</button>
@@ -258,6 +261,20 @@
       <div class="badpair" id="badPair" hidden>Two different grids can't be converted — set one side to Global Lat/Long.</div>
     </section>
 
+<section class="view" id="view-field">
+ <div class="field-head"><h2>Point Picker</h2><p>Choose places. Get grid references. Take your points with you.</p></div>
+ <div class="field-layout"><div class="field-map-panel">
+ <div class="field-tools"><label>Map <select id="fieldLayer"><option value="street">Street</option><option value="satellite">Satellite</option></select></label><select id="fieldRegion" aria-label="Jump to region"></select><label><input type="checkbox" id="fieldGrid" checked> 1 km grid</label><label><input type="checkbox" id="fieldTap"> Tap to add</label></div>
+ <div class="field-map-wrap"><div id="fieldMap" aria-label="Point Picker map"></div><span class="field-crosshair" aria-hidden="true">+</span></div>
+ <div class="field-readout"><output id="fieldCoordinate"></output><button id="fieldAdd">Add centre point</button></div>
+ <p class="field-note" id="fieldGridNote"></p><p class="field-note">Move the map beneath the crosshair, then add a point. Your opening view uses an approximate location without a GPS permission request.</p>
+ </div><aside class="field-output"><h3 id="fieldTotal">0 points</h3>
+ <label>Output &amp; grid <select id="fieldFormat"><option value="mgrs">Global MGRS</option><option value="wgs84">Coordinates</option><option value="sg">Singapore MGR</option><option value="brunei">Brunei MGR</option><option value="taiwan">Taiwan MGR</option><option value="thailand">Thailand MGR</option><option value="australia">Australia MGR</option></select></label>
+ <div class="field-actions"><button id="fieldImport">Import GPX</button><button id="fieldUndo">Undo</button><button id="fieldClear">Clear</button><button id="fieldFit">Fit points</button></div><input class="field-import" id="fieldFile" type="file" accept=".gpx,application/gpx+xml">
+ <label><input type="checkbox" id="fieldRoute"> Connect points as a route</label><p id="fieldDistance"></p><ol id="fieldPoints"></ol>
+ <div class="field-actions"><button id="fieldCopy">Copy points</button><button id="fieldExport">Download GPX</button><button id="fieldConvert">Send to converter</button></div>
+ <p id="fieldStatus" role="status"></p><p class="field-note">Distance follows your points, without snapping to trails. GPX track breaks stay separate. Files are processed on this device.</p>
+ </aside></div></section>
     <!-- SETTINGS -->
     <section class="view" id="view-set"></section>
   </main>
@@ -325,6 +342,8 @@
   <div class="toast" id="toast"></div>
 
   <script src="version.js"></script>
+  <script src="route-tools.js"></script>
+  <script src="field-map.js"></script>
   <script src="proj4.js"></script>
   <script src="vendor/mgrs.js"></script>
   <script src="vendor/leaflet.js"></script>
@@ -940,7 +959,7 @@
   function safeFilename(name){ return String(name).trim().replace(/\s+/g,"-").replace(/[^A-Za-z0-9._-]/g,"").replace(/^-+|-+$/g,"") || "coordinates"; }
   function generateGpx(name, points, isoTime){
     const nm=xmlEsc(name);
-    const head=`<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Coordinate Converter" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">\n  <metadata>\n    <name>${nm}</name>\n    <time>${isoTime}</time>\n  </metadata>\n`;
+    const head=`<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Mike Golf Romeo" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">\n  <metadata>\n    <name>${nm}</name>\n    <time>${isoTime}</time>\n  </metadata>\n`;
     const nameOf=(p,i)=>xmlEsc(p.name && p.name.trim() ? p.name : `Point ${i+1}`);
     let body="";
     points.forEach((p,i)=>{ body+=`  <wpt lat="${p.lat.toFixed(6)}" lon="${p.lon.toFixed(6)}">\n    <name>${nameOf(p,i)}</name>\n  </wpt>\n`; });
@@ -2274,6 +2293,11 @@
       });
       const has=pts.length>0;
       $("#mapsBtn").disabled=!has; $("#gpxBtn").disabled=!has; $("#copyBtn").disabled=!has;
+      if(globalThis.RouteTools){
+        const signature=JSON.stringify(pts.map(p=>[Number(p.lat.toFixed(8)),Number(p.lon.toFixed(8))]));
+        const source=state.importedRoute?.signature===signature?state.importedRoute.points:pts;
+        $("#routeDistance").textContent=$("#measureRoute").checked?RouteTools.summary(source):"";
+      }
       updateRegionChips();
     }
 
@@ -2318,7 +2342,7 @@
     // Changing the input system clears the entries rather than rereading the same
     // digits as another place. Undo puts them back.
     const history={past:[],future:[]};
-    const HISTORY_KEYS=["rows","from","to","points","settings","lastGridFrom","militaryEnabled","disabledPresets","explicitInput","explicitOutput"];
+    const HISTORY_KEYS=["rows","from","to","points","settings","lastGridFrom","militaryEnabled","disabledPresets","explicitInput","explicitOutput","importedRoute","measureRoute"];
     function snapshot(overrides={}){const kept={};for(const key of HISTORY_KEYS)kept[key]=key in overrides?overrides[key]:state[key];return JSON.stringify(kept);}
     function rememberSnapshot(json){if(history.past.at(-1)===json)return;history.past.push(json);if(history.past.length>50)history.past.shift();history.future.length=0;updateHistoryButtons();}
     function remember(){rememberSnapshot(snapshot());}
@@ -2327,6 +2351,7 @@
       const kept=JSON.parse(json);
       for(const key of HISTORY_KEYS)if(kept[key]===undefined)delete state[key];else state[key]=kept[key];
       lastGridFrom=state.lastGridFrom||lastGridFrom;
+      $("#measureRoute").checked=state.measureRoute!==false;
       delete state.pendingGrid;state.aoConfirmed=false;
       renderFrom();renderTo();updatePairState();updateRegionChips();detect("");setBottomError("");save();updateHistoryButtons();
     }
@@ -2336,7 +2361,7 @@
     $("#redoBtn").addEventListener("click",redo);
     document.addEventListener("keydown",e=>{
       if(!(e.metaKey||e.ctrlKey)||e.key.toLowerCase()!=="z")return;
-      if(document.querySelector(".overlay.open"))return;
+      if(document.querySelector(".overlay.open")||$("#view-field").classList.contains("on"))return;
       const el=document.activeElement;
       // Leave the browser's own text undo alone while a field is being edited.
       if(el&&/^(INPUT|TEXTAREA)$/.test(el.tagName)&&!el.readOnly)return;
@@ -2477,12 +2502,59 @@
       closeGpx(); toast("GPX downloaded");
     });
 
+    /* ---- GPX and map-first workspace ---- */
+    function importPoints(points,connected){
+      rememberSnapshot(snapshot());
+      state.from="wgs84";state.settings.wgs84={order:"latlon",format:"dd",decimals:6};
+      state.rows=points.map(p=>[p.lat.toFixed(8),p.lon.toFixed(8),p.name||""]);
+      state.points=points.map(p=>({...p}));
+      state.importedRoute={signature:JSON.stringify(points.map(p=>[Number(p.lat.toFixed(8)),Number(p.lon.toFixed(8))])),points:points.map(p=>({...p}))};
+      state.to="mgrs";state.militaryEnabled=true;state.militaryVersion=3;state.settings.mgrs.sgOmit=false;
+      if(points.some(p=>p.lat < -80 || p.lat >84))state.to="wgs84";
+      for(const id of COUNTRY_PRESETS)countryGridAccepted.add(id);
+      $("#measureRoute").checked=connected;state.measureRoute=connected;
+      renderFrom();updatePairState();renderTo();save();switchTab("conv");
+    }
+    $("#measureRoute").checked=state.measureRoute!==false;
+    $("#measureRoute").addEventListener("change",()=>{state.measureRoute=$("#measureRoute").checked;if(state.measureRoute&&state.importedRoute?.points.every(p=>p.breakBefore))state.importedRoute.points.forEach((p,i)=>p.breakBefore=i===0);renderTo();save();});
+    $("#importGpx").addEventListener("click",()=>$("#importGpxFile").click());
+    $("#importGpxFile").addEventListener("change",async()=>{
+      const file=$("#importGpxFile").files[0];$("#importGpxFile").value="";if(!file)return;
+      try{if(file.size>20*1024*1024)throw Error("GPX files must be smaller than 20 MB.");const result=RouteTools.parse(await file.text());
+        if(result.points.length>2000)throw Error("For GPX files over 2,000 points, use Point Picker → Import GPX. It handles up to 20,000 points.");
+        if(rowsHaveContent()){
+          // Existing entries are kept; importing is additive.
+          const current=existingMapPoints();if(current.unresolved)throw Error("Resolve existing incomplete rows before importing, or use Point Picker.");
+          const sig=JSON.stringify(current.points.map(p=>[Number(p.lat.toFixed(8)),Number(p.lon.toFixed(8))]));
+          const prior=state.importedRoute?.signature===sig?state.importedRoute.points:current.points.map(p=>({...p,breakBefore:!$("#measureRoute").checked}));
+          if(prior.length+result.points.length>2000)throw Error("Combined collection exceeds 2,000 points. Use Point Picker for larger GPX files.");
+          importPoints([...prior,...result.points],result.connected||$("#measureRoute").checked);
+        }else importPoints(result.points,result.connected);
+        toast("Imported "+result.points.length+" GPX points");
+      }catch(e){setBottomError(e.message);}
+    });
+    const field=globalThis.createFieldMap?.({helper:MAP_HELPER,presets:["mgrs","wgs84",...COUNTRY_PRESETS],projection:projectionFor,
+      format:(p,id)=>{if(COUNTRY_PRESETS.includes(id)&&!presetContains(id,p.lat,p.lon))throw Error("Outside "+PRESETS[id].name);
+        const settings=defaultSettings();if(settings[id]&&id!=="wgs84")settings[id].sgOmit=false;
+        return formatPoint(p.lat,p.lon,id,settings).join(" ");},
+      onConvert:points=>{
+        // Transfer is explicit; keep existing converter entries rather than overwriting them.
+        const current=existingMapPoints();if(current.unresolved){toast("Resolve converter rows before sending points",true);return;}
+        if(current.points.length+points.length>2000){toast("Converter supports up to 2,000 points",true);return;}
+        const sig=JSON.stringify(current.points.map(p=>[Number(p.lat.toFixed(8)),Number(p.lon.toFixed(8))]));
+        const prior=state.importedRoute?.signature===sig?state.importedRoute.points:current.points;
+        const incoming=points.map((p,i)=>({...p,breakBefore:i===0||p.breakBefore}));
+        importPoints([...prior,...incoming],document.getElementById("fieldRoute").checked);
+      }});
+    $("#tab-field").addEventListener("click",()=>switchTab("field"));
     /* ---- tabs ---- */
     $("#tab-conv").addEventListener("click",()=>switchTab("conv"));
     $("#tab-set").addEventListener("click",()=>switchTab("set"));
     function switchTab(t){
       $("#tab-conv").classList.toggle("on",t==="conv"); $("#tab-set").classList.toggle("on",t==="set");
       $("#view-conv").classList.toggle("on",t==="conv"); $("#view-set").classList.toggle("on",t==="set");
+      $("#tab-field").classList.toggle("on",t==="field");$("#view-field").classList.toggle("on",t==="field");
+      if(t==="field")field?.open();
       if(t==="set") renderSettings();
     }
 
