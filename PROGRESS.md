@@ -92,7 +92,7 @@ Rejected, with evidence:
 Key-required options (Thunderforest Outdoors, Stadia/Stamen, Tracestrack) were not probed: all need an API key, and Stadia's free tier excludes commercial use. Recommendation if a topo layer is wanted: add OpenTopoMap as a third basemap next to street and satellite, capped at maxNativeZoom 17, with the CC-BY-SA attribution string above.
 
 ## Version 3.1.0 - topo basemap, output view and paste fixes (2026-09-21)
-Committed, not yet pushed. The published site still serves 3.0.0 until this is pushed and Pages redeploys.
+Released. Commit 943971c, pushed to origin/main on 2026-09-21.
 
 Basemaps
 - map-support.js now owns BASEMAPS/basemap()/basemapId(), so every map surface shares one url, zoom ceiling and credit. Topo is the default.
@@ -117,3 +117,10 @@ Tests
 - npm test: 203 passed, 0 failed (6 new: read-only output view, read-only view isolation, glued label plus batched links, cancellation on delete/edit, cancellation scoping, mixed link and grid paste).
 - npm run test:browser and npm run test:field: both engines passed, including a new check that Topo is the opening layer and stops at native zoom 17.
 - One transient failure appeared in a back-to-back run of all three suites and did not reproduce in five further runs, including deliberate contention. It matches the load-timing flake already recorded above; its assertion text was lost to a truncated capture.
+
+## Release verification 3.1.0
+- Pages run 35594576015 succeeded in 43 s; https://adambrest.github.io/military-coordinate-converter/version.js returns 3.1.0 with cache busting.
+- index.html, map-support.js, field-map.js, point-picker.js, point-picker.css, sw.js and version.js all match the local files by SHA-256.
+- The live page carries the Topo button, the View on map button and the OpenTopoMap tile url.
+- npm test 203 passed / 0 failed; npm run test:browser and npm run test:field passed both engines; git diff --check clean.
+- version.js had to move with this release: the service worker keys its cache on APP_VERSION, and cached runtime files changed.
