@@ -186,6 +186,12 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   }
   broad=MapSupport.broadView(map);
   map.on('zoomend',detail);
+  $('fieldLayer').onchange=()=>{
+   const next=MapSupport.basemapId($('fieldLayer').value);
+   if(next===layer)return;
+   map.removeLayer(bases[layer]);layer=next;
+   detail();save();
+  };
   markers=L.layerGroup().addTo(map);route=L.layerGroup().addTo(map);grid=L.layerGroup().addTo(map);
   MapSupport.navigation(map,$('fieldRegion'),null,{snap:false});
   let touched=false;map.on('movestart',()=>{touched=true;});

@@ -48,6 +48,16 @@ assert.equal(step.cls,'map-broad','at country scale only the outlines remain');
 assert.equal(step.tiles,0,'the broad view must request no tiles at all');
 assert.ok(step.names>0,'the broad view names the countries it shows');
 await page.evaluate(()=>{fieldTestMap.setView([1.35,103.82],14,{animate:false});});
+// A selected label alone is not enough: the actual tile layer must change.
+for(const [id,host] of [['street','openstreetmap'],['satellite','arcgisonline'],['topo','opentopomap']]){
+ await page.selectOption('#fieldLayer',id);
+ const urls=await page.evaluate(()=>{const urls=[];fieldTestMap.eachLayer(l=>{if(l._url)urls.push(l._url);});return urls;});
+ assert.equal(urls.length,1,'exactly one basemap is active');
+ assert.ok(urls[0].includes(host),id+' must change the active layer');
+ await stage(5);
+ assert.equal(await page.evaluate(()=>{let n=0;fieldTestMap.eachLayer(l=>{if(l._url)n++;});return n;}),0);
+ await stage(12);
+}
 
 // A reference area is assumed from point 1, so points inside it read short. Crossing
 // out of it is named and written in full rather than reading like the square next door.

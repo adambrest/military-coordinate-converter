@@ -38,9 +38,15 @@ self.addEventListener("fetch", e => {
   // addressed, or it reports the network is up while the device is in a tunnel.
   if(url.searchParams.has("connectivity")){ e.respondWith(fetch(req,{cache:"no-store"})); return; }
   if(url.origin!==self.location.origin){ if(isTileHost(url.hostname)) e.respondWith(tile(req)); return; }
-  if(req.mode==="navigate"){
-    e.respondWith(fetch(req,{cache:"no-store"}).then(res=>{ if(res&&res.ok){ const c=res.clone(); caches.open(CACHE).then(x=>x.put(req,c)); } return res; }).catch(()=>caches.match(req).then(hit=>hit||caches.match("./index.html"))));
-    return;
-  }
-  e.respondWith(caches.match(req).then(hit=>hit||fetch(req).then(res=>{ if(res&&res.ok&&res.type==="basic"){ const c=res.clone(); caches.open(CACHE).then(x=>x.put(req,c)); } return res; }).catch(()=>caches.match("./index.html"))));
+  // HTML and scripts must come from the same installed release. Fetching fresh
+  // HTML here pairs it with old cached scripts while the update waits for approval.
+  e.respondWith(caches.open(CACHE).then(async cache=>{
+    const hit=await cache.match(req);
+    if(hit)return hit;
+    if(req.mode==="navigate"){
+      const shell=await cache.match(new URL("./index.html",self.location.href));
+      if(shell)return shell;
+    }
+    return fetch(req);
+  }));
 });

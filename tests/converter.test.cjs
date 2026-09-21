@@ -616,7 +616,7 @@ test('offline installation contains map geometry and connectivity never falls ba
   const handlers={},cached=new Map();let offline=false;
   const response={ok:true,type:'basic',clone(){return this;}};
   const ctx=vm.createContext({URL,Request,importScripts(){},self:{APP_VERSION:'test',location:{href:'https://example.test/sw.js',origin:'https://example.test'},addEventListener:(type,fn)=>handlers[type]=fn},
-    caches:{open:async()=>({addAll:async requests=>{for(const r of requests){const pathname=new URL(r.url).pathname.slice(1)||'index.html';assert.ok(fs.existsSync(path.join(root,pathname)),pathname);cached.set(r.url,response);}},put:async(k,v)=>cached.set(k.url||k,v)}),match:async r=>cached.get(r.url||r)},
+    caches:{open:async()=>({match:async r=>cached.get(r.url||String(r)),addAll:async requests=>{for(const r of requests){const pathname=new URL(r.url).pathname.slice(1)||'index.html';assert.ok(fs.existsSync(path.join(root,pathname)),pathname);cached.set(r.url,response);}},put:async(k,v)=>cached.set(k.url||k,v)}),match:async r=>cached.get(r.url||r)},
     fetch:async()=>{if(offline)throw Error('offline');return response;}});
   vm.runInContext(read('sw.js'),ctx);let work;handlers.install({waitUntil:p=>work=p});await work;
   offline=true;
@@ -2011,9 +2011,9 @@ test('only actual active input setting changes require conversion again',async()
 });
 
 /* ---- v2 reference areas ---- */
-test('the app reports version 3.5',()=>{
+test('the app reports version 3.5.1',()=>{
   const a=app();
-  try{assert.equal(a.$('#appVersion').textContent,'v3.5.0');assert.match(read('version.js'),/APP_VERSION = "3\.5\.0"/);
+  try{assert.equal(a.$('#appVersion').textContent,'v3.5.1');assert.match(read('version.js'),/APP_VERSION = "3\.5\.1"/);
     const logo=a.$('header h1 .logo');assert.ok(logo,'the header shows the app icon');assert.equal(logo.getAttribute('src'),'icons/logo-64.png');assert.equal(logo.getAttribute('alt'),'');}
   finally{a.dom.window.close();}
 });
