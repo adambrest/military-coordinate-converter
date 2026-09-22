@@ -173,6 +173,12 @@ const server=http.createServer((req,res)=>{
    // A hand-picked global grid is kept, flagged in a note, and nothing blocks the page.
    assert.equal(await page.locator('#toSys').inputValue(),'mgrs');assert.equal(await page.locator('#copyBtn').isEnabled(),true);
    assert.match(await page.locator('#toOutside').innerText(),/Singapore has its own grid/);
+   // The choice is kept and explained once, in the shared alert, with the way back in reach.
+   await page.locator('#boundaryOverlay.open').waitFor();
+   assert.equal(await page.locator('#boundaryTitle').textContent(),'Singapore has its own grid');
+   assert.equal(await page.locator('#boundaryAlt').textContent(),'Use Singapore MGR');
+   await page.locator('#boundaryContinue').click();
+   assert.equal(await page.locator('#toSys').inputValue(),'mgrs');
    assert.equal(await page.locator('main').evaluate(el=>el.inert),false);
    await page.locator('#convertBtn').click();assert.equal(await page.locator('#toSys').inputValue(),'mgrs');
    if(errors.length)console.error('PAGE ERRORS:',errors);

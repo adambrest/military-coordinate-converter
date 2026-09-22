@@ -26,8 +26,6 @@
 .coordinate-grid{pointer-events:none}
 #fieldCoordinate,#pointCoordinate,.cell.a,.cell.b,.cell.prefix{font-variant-numeric:tabular-nums}
 .dialog-detail{font-size:14px;line-height:1.5;margin:0 0 6px}
-#fieldGridOverlay .m-actions{flex-direction:column}
-#fieldGridOverlay .m-actions button{flex:auto;padding:10px 14px}
 @media(max-width:1050px){
  .field-layout{grid-template-columns:minmax(0,1fr);max-width:640px}
  #fieldMap{height:52vh;min-height:300px}

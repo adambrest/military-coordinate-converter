@@ -408,16 +408,13 @@
       return tile;
     }
   }));
-  // Tiles are placed at fractional offsets while zooming and on high-density screens,
-  // and the browser can leave a hairline between neighbours that reads as a faint grid
-  // even with the grid off. Each tile is drawn one pixel larger so neighbours overlap.
+  // On a high-density screen a map that sits at a fractional pixel leaves a hairline
+  // between tile rows, which on imagery reads as a faint grid with the grid off.
+  // Giving each tile its own compositing layer places it on whole device pixels.
+  // (Enlarging tiles to overlap instead blurs their edges into brighter lines.)
   function seamless(layer){
     const init=layer._initTile;
-    layer._initTile=function(tile){
-      init.call(this,tile);
-      const size=this.getTileSize();
-      tile.style.width=size.x+1+"px";tile.style.height=size.y+1+"px";
-    };
+    layer._initTile=function(tile){init.call(this,tile);tile.style.willChange="transform";};
     return layer;
   }
   function basemap(id,options){

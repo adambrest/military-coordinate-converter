@@ -1,7 +1,7 @@
 /* Independent map-first point collection. Uses the existing local coordinate engine. */
 (function(root){
 'use strict';
-root.createFieldMap=function({formatter,projection,presets,onConvert,helper,countryPresets=[],presetName=id=>id,localGrid=()=>null,presetHolds=()=>true,homeGrid=()=>null,otherGridNotice=()=>'',fineGrid=()=>false,readInput=async()=>[]}){
+root.createFieldMap=function({formatter,projection,presets,onConvert,helper,countryPresets=[],presetName=id=>id,localGrid=()=>null,presetHolds=()=>true,homeGrid=()=>null,otherGridNotice=()=>'',fineGrid=()=>false,readInput=async()=>[],ask=async()=>false,gridChoiceAlert=null,boundary=()=>null,onMaps=()=>{}}){
  const $=id=>document.getElementById(id),key='mike-golf-romeo-field-v1';
  // `preferred` is a global grid someone chose by hand; `area` is the country grid the
  // view was last over, so a grid only changes on the way into or out of a country.
@@ -86,7 +86,7 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
    li.append(number,...cells,input,remove);list.append(li);
   });
   if(points.length>300){const li=document.createElement('li');li.className='trow';li.textContent=`Showing first 300 of ${points.length} points. All points are included in distance, copy and GPX.`;list.append(li);}
-  for(const id of ['fieldCopy','fieldExport','fieldConvert','fieldClear'])$(id).disabled=!points.length;
+  for(const id of ['fieldCopy','fieldExport','fieldConvert','fieldClear','fieldMaps'])$(id).disabled=!points.length;
   autoZoom&&autoZoom.sync();
   historyButtons();
  }
@@ -156,7 +156,7 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   status('');
   const incoming=read.map((r,k)=>({...r.point,name:r.name||(k===0?name||'':'')}));
   const replacing=index<points.length;
-  admit(incoming,()=>{
+  return admit(incoming,()=>{
    remember();
    if(replacing){
     const old=points[index];
@@ -167,7 +167,6 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
    }
    refresh();
   });
-  return !pending;
  }
  function moveRow(from,to){
   remember();
@@ -207,38 +206,41 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
  });
 
  // ---- adding points, with the grid held once the first is down ----
+ // Alerts are the converter's own, so both tabs say the same thing the same way.
  let pending=null;
- function closeGridDialog(){$('fieldGridOverlay').classList.remove('open');pending=null;}
- function askGrid(incoming,commit){
-  const outside=incoming.filter(p=>!fits(system,p)).length,country=presetName(system).replace(/ MGR$/,'');
-  $('fieldGridTitle').textContent=incoming.length===1?'This point is outside '+country:outside+' of these points are outside '+country;
-  $('fieldGridDetail').textContent=presetName(system)+' only covers '+country+', so it cannot write '+(outside===1?'this point':'them')+
-   '. To add '+(incoming.length===1?'it':'them')+', every point in this list has to be written in Global MGRS or Coordinates instead.';
-  pending=commit;$('fieldGridOverlay').classList.add('open');$('fieldGridGlobal').focus();
- }
- function admit(incoming,commit){
-  incoming=incoming.filter(RouteTools.valid);if(!incoming.length)return;
-  if(points.length+incoming.length>20000){status('20,000 point limit reached. Export or clear this collection first.');return;}
+ const crossings=new Set();
+ async function admit(incoming,commit){
+  incoming=incoming.filter(RouteTools.valid);if(!incoming.length)return false;
+  if(points.length+incoming.length>20000){status('20,000 point limit reached. Export or clear this collection first.');return false;}
   // The first point decides the grid when it lands somewhere other than the crosshair.
   if(!points.length)enterArea(localAt(incoming[0].lat,incoming[0].lon));
-  if(incoming.every(p=>fits(system,p))){commit();return;}
-  askGrid(incoming,commit);
+  pending=commit;
+  if(!incoming.every(p=>fits(system,p))){
+   const outside=incoming.filter(p=>!fits(system,p)).length,country=presetName(system).replace(/ MGR$/,'');
+   const answer=await ask({title:incoming.length===1?'This point is outside '+country:outside+' of these points are outside '+country,
+    detail:presetName(system)+' only covers '+country+', so it cannot write '+(outside===1?'this point':'them')+'. To add '+(incoming.length===1?'it':'them')+', every point in this list has to be written in Global MGRS or Coordinates instead.',
+    confirm:'Use Global MGRS',alt:'Use Coordinates'});
+   if(!answer||pending!==commit){pending=null;return false;}
+   const before=snapshot();
+   system=answer==='alt'?'wgs84':'mgrs';preferred=system;written=null;pending=null;commit();
+   // The grid change and the point that forced it are one step to undo.
+   undo[undo.length-1]=before;
+   return true;
+  }
+  // Crossing out of point 1's reference area changes how references are written, so
+  // it is said once for each new area, as the converter says it.
+  const was=boundary(points,system),now=boundary([...points,...incoming],system);
+  if(now&&now.key!==was?.key&&!crossings.has(now.key)){
+   const answer=await ask({title:'Points cross a grid boundary',detail:now.detail});
+   if(answer!=='confirm'||pending!==commit){pending=null;return false;}
+   crossings.add(now.key);
+  }
+  pending=null;commit();return true;
  }
+ const closeGridDialog=()=>{pending=null;};
  function add(p){
   admit([p],()=>{remember();points.push({...p,name:'',breakBefore:points.length===0});refresh();});
  }
- function choose(id){
-  const commit=pending;closeGridDialog();if(!commit)return;
-  const before=snapshot();
-  system=id;preferred=id;written=null;commit();
-  // The grid change and the point that forced it are one step to undo.
-  undo[undo.length-1]=before;
- }
- $('fieldGridGlobal').onclick=()=>choose('mgrs');
- $('fieldGridCoordinates').onclick=()=>choose('wgs84');
- $('fieldGridCancel').onclick=closeGridDialog;
- $('fieldGridOverlay').addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();closeGridDialog();}});
- $('fieldGridOverlay').addEventListener('click',e=>{if(e.target===$('fieldGridOverlay'))closeGridDialog();});
 
  function draw(){if(!map)return;markers.clearLayers();
   points.forEach((p,i)=>{if(points.length>1000){L.circleMarker([p.lat,p.lon],{radius:2,weight:0,fillOpacity:.8,fillColor:'#2563eb',interactive:false}).addTo(markers);return;}
@@ -323,8 +325,10 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   if(points.length)remember();
   // Remember a global grid picked where a country grid would serve, per country.
   const centre=map&&map.getCenter(),home=points.length?homeGrid(points):centre?localAt(centre.lat,centre.lng):null;
+  const known=home&&choices[home]===next;
   if(home){if(next===home)delete choices[home];else if(next==='mgrs')choices[home]=next;}
   system=next;preferred=isCountry(system)?null:system;written=null;
+  if(home&&next==='mgrs'&&!known&&gridChoiceAlert)ask(gridChoiceAlert(home,next)).then(answer=>{if(answer==='alt'){$('fieldFormat').value=home;$('fieldFormat').onchange();}});
   const region=MapSupport.regions.find(r=>r.id===system);
   // A country grid chosen from elsewhere goes to that country, since it cannot be read
   // anywhere else; nothing moves when points are already down.
@@ -351,6 +355,7 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
  $('fieldClear').onclick=()=>{remember();points=[];refresh();unlocked();status('');};
  $('fieldCopy').onclick=async()=>{try{const write=writer();const rows=points.map(p=>[...write.cells(p),(p.name||'').replace(/[\t\r\n]/g,' ')].filter(Boolean).join('\t')).join('\n');await navigator.clipboard.writeText(rows);status('');}catch(e){status('Could not copy: '+e.message);}};
  $('fieldExport').onclick=()=>{const url=URL.createObjectURL(new Blob([RouteTools.gpx(points,connected)],{type:'application/gpx+xml'}));const a=document.createElement('a');a.href=url;a.download='mike-golf-romeo.gpx';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+ $('fieldMaps').onclick=()=>onMaps(points.map((p,i)=>({...p,number:i+1})));
  $('fieldConvert').onclick=()=>{if(points.length>2000){status('Use GPX export for tracks over 2,000 points. The converter table supports smaller collections.');return;}onConvert(points,connected,system);};
  $('fieldImport').onclick=()=>$('fieldFile').click();
  $('fieldFile').onchange=async()=>{const file=$('fieldFile').files[0];$('fieldFile').value='';if(!file)return;try{if(file.size>20*1024*1024)throw Error('GPX files must be smaller than 20 MB.');const result=RouteTools.parse(await file.text());

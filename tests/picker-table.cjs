@@ -44,7 +44,7 @@ for(const [engine,mobile] of [[chromium,false],[webkit,true]]){
  await page.click('#fieldUndo');assert.equal((await refs())[2][2],'Charlie','reorder is one undo step');
  // A point outside the list's grid asks first, exactly like adding one on the map.
  await page.click('#fieldAddRow');await paste('#fieldPoints .trow:last-child .a','4.9, 114.94');await settle();
- assert.equal(await page.locator('#fieldGridOverlay').isVisible(),true);await page.click('#fieldGridCancel');
+ assert.equal(await page.locator('#boundaryOverlay').isVisible(),true);await page.click('#boundaryClose');
  assert.equal((await refs()).length,3);
  // An unreadable line says why and adds nothing.
  await paste('#fieldPoints .trow:last-child .a','not a place');await settle();
@@ -61,8 +61,8 @@ for(const [engine,mobile] of [[chromium,false],[webkit,true]]){
  assert.equal(await page.evaluate(()=>document.activeElement.classList.contains('a')&&document.activeElement.closest('.trow').classList.contains('blank')),true);
  await page.locator('#fieldPoints .trow.blank .del').click();await page.evaluate(()=>document.activeElement.blur());await page.keyboard.press('Enter');await settle();
  assert.equal((await refs()).length,before+1,'Enter with nothing focused adds the crosshair point');
- // With the grid off no tile seams or lines remain: tiles overlap by a pixel.
- assert.equal(await page.evaluate(()=>{const t=document.querySelector('#fieldMap .leaflet-tile-pane .leaflet-tile');return t&&t.style.width;}),'257px');
+ // With the grid off no seams remain: tiles sit on whole device pixels, unscaled.
+ assert.equal(await page.evaluate(()=>{const t=document.querySelector('#fieldMap .leaflet-tile-pane .leaflet-tile');return t&&[t.style.width,t.style.willChange].join();}),'256px,transform');
  assert.deepEqual(errors,[]);console.log(`${mobile?'Mobile WebKit':'Desktop Chromium'}: picker table paste, batch, typing, replace, reorder, outside-grid warning, errors and page paste passed`);
  }finally{await browser.close();}
 }

@@ -93,7 +93,7 @@
     text-shadow:0 1px 2px #fff,0 -1px 2px #fff,1px 0 2px #fff,-1px 0 2px #fff}
   /* Two kinds of text under a control, the same on every tab: a hint (.pastehint)
      says how to use it; a note (.area-note) flags something about the result. */
-  .area-note{border-left:2px solid var(--warn);padding:1px 0 1px 8px;margin:8px 2px;font-size:11px;line-height:1.45;color:var(--muted)}
+  .area-note{border-left:2px solid var(--danger);padding:1px 0 1px 8px;margin:8px 2px;font-size:12px;font-weight:600;line-height:1.45;color:var(--danger)}
   .area-note[hidden]{display:none}
   .route-distance-control{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 10px;margin-top:6px;font-size:11px;color:var(--muted)}
   .route-distance-control label{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
@@ -110,7 +110,7 @@
   .map-button a.busy svg{animation:locatePulse 1s ease-in-out infinite}
   @keyframes locatePulse{50%{opacity:.35}}
   .detect{font-size:11px;color:var(--muted);padding:3px 8px 6px;min-height:6px}
-  .detect.warn{color:var(--muted);border-left:2px solid var(--warn);padding-left:8px;margin:4px 2px} .detect.err{color:var(--danger)}
+  .detect.warn{color:var(--danger);font-size:12px;font-weight:600;border-left:2px solid var(--danger);padding-left:8px;margin:4px 2px} .detect.err{color:var(--danger)}
   .pastehint{font-size:11px;color:var(--muted);line-height:1.45;margin:-2px 2px 8px}
 
   .convert{min-height:46px;padding:0 22px;border-radius:10px;border:none;background:var(--accent);color:var(--accent-ink);font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 1px 2px rgba(37,99,235,.25)}
@@ -257,7 +257,6 @@
   @media (max-width:480px){
     .exportbar{flex-wrap:wrap}
     .exportbar button{flex:1 1 calc(50% - 4px);white-space:nowrap}
-    .field-output .exportbar button:first-child{flex-basis:100%}
   }
 </style>
 </head>
@@ -290,6 +289,7 @@
           <div class="tbl"><div class="thead" id="fromHead"></div><div id="fromRows"></div></div>
           <div class="detect" id="detect"></div>
           <div class="row-actions"><button id="importGpx" class="select-map" type="button">Import GPX</button><input type="file" id="importGpxFile" accept=".gpx,application/gpx+xml" hidden><button class="addrow" id="addRow">+ Add row</button><button class="select-map" id="selectMap" type="button">Select from map</button><span class="history"><button class="histbtn danger" id="clearAll" type="button" title="Delete all rows" aria-label="Delete all rows" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button><button class="histbtn" id="undoBtn" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-5 5 5 5M4 10h10a6 6 0 0 1 6 6v3"/></svg></button><button class="histbtn" id="redoBtn" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 5 5-5 5M20 10H10a6 6 0 0 0-6 6v3"/></svg></button></span></div>
+          <div class="route-distance-control"><label><input type="checkbox" id="measureRoute" checked> Connect points in order</label><p id="routeDistance" aria-live="polite"></p></div>
           <p class="map-offline" id="mapOffline" hidden>Select from map needs an internet connection.</p>
           <p class="map-offline" id="mapWeak" hidden>Weak connection: the map may load slowly.</p>
         </div>
@@ -308,9 +308,8 @@
           <div class="regionchip" id="regionChipTo" hidden></div>
           <div class="tbl"><div class="thead" id="toHead"></div><div id="toRows"></div></div>
           <p class="area-note" id="toOutside" role="status" hidden></p>
-          <div class="route-distance-control"><label><input type="checkbox" id="measureRoute" checked> Connect points in order</label><p id="routeDistance" aria-live="polite"></p></div>
           <div class="exportbar">
-            <button class="maps" id="mapsBtn" disabled>Open in Maps</button>
+            <button class="maps" id="mapsBtn" disabled>Export to Maps</button>
             <button id="viewBtn" disabled>View on map</button>
             <button id="gpxBtn" disabled>Download GPX</button>
             <button id="copyBtn" disabled>Copy</button>
@@ -333,7 +332,7 @@
  <div class="tbl"><div class="thead"><span>#</span><span id="fieldEastHead">Easting</span><span id="fieldNorthHead">Northing</span><span>Name</span><span></span></div><ol id="fieldPoints"></ol></div>
  <div class="row-actions"><button id="fieldImport" class="select-map" type="button">Import GPX</button><button class="addrow" id="fieldAddRow" type="button">+ Add row</button><span class="history"><button class="histbtn danger" id="fieldClear" type="button" title="Clear all points" aria-label="Clear all points" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button><button class="histbtn" id="fieldUndo" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-5 5 5 5M4 10h10a6 6 0 0 1 6 6v3"/></svg></button><button class="histbtn" id="fieldRedo" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 5 5-5 5M20 10H10a6 6 0 0 0-6 6v3"/></svg></button></span></div>
  <div class="route-distance-control"><label><input type="checkbox" id="fieldRoute"> Connect points in order</label><p id="fieldDistance" aria-live="polite"></p></div>
- <div class="exportbar"><button id="fieldConvert">Send to converter</button><button id="fieldExport">Download GPX</button><button id="fieldCopy">Copy</button></div>
+ <div class="exportbar"><button id="fieldMaps" class="maps">Export to Maps</button><button id="fieldConvert">Send to converter</button><button id="fieldExport">Download GPX</button><button id="fieldCopy">Copy</button></div>
  <p class="area-note" id="fieldAreaNote" role="status" hidden></p><p class="detect err" id="fieldStatus" role="status"></p>
  </aside></div></section>
     <!-- SETTINGS -->
@@ -354,7 +353,7 @@
 
   <div class="overlay" id="mapsOverlay" role="dialog" aria-modal="true" aria-labelledby="mapsTitle">
     <div class="modal">
-      <div class="dialog-heading"><h3 id="mapsTitle">Open in Google Maps</h3><button id="mapsCancel" class="dialog-close" aria-label="Close Google Maps dialog">×</button></div>
+      <div class="dialog-heading"><h3 id="mapsTitle">Export to Google Maps</h3><button id="mapsCancel" class="dialog-close" aria-label="Close Google Maps dialog">×</button></div>
       <p class="note" id="mapsNote"></p>
       <div class="m-actions maps-parts" id="mapsParts"></div>
       <div class="settings-section">
@@ -395,10 +394,7 @@
   </div>
 
   <div class="overlay" id="boundaryOverlay" role="dialog" aria-modal="true" aria-labelledby="boundaryTitle">
-    <div class="modal"><div class="dialog-heading"><h3 id="boundaryTitle">Points cross a grid boundary</h3><button id="boundaryClose" class="dialog-close" aria-label="Close boundary notice">×</button></div><p id="boundaryDetail"></p><div class="m-actions"><button id="boundaryContinue" class="primary">Continue</button></div></div>
-  </div>
-  <div class="overlay" id="fieldGridOverlay" role="dialog" aria-modal="true" aria-labelledby="fieldGridTitle" aria-describedby="fieldGridDetail">
-    <div class="modal"><div class="dialog-heading"><h3 id="fieldGridTitle">This point is outside the grid</h3><button id="fieldGridCancel" class="dialog-close" aria-label="Don't add this point">×</button></div><p id="fieldGridDetail" class="dialog-detail"></p><div class="m-actions"><button id="fieldGridGlobal" class="primary">Use Global MGRS</button><button id="fieldGridCoordinates">Use Coordinates</button></div></div>
+    <div class="modal"><div class="dialog-heading"><h3 id="boundaryTitle">Points cross a grid boundary</h3><button id="boundaryClose" class="dialog-close" aria-label="Close boundary notice">×</button></div><p id="boundaryDetail"></p><div class="m-actions"><button id="boundaryContinue" class="primary">Continue</button><button id="boundaryAlt" hidden></button></div></div>
   </div>
   <div class="toast" id="toast"></div>
 
@@ -1484,7 +1480,7 @@
       const previous=last&&(!p.bbox||presetContains(id,last.lat,last.lon))?last:null;
       const fallback=p.anchor?{lat:p.anchor[0],lon:p.anchor[1]}:p.bbox?{lat:(p.bbox[0]+p.bbox[1])/2,lon:(p.bbox[2]+p.bbox[3])/2}:guessLocation();
       const nav=p.browseBbox||p.bbox;
-      pointOptions={...current,autoDetect:state.from==="auto",presetId:id,presetLabel:p.name,bounds:nav?[[nav[0],nav[2]],[nav[1],nav[3]]]:null,detailZoom:DETAIL_ZOOM,center:previous||fallback,zoom:(previous?state.pointMapView?.zoom:0)||(previous?15:COUNTRY_PRESETS.includes(id)?9:fallback.zoom||4),layer:state.pointMapView?.layer||MapSupport.DEFAULT_BASEMAP};
+      pointOptions={...current,connected:$("#measureRoute").checked,autoDetect:state.from==="auto",presetId:id,presetLabel:p.name,bounds:nav?[[nav[0],nav[2]],[nav[1],nav[3]]]:null,detailZoom:DETAIL_ZOOM,center:previous||fallback,zoom:(previous?state.pointMapView?.zoom:0)||(previous?15:COUNTRY_PRESETS.includes(id)?9:fallback.zoom||4),layer:state.pointMapView?.layer||MapSupport.DEFAULT_BASEMAP};
       pointPicker.open(pointOptions);
     });
 
@@ -1847,10 +1843,23 @@
     const boundaryAccepted=new Set();
     let restoring=false;
     let boundaryReply;
-    function reviewBoundary(changes,reply){
+    // One alert for both tabs: what happened, what it means, and what to do about it.
+    // Point crossings, a grid that is not the country's own, points a grid cannot hold:
+    // each is told the same way here and on the Point Picker.
+    let alertReply=null;
+    function showAlert({title,detail,confirm="Continue",alt=null},reply=()=>{}){
       const overlay=$("#boundaryOverlay"),focus=document.activeElement;
+      if(alertReply)alertReply(false);
       const others=[...document.querySelectorAll("body > header,body > main,.overlay.open")].filter(el=>el!==overlay).map(el=>[el,el.inert]);
       for(const [el] of others)el.inert=true;
+      $("#boundaryTitle").textContent=title;$("#boundaryDetail").textContent=detail;
+      $("#boundaryContinue").textContent=confirm;
+      $("#boundaryAlt").hidden=!alt;$("#boundaryAlt").textContent=alt||"";
+      overlay.classList.add("open");$("#boundaryContinue").focus();
+      alertReply=value=>{overlay.classList.remove("open");for(const [el,inert] of others)el.inert=inert;alertReply=null;focus?.focus();reply(value);};
+    }
+    const ask=options=>new Promise(resolve=>showAlert(options,resolve));
+    function boundaryText(changes){
       // A one-square grid (Singapore, Brunei) is told as that square and the points outside
       // it; grids with areas list the areas the points span.
       const fixed=changes.filter(c=>PRESETS[c.id].lead),spanning=changes.filter(c=>!PRESETS[c.id].lead);
@@ -1860,15 +1869,30 @@
         return PRESETS[c.id].name+": "+(away.length===1?"a point falls":"points fall")+" in square "+away.map(square).join(", ")+", outside square "+square(home)+" where short references apply. Continue to write every point as a full reference, with its square's digits in front.";
       });
       if(spanning.length)parts.push(spanning.map(c=>PRESETS[c.id].name+": "+c.keys.join(" → ")).join(". ")+". These points cannot share one omitted prefix. Continue to keep the correct full prefix or leading digits for every point.");
-      $("#boundaryDetail").textContent=parts.join(" ");
-      overlay.classList.add("open");$("#boundaryContinue").focus();
-      boundaryReply=ok=>{overlay.classList.remove("open");for(const [el,inert] of others)el.inert=inert;boundaryReply=null;focus?.focus();reply(ok);};
+      return parts.join(" ");
     }
-    $("#boundaryClose").addEventListener("click",()=>boundaryReply?.(false));
-    $("#boundaryContinue").addEventListener("click",()=>boundaryReply?.(true));
+    function reviewBoundary(changes,reply){
+      showAlert({title:"Points cross a grid boundary",detail:boundaryText(changes)},value=>{boundaryReply=null;reply(value==="confirm");});
+      boundaryReply=alertReply;
+    }
+    // A global grid chosen where a country has its own is kept, and said once, with the
+    // way back one press away.
+    function gridChoiceAlert(home,chosen){
+      const name=id=>id==="wgs84"?"Coordinates":GLOBAL_FORMATS.includes(id)?"Global "+(id==="globalutm"?"UTM":"MGRS"):PRESETS[id].name;
+      const country=PRESETS[home].name.replace(" MGR","");
+      return {title:country+" has its own grid",
+        detail:PRESETS[home].name+" is the grid "+country+"'s military maps use, so "+name(chosen)+" references will not match them. They are kept as chosen, and this choice is remembered for "+country+".",
+        confirm:"Keep "+name(chosen),alt:"Use "+PRESETS[home].name};
+    }
+    $("#boundaryClose").addEventListener("click",()=>alertReply?.(false));
+    $("#boundaryContinue").addEventListener("click",()=>alertReply?.("confirm"));
+    $("#boundaryAlt").addEventListener("click",()=>alertReply?.("alt"));
     $("#boundaryOverlay").addEventListener("keydown",e=>{
-      if(e.key==="Escape"){e.preventDefault();e.stopPropagation();boundaryReply?.(false);}
-      if(e.key==="Tab"){e.preventDefault();(document.activeElement===$("#boundaryContinue")?$("#boundaryClose"):$("#boundaryContinue")).focus();}
+      if(e.key==="Escape"){e.preventDefault();e.stopPropagation();alertReply?.(false);}
+      if(e.key==="Tab"){
+        const nodes=[...$("#boundaryOverlay").querySelectorAll("button")].filter(b=>!b.hidden),i=nodes.indexOf(document.activeElement);
+        e.preventDefault();nodes[(i+(e.shiftKey?-1:1)+nodes.length)%nodes.length].focus();
+      }
     });
     function gridBoundary(points,id,S=state.settings){
       const s=S[id]||{};
@@ -2725,7 +2749,14 @@
       if(showing&&current.points.length&&!current.unresolved)convert();
     });
     $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value;if(state.to==="mgrs")state.to=state.settings.mgrs.format||"mgrs";state.explicitOutput=true;
-      readRows();const shown=state.points?.length?state.points:existingMapPoints().points;noteChoice(shown,state.to);seedOutputArea();updatePairState();if(rowsHaveContent())convert();else renderTo();save(); });
+      readRows();const shown=state.points?.length?state.points:existingMapPoints().points;
+      const home=shown.length&&GLOBAL_FORMATS.includes(state.to)?enabledGrid(shown):null,known=keptGrid(home)===state.to;
+      noteChoice(shown,state.to);
+      if(home&&!known)setTimeout(()=>showAlert(gridChoiceAlert(home,state.to),value=>{if(value==="alt"){$("#toSys").value=home;$("#toSys").dispatchEvent(new Event("change"));}}));
+      // A country grid that cannot hold every point says so, as a point off the grid does
+      // on the Point Picker.
+      const away=COUNTRY_PRESETS.includes(state.to)?outsideNotice(state.to,shown):"";
+      if(away)setTimeout(()=>showAlert({title:"Points are outside "+PRESETS[state.to].name,detail:away+" Choose Global MGRS or Coordinates to write every point as a reference.",confirm:"Continue",alt:presetEnabled("mgrs")?"Use Global MGRS":"Use Coordinates"},value=>{if(value==="alt"){$("#toSys").value=presetEnabled("mgrs")?"mgrs":"wgs84";$("#toSys").dispatchEvent(new Event("change"));}}));seedOutputArea();updatePairState();if(rowsHaveContent())convert();else renderTo();save(); });
     $("#fromFormat").addEventListener("change",()=>{
       readRows();const id=$("#fromFormat").value;
       if(id===state.from)return;
@@ -2761,8 +2792,10 @@
       return parts;
     }
     function closeMaps(){$("#mapsOverlay").classList.remove("open");$("#mapsBtn").focus();}
-    $("#mapsBtn").addEventListener("click",()=>{
-      const pts=state.points||[];if(!pts.length)return;
+    let mapsFromPicker=false;
+    $("#mapsBtn").addEventListener("click",()=>{mapsFromPicker=false;exportToMaps(state.points||[]);});
+    function exportToMaps(pts){
+      if(!pts.length)return;
       const limit=routeLimit();
       if(pts.length<=limit){window.open(routeUrl(pts),"_blank","noopener");return;}
       $("#mapsNote").textContent="Google Maps links hold up to "+limit+" points on this device, and this list has "+pts.length+". Open the route in parts; each part starts where the last one ended.";
@@ -2774,19 +2807,19 @@
         holder.append(button);
       }
       $("#mapsOverlay").classList.add("open");holder.firstChild.focus();
-    });
+    }
     $("#viewBtn").addEventListener("click",()=>{
       const pts=state.points||[];if(!pts.length)return;
       // Numbered here because the output rows carry no number of their own, and the
       // shared marker falls back to one for any point that was never named.
       const points=pts.map((p,i)=>({lat:p.lat,lon:p.lon,name:p.name,number:i+1}));
       const middle=points[Math.floor(points.length/2)];
-      pointPicker.open({points,readOnly:true,title:"Output points",unresolved:0,
+      pointPicker.open({points,readOnly:true,connected:$("#measureRoute").checked,title:"Output points",unresolved:0,
         presetId:state.to==="auto"?"wgs84":state.to,presetLabel:"",
         center:{lat:middle.lat,lon:middle.lon},zoom:14,layer:state.pointMapView?.layer||MapSupport.DEFAULT_BASEMAP});
     });
     $("#mapsCancel").addEventListener("click",closeMaps);
-    $("#mapsGpx").addEventListener("click",()=>{closeMaps();openGpx();});
+    $("#mapsGpx").addEventListener("click",()=>{closeMaps();if(mapsFromPicker)$("#fieldExport").click();else openGpx();});
     $("#mapsOverlay").addEventListener("keydown",e=>{
       if(e.key==="Escape"){e.preventDefault();closeMaps();}
       if(e.key==="Tab"){
@@ -2914,7 +2947,19 @@
       }
       return read.map(r=>r.point?{point:{lat:r.point.lat,lon:MapSupport.longitude(r.point.lon)},name:r.name}:{error:explain(r.error||"Could not read this line.")});
     }
-    const field=globalThis.createFieldMap?.({readInput:readForPicker,helper:MAP_HELPER,presets:["mgrs","wgs84",...COUNTRY_PRESETS],projection:projectionFor,
+    const field=globalThis.createFieldMap?.({readInput:readForPicker,ask,gridChoiceAlert,
+      onMaps:points=>{mapsFromPicker=true;exportToMaps(points);},
+      // A crossing of point 1's reference area, as the converter reports it.
+      boundary:(points,id)=>{
+        try{
+          const inside=points.filter(p=>!outsidePreset(id,p));
+          if(!inside.length||id==="wgs84"||!hasAreas(id))return null;
+          const S={...state.settings,[id]:{...state.settings[id],sgOmit:true}};
+          if(!PRESETS[id].lead){const key=areaKeyAt(id,inside[0].lat,inside[0].lon);if(id==="mgrs")S.mgrs.ao=key;else S[id].square=key.split("/").map(Number);}
+          const c=gridBoundary(inside,id,S);
+          return c?{key:c.key,detail:boundaryText([c])}:null;
+        }catch(_){return null;}
+      },helper:MAP_HELPER,presets:["mgrs","wgs84",...COUNTRY_PRESETS],projection:projectionFor,
       countryPresets:COUNTRY_PRESETS,presetName:id=>PRESETS[id].name,
       homeGrid:points=>points.length?enabledGrid(points):null,otherGridNotice,fineGrid:id=>fineGrid(id==='globalutm'?'mgrs':id),
       localGrid:(lat,lon)=>COUNTRY_PRESETS.find(id=>presetLikely(id,lat,lon))||null,

@@ -4,7 +4,7 @@
   root.createPointPicker=function({preview,onConfirm,onViewChange,projection,contains,capture,retract,fine,history}){
     const $=id=>document.getElementById(id),overlay=$("pointOverlay");
     const STREET_ZOOM=7;
-    let picks=0,redos=0,mapHistory,pointLabels,map,countries,labels,markers,streets,topo,satellite,options={},returnFocus,frame,stableCenter,limitCenter,pointAutoZoom,grid,target;
+    let route,picks=0,redos=0,mapHistory,pointLabels,map,countries,labels,markers,streets,topo,satellite,options={},returnFocus,frame,stableCenter,limitCenter,pointAutoZoom,grid,target;
     // Beyond the imagery a provider actually holds for an area the tiles are only
     // enlarged, so stopping there keeps the crosshair from implying detail that
     // is not in the picture.
@@ -91,7 +91,9 @@
       $("pointContinue").disabled=!!result.error||busy;
     }
     function drawPoints(points){
-      markers.clearLayers();
+      markers.clearLayers();route.clearLayers();
+      // Connected points are drawn joined, as on the Point Picker, and only then measured.
+      if(options.connected&&points.length>1)L.polyline(points.map(p=>[p.lat,p.lon]),{color:"#2563eb",weight:3,interactive:false}).addTo(route);
       for(const p of points){
         MapSupport.marker(map,p).addTo(markers);
       }
@@ -99,7 +101,7 @@
       pointAutoZoom&&pointAutoZoom.sync();
       mapHistory?.sync(picks>0,redos>0);pointLabels?.run();
       // Adding point by point, the running distance is worth seeing straight away.
-      const run=globalThis.RouteTools&&points.length>1?RouteTools.summary(points.map(p=>({...p,breakBefore:false}))):"";
+      const run=options.connected&&globalThis.RouteTools&&points.length>1?RouteTools.summary(points.map(p=>({...p,breakBefore:false}))):"";
       $("pointDistance").textContent=run;
       $("pointUnresolved").hidden=!options.unresolved;
       $("pointUnresolved").textContent=options.unresolved+" incomplete or unresolved row"+(options.unresolved===1?" is":"s are")+" not shown on the map.";
@@ -115,7 +117,7 @@
       limitCenter=MapSupport.limitCenter(map);
       countries=L.geoJSON(null,{pane:"pointCountries",interactive:false,style:{color:"#90a5b5",weight:.8,fillColor:"#f2f0e9",fillOpacity:1}}).addTo(map);
       map.attributionControl.addAttribution('<a href="https://www.naturalearthdata.com/">Natural Earth</a>');
-      labels=L.layerGroup().addTo(map);markers=L.layerGroup().addTo(map);
+      labels=L.layerGroup().addTo(map);route=L.layerGroup().addTo(map);markers=L.layerGroup().addTo(map);
       streets=MapSupport.seamless(L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{minZoom:1,maxNativeZoom:19,maxZoom:22,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'}));
       // Starts at the depth imagery reaches almost everywhere, and coverage raises it
       // where there is more. Guessing high the other way asks Esri for tiles it does

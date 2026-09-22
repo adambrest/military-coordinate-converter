@@ -62,3 +62,5 @@
 .point-footer #pointDistance{height:auto;min-height:15px;line-height:15px;margin:6px 0 0;text-align:left}
 #pointAdded:empty{display:none}
 .overlay.viewing .point-readout .readout-text{display:none}
+
+#boundaryOverlay .m-actions{flex-direction:column}#boundaryOverlay .m-actions button{flex:auto;padding:10px 14px}
