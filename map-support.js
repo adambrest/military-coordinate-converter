@@ -162,6 +162,15 @@
     }
     return {run,visible:()=>on};
   }
+  // The grid starts off and, once set, stays as the reader left it on both maps.
+  const GRID_KEY="map-grid-v1";
+  function gridToggle(input,onChange){
+    const read=()=>{try{input.checked=localStorage.getItem(GRID_KEY)==="on";}catch(_){input.checked=false;}};
+    read();
+    input.addEventListener("change",()=>{try{localStorage.setItem(GRID_KEY,input.checked?"on":"off");}catch(_){}onChange?.();});
+    // Each map picks up a change made on the other when it is next opened.
+    return {sync(){const was=input.checked;read();if(was!==input.checked)onChange?.();}};
+  }
   // Undo and redo on the map itself, in the same button stack as zoom.
   function historyButtons(map,{onUndo,onRedo,position="bottomright"}){
     const make=(title,icon,go)=>{const a=L.DomUtil.create("a","");a.href="#";a.title=title;a.setAttribute("role","button");a.setAttribute("aria-label",title);a.innerHTML=icon;L.DomEvent.on(a,"click",e=>{L.DomEvent.stop(e);if(!a.classList.contains("off"))go();});return a;};
@@ -552,5 +561,5 @@
       colors:BROAD
     };
   }
-  root.MapSupport={regions,baseView,approximateLocation,tileUrls,prefetchTiles,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,pointTarget,imageryZoom,imageryService,trainingArea,BASEMAPS,DEFAULT_BASEMAP,basemapIds,basemapId,basemap,locate,mapButton,autoZoom,clampLatitude,broadView,BROAD_COLORS:BROAD,softenTopo,seamless,labelLayout,historyButtons};
+  root.MapSupport={regions,baseView,approximateLocation,tileUrls,prefetchTiles,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,pointTarget,imageryZoom,imageryService,trainingArea,BASEMAPS,DEFAULT_BASEMAP,basemapIds,basemapId,basemap,locate,mapButton,autoZoom,clampLatitude,broadView,BROAD_COLORS:BROAD,softenTopo,seamless,labelLayout,historyButtons,gridToggle};
 })(globalThis);

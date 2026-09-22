@@ -206,7 +206,7 @@
       }catch(error){failure="Could not add this point. "+error.message;}
       finally{busy=false;if(overlay.classList.contains("open")){update();if(failure){$("pointFormatPreview").textContent=failure;$("pointFormatPreview").classList.add("invalid");}}}
     }
-    $('pointGrid').addEventListener('change',()=>grid?.refresh());
+    const gridChoice=MapSupport.gridToggle($('pointGrid'),()=>grid?.refresh());
     $('pointTap').addEventListener('change',()=>{overlay.querySelector('.point-modal').classList.toggle('tap-mode',$('pointTap').checked);target?.update();});
     $("pointClose").addEventListener("click",close);
     $("pointConfirm").addEventListener("click",()=>confirm(false));$("pointContinue").addEventListener("click",()=>confirm(true));
@@ -223,7 +223,7 @@
       }
     });
     return {open(opts){
-      options=opts;returnFocus=document.activeElement;picks=0;redos=0;mode=MapSupport.basemapId(opts.layer||mode);busy=false;coverageKey="";coveragePending=mode==="satellite";
+      options=opts;returnFocus=document.activeElement;picks=0;redos=0;gridChoice.sync();mode=MapSupport.basemapId(opts.layer||mode);busy=false;coverageKey="";coveragePending=mode==="satellite";
       overlay.classList.add("open");overlay.classList.toggle("viewing",!!opts.readOnly);$("pointAdded").textContent="";
       $("pointTitle").textContent=opts.title||"Select a point";
       $("pointMap").setAttribute("aria-label",opts.readOnly
@@ -242,7 +242,8 @@
       map.invalidateSize();map.setView([opts.center.lat,opts.center.lon],Math.min(map.getMaxZoom(),Math.max(map.getMinZoom(),opts.zoom||12)),{animate:false});
       drawPoints(opts.points||[]);checkCoverage();layers();update();
       map.invalidateSize({pan:false,animate:false});map.setView([opts.center.lat,opts.center.lon],Math.min(map.getMaxZoom(),Math.max(map.getMinZoom(),opts.zoom||map.getZoom())),{animate:false,reset:true});
-      if(opts.readOnly&&opts.points?.length){
+      // Opening the map shows every point there is, whether picking or viewing.
+      if(opts.points?.length){
        const bounds=L.latLngBounds(opts.points.map(p=>[p.lat,p.lon]));
        map.fitBounds(bounds,{padding:[40,40],maxZoom:Math.min(map.getMaxZoom(),16),animate:false});
       }

@@ -50,6 +50,8 @@ const server=http.createServer((req,res)=>{
      const event=new Event('paste',{bubbles:true,cancelable:true});
      Object.defineProperty(event,'clipboardData',{value:{getData:()=>text}});el.dispatchEvent(event);
     },text);
+    // Pasted input waits, greyed, for Convert.
+    await page.locator('#convertBtn').click();
     const points=await page.evaluate(()=>JSON.parse(localStorage.getItem('mgrconv-v1')).points);
     assert.equal(points.length,3);assert.ok(Math.abs(points[1].lat-1.3848414)<.000001);
     assert.equal(await page.locator('#copyBtn').isEnabled(),true);
@@ -94,6 +96,9 @@ const server=http.createServer((req,res)=>{
     await page.evaluate(({lat,lon})=>{testMap.setView([lat,lon],15,{animate:false,reset:true});},{lat,lon});
     await page.locator('#pointConfirm').click();
     assert.equal(await page.locator('#toSys').inputValue(),id);
+    // A map pick leaves the results out of date until Convert.
+    assert.equal(await page.locator('#copyBtn').isEnabled(),false);
+    await page.locator('#convertBtn').click();
     assert.equal(await page.locator('#copyBtn').isEnabled(),true);
     if(id==='thailand'){
      assert.equal(await page.locator('#regionChipTo').isVisible(),true);

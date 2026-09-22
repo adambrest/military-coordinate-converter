@@ -37,6 +37,10 @@ assert.equal(await gridAt(1.35,103.82,14),'mgrs','Global MGRS chosen in Singapor
 await pickGrid('sg');await gridAt(55.75,37.6);
 assert.equal(await gridAt(1.35,103.82,14),'sg','choosing the country grid again restores auto-picking');
 assert.equal(await page.locator('#fieldGridNote').count(),0,'no grid confirmation under the map');
+// The grid starts off and labels start on; the grid is turned on here to test it.
+assert.equal(await page.locator('#fieldGrid').isChecked(),false,'the grid starts off');
+assert.equal(await page.locator('#fieldLabels').isChecked(),true,'point labels start on');
+await page.check('#fieldGrid');
 // The grid redraws on an animation frame, so wait for the labels instead of guessing a delay.
 // Grid numbers sit on the edges of the view, not inside the tiles.
 const edgeLabels=()=>page.evaluate(()=>[...document.querySelectorAll('#fieldMap .grid-label-edge:not(.off)')].map(el=>el.textContent));

@@ -20,7 +20,7 @@ for(const [engine,mobile] of [[chromium,false],[webkit,true]]){
  await page.selectOption('#fieldFormat','thailand');
  assert.ok(Math.abs((await page.evaluate(()=>fm.getCenter().lng))-99.24459)<.001,'country grid jumps to its country');
  await page.selectOption('#fieldFormat','sg');
- await page.evaluate(()=>{fm.setView([1.35,103.82],15,{animate:false});});
+ await page.check('#fieldGrid');await page.evaluate(()=>{fm.setView([1.35,103.82],15,{animate:false});});
  await page.waitForFunction(()=>document.querySelectorAll('#fieldMap .grid-label-edge:not(.off)').length>0);
  // Edge numbers follow their lines on every frame of a pan, not after it ends.
  const labelX=()=>page.evaluate(()=>{const el=document.querySelector('#fieldMap .grid-label-edge.top:not(.off)');return el&&el.getBoundingClientRect().left;});
@@ -64,6 +64,7 @@ for(const [engine,mobile] of [[chromium,false],[webkit,true]]){
  assert.deepEqual(styles[0],styles[1]);assert.deepEqual(styles[2],styles[3]);
  await page.click('#tab-conv');await page.click('#selectMap');
  await page.evaluate(()=>{pm.setView([1.35,103.82],15,{animate:false});});
+ assert.equal(await page.locator('#pointGrid').isChecked(),true,'the grid choice carries across maps');
  await page.waitForFunction(()=>document.querySelectorAll('#pointMap .coordinate-grid-tile').length>0);
  await page.uncheck('#pointGrid');assert.equal(await page.locator('#pointMap .coordinate-grid-tile').count(),0);await page.check('#pointGrid');
  await page.check('#pointTap');assert.equal(await page.locator('.point-crosshair').isVisible(),false);assert.equal(await page.locator('#pointContinue').isVisible(),false);

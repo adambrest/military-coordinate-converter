@@ -253,7 +253,9 @@
   .cell.outside{color:var(--warn);font-weight:600}
   /* Converting, after Detail IC: old results slide out left, new ones flash in. */
   #toRows{position:relative}
-  .detail-ghosts{position:absolute;inset:0;z-index:2;pointer-events:none}
+  #toRows,.side .tbl{position:relative}
+  .tbl.stale #toRows{opacity:.4;filter:grayscale(1);transition:opacity .15s}
+  .detail-ghosts{position:absolute;left:0;right:0;bottom:0;z-index:2;pointer-events:none;overflow:hidden}
   .detail-ghosts .trow{background:var(--panel)}
   .trow.leaving{animation:detail-leave .22s ease-in forwards}
   @keyframes detail-leave{to{transform:translateX(-40px);opacity:0}}
@@ -315,6 +317,7 @@
           <select class="sys" id="toSys" aria-label="Output system"></select>
           <label class="format-choice" id="toFormatWrap" hidden>Format <select id="toFormat" aria-label="Global output format"><option value="mgrs">MGRS</option><option value="globalutm">UTM</option></select></label>
           <div class="regionchip" id="regionChipTo" hidden></div>
+          <div class="pastehint" id="toStale" hidden>Out of date. Press Convert or Enter to update.</div>
           <div class="tbl"><div class="thead" id="toHead"></div><div id="toRows"></div></div>
           <p class="area-note" id="toOutside" role="status" hidden></p>
           <div class="exportbar">
@@ -330,7 +333,7 @@
 
 <section class="view on" id="view-field">
  <div class="field-layout"><div class="field-map-panel">
- <div class="field-tools"><div class="point-layers" role="group" aria-label="Map layer"><button type="button" data-layer="street" aria-pressed="true">Street</button><button type="button" data-layer="topo" aria-pressed="false">Topo</button><button type="button" data-layer="satellite" aria-pressed="false">Satellite</button></div><select id="fieldRegion" class="map-region" aria-label="Jump to region"></select><label><input type="checkbox" id="fieldGrid" checked> Grid</label><label><input type="checkbox" id="fieldLabels" checked> Labels</label><label><input type="checkbox" id="fieldTap"> Tap to add</label></div>
+ <div class="field-tools"><div class="point-layers" role="group" aria-label="Map layer"><button type="button" data-layer="street" aria-pressed="true">Street</button><button type="button" data-layer="topo" aria-pressed="false">Topo</button><button type="button" data-layer="satellite" aria-pressed="false">Satellite</button></div><select id="fieldRegion" class="map-region" aria-label="Jump to region"></select><label><input type="checkbox" id="fieldGrid"> Grid</label><label><input type="checkbox" id="fieldLabels" checked> Labels</label><label><input type="checkbox" id="fieldTap"> Tap to add</label></div>
  <div class="field-map-wrap"><div id="fieldMap" aria-label="Point Picker map"></div><svg class="field-crosshair" aria-hidden="true" viewBox="0 0 32 32"><path class="crosshair-edge" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/><path class="crosshair-core" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/></svg></div>
  <div class="field-readout"><div class="readout-text"><span id="fieldReadoutGrid" class="readout-grid"></span><output id="fieldCoordinate"></output></div><button id="fieldAdd" class="convert">Add point</button></div>
  </div><aside class="field-output side">
@@ -396,7 +399,7 @@
   <div class="overlay" id="pointOverlay" role="dialog" aria-modal="true" aria-labelledby="pointTitle">
     <div class="modal point-modal">
       <div class="point-heading"><h3 id="pointTitle">Select a point</h3><button id="pointClose" aria-label="Close point map">×</button></div>
-      <div class="point-toolbar"><div class="point-layers" role="group" aria-label="Map layer"><button id="pointStreet" aria-pressed="true">Street</button><button id="pointTopo" aria-pressed="false">Topo</button><button id="pointSatellite" aria-pressed="false">Satellite</button></div><select id="pointRegion" class="map-region" aria-label="Jump to"></select><label class="point-grid-control"><input type="checkbox" id="pointGrid" checked> Grid</label><label class="point-grid-control"><input type="checkbox" id="pointLabels" checked> Labels</label><label class="point-tap-control"><input type="checkbox" id="pointTap"> Tap to add</label><span id="pointPreset"></span><span id="pointCount"></span></div>
+      <div class="point-toolbar"><div class="point-layers" role="group" aria-label="Map layer"><button id="pointStreet" aria-pressed="true">Street</button><button id="pointTopo" aria-pressed="false">Topo</button><button id="pointSatellite" aria-pressed="false">Satellite</button></div><select id="pointRegion" class="map-region" aria-label="Jump to"></select><label class="point-grid-control"><input type="checkbox" id="pointGrid"> Grid</label><label class="point-grid-control"><input type="checkbox" id="pointLabels" checked> Labels</label><label class="point-tap-control"><input type="checkbox" id="pointTap"> Tap to add</label><span id="pointPreset"></span><span id="pointCount"></span></div>
       <div class="point-map-wrap"><div id="pointMap" tabindex="0" aria-label="Point map. Arrow keys move the crosshair location; plus and minus zoom; Enter adds the point."></div><svg class="point-crosshair" aria-hidden="true" viewBox="0 0 32 32"><path class="crosshair-edge" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/><path class="crosshair-core" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/></svg></div>
       <div class="point-footer"><div class="point-readout"><div class="readout-text"><span class="readout-grid" id="pointReadoutGrid"></span><div id="pointCoordinate"></div><div id="pointFormatPreview" aria-live="polite"></div></div><div class="point-actions"><button class="setting-action" id="pointContinue">Add point</button><button class="setting-action primary" id="pointConfirm">Add point and close</button></div></div><p id="pointDistance" aria-live="polite"></p><p class="point-status" id="pointUnresolved" hidden></p><p class="point-status" id="pointNetwork" hidden></p><p class="point-status" id="pointAdded" role="status"></p></div>
     </div>
@@ -1456,7 +1459,6 @@
       if(automatic||target!==state.to){state.to=target;state.explicitOutput=false;}
       state.points=[];renderFrom();renderTo();updatePairState();save();
       const current=existingMapPoints();
-      if(!current.unresolved&&!pairInvalid()&&state.from!==state.to)convert();
       // An incomplete pre-existing row must not open another modal over this picker.
       pointOptions={...pointOptions,...current};save();return current;
     }
@@ -1850,6 +1852,7 @@
     }
     // Acknowledgment lasts for this session and country, never silently for every country.
     const boundaryAccepted=new Set();
+    let lastOutput=null;
     let restoring=false;
     let boundaryReply;
     // One alert for both tabs: what happened, what it means, and what to do about it.
@@ -2196,7 +2199,7 @@
           if(k>=0){setBottomError(explain(read[k].error,multiline?k+1:null,multiline?"Line":null));return;}
           rememberSnapshot(before);
           writeRows(i,read.map((r,k)=>({cells:llCells(r.lat,r.lon),name:lines[k].name})),insert);
-          state.points=[];renderFrom();renderTo();flashRows(i,read.length);convert();save();return;
+          state.points=[];renderFrom();renderTo();flashRows(i,read.length);if(opts.convert)convert();save();return;
         }
         if(PRESETS[state.from].lead)state.aoConfirmed=true;
         // Auto-detect has no reference area, even if a previous conversion confirmed one.
@@ -2303,7 +2306,9 @@
         // Point 1 sets the input's area unless the area in force already holds it.
         if(target==="mgrs"&&!points[0].prefix.startsWith(state.settings.mgrs.ao||"-"))state.settings.mgrs.ao=points[0].prefix;
       }
-      state.points=[];renderFrom();updatePairState();renderTo();flashRows(i,parsed.length);convert();
+      // Convert re-reads rows through here and finishes the job; a paste, a link or a
+      // map pick leaves the results greyed until Convert or Enter.
+      state.points=[];renderFrom();updatePairState();renderTo();flashRows(i,parsed.length);if(opts.convert)convert();
       const pasted=[...new Set(parsed.map(r=>r.point&&r.point.warning).filter(Boolean))];
       if(pasted.length){const d=$("#detect");d.textContent=[d.textContent,...pasted].filter(Boolean).join(" ");d.className="detect warn";}
       save();
@@ -2433,12 +2438,12 @@
       if(!rereading&&PRESETS[state.from].kind!=="latlong"&&state.from!=="auto"&&state.rows.some(typedWhole)){
         // A re-read converts once more on success; that pass must not re-read again.
         rereading=true;
-        try{onPaste({clipboardData:{getData:()=>state.rows.map(r=>[r[0],r[1]].filter(Boolean).join(" ")).join("\n")},preventDefault(){}},0);}finally{rereading=false;}
+        try{onPaste({clipboardData:{getData:()=>state.rows.map(r=>[r[0],r[1]].filter(Boolean).join(" ")).join("\n")},preventDefault(){}},0,{convert:true});}finally{rereading=false;}
         return;
       }
       if(state.from==="auto"||$("#fromRows").closest(".side").classList.contains("flexible-input")){
         const rows=state.rows.filter(r=>r[0].trim()||r[1].trim());
-        if(rows.length){state.rows=rows;renderFrom();onPaste({clipboardData:{getData:()=>rows.map(r=>r[0]+" "+r[1]).join("\n")},preventDefault(){}},0);}
+        if(rows.length){state.rows=rows;renderFrom();onPaste({clipboardData:{getData:()=>rows.map(r=>r[0]+" "+r[1]).join("\n")},preventDefault(){}},0,{convert:true});}
         else detect("Paste a coordinate to get started.");
         return;
       }
@@ -2552,7 +2557,17 @@
       const cols=colsFor(state.to,state.settings);
       let prefixed=GLOBAL_FORMATS.includes(state.to);
       $("#toName").textContent=PRESETS[state.to].name;
-      const rowsEl=$("#toRows"); rowsEl.innerHTML="";
+      const rowsEl=$("#toRows"),table=rowsEl.closest(".tbl");
+      // New input leaves the last results in place, greyed, until Convert or Enter is
+      // pressed: out of date is shown as out of date, never quietly swapped or cleared.
+      const stale=!(state.points||[]).length&&!!lastOutput&&rowsHaveContent();
+      table.classList.toggle("stale",stale);$("#toStale").hidden=!stale;
+      if(stale){
+        rowsEl.replaceChildren(...lastOutput.rows.map(r=>r.cloneNode(true)));$("#toHead").innerHTML=lastOutput.head;
+        for(const id of ["#mapsBtn","#viewBtn","#gpxBtn","#copyBtn"])$(id).disabled=true;
+        updateRegionChips();return;
+      }
+      rowsEl.innerHTML="";
       let pts=state.points||[];
       const notes=[outsideNotice(state.to,pts),home&&home!==state.to&&GLOBAL_FORMATS.includes(state.to)?otherGridNotice(home,state.to):""].filter(Boolean);
       $("#toOutside").textContent=notes.join(" ");$("#toOutside").hidden=!notes.length;
@@ -2612,6 +2627,8 @@
         rowsEl.appendChild(div);
       });
       const has=pts.length>0;
+      if(has)lastOutput={rows:[...rowsEl.children].map(r=>r.cloneNode(true)),head:$("#toHead").innerHTML};
+      else if(!rowsHaveContent())lastOutput=null;
       $("#mapsBtn").disabled=!has; $("#viewBtn").disabled=!has; $("#gpxBtn").disabled=!has; $("#copyBtn").disabled=!has;
       if(globalThis.RouteTools){
         const signature=JSON.stringify(pts.map(p=>[Number(p.lat.toFixed(8)),Number(p.lon.toFixed(8))]));
@@ -2801,7 +2818,8 @@
       convert();
       if(still)return;
       const rows=[...holder.children].filter(r=>!r.classList.contains("placeholder"));
-      if(ghosts&&rows.length){holder.prepend(ghosts);setTimeout(()=>ghosts.remove(),260);}
+      // The copies sit over the list, not in it, so nothing reading the results sees them.
+      if(ghosts&&rows.length){ghosts.style.top=holder.offsetTop+"px";holder.parentElement.append(ghosts);setTimeout(()=>ghosts.remove(),260);}
       // With old rows leaving, the new ones wait until they are gone, as Detail IC
       // redraws only once its rows have left.
       const wait=ghosts?200:0;

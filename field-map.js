@@ -337,7 +337,7 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   refresh();
  };
  $('fieldRoute').onchange=()=>{remember();connected=$('fieldRoute').checked;if(connected&&points.every(p=>p.breakBefore))points.forEach((p,i)=>p.breakBefore=i===0);drawRoute();$('fieldDistance').textContent=connected?RouteTools.summary(points):'';save();};
- $('fieldGrid').onchange=()=>grid?.refresh();
+ const gridChoice=MapSupport.gridToggle($('fieldGrid'),()=>grid?.refresh());
  $('fieldTap').onchange=()=>{$('view-field').classList.toggle('tap-mode',$('fieldTap').checked);render();target?.update();};
  // With the list empty again, the grid is free to follow the map once more.
  const unlocked=()=>{if(!points.length&&map){area=undefined;moved();}};
@@ -361,6 +361,10 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
  $('fieldFile').onchange=async()=>{const file=$('fieldFile').files[0];$('fieldFile').value='';if(!file)return;try{if(file.size>20*1024*1024)throw Error('GPX files must be smaller than 20 MB.');const result=RouteTools.parse(await file.text());
   admit(result.points,()=>{remember();points.push(...result.points);connected=connected||result.connected;refresh();fit();status('');});
  }catch(e){status(e.message);}};
- render();return {open(){if(!map)init();written=null;render();target.update();requestAnimationFrame(()=>{map.invalidateSize({pan:false});grid.refresh();});},getPoints:()=>points.map(p=>({...p}))};
+ render();return {open(){
+  // Opening the map always shows every point collected.
+  gridChoice.sync();
+  if(!map)init();else if(points.length)fit();
+  written=null;render();target.update();requestAnimationFrame(()=>{map.invalidateSize({pan:false});grid.refresh();});},getPoints:()=>points.map(p=>({...p}))};
 };
 })(globalThis);

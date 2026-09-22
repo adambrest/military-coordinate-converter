@@ -33,14 +33,20 @@ function app(saved,realMap=false,militaryEnabled=true,helper){
     w.eval(read('vendor/leaflet.js'));const createMap=w.L.map;w.L.map=(...args)=>{const map=createMap(...args);if(args[0]==='pointMap')w.pointTestMap=map;else w.testMap=map;return map;};w.eval(read('map-picker.js'));w.eval(read('point-picker.js'));
   }else w.createAOPicker=opts=>{w.pickerHooks=opts;return {open:o=>{w.mapOptions=o;w.document.getElementById('aoOverlay').classList.add('open');},view:o=>{w.viewOptions=o;}};};
   if(!realMap)w.createPointPicker=opts=>{w.pointPickerHooks=opts;return {open:o=>{w.pointOptions=o;}};};
+  // A map pick also leaves the output out of date; the reader presses Convert after it.
+  {const make=w.createPointPicker;w.createPointPicker=opts=>{const pick=opts.onConfirm,after=r=>{if(r&&!r.error&&!r.canceled&&!w.document.querySelector('.overlay.open:not(#pointOverlay)'))w.document.querySelector('#convertBtn').click();return r;};opts.onConfirm=(...args)=>{const r=pick(...args);return r&&r.then?r.then(after):after(r);};return make(opts);};}
   w.eval(script);
   // Existing global-grid scenarios opt in through the same Settings control as users.
   if(militaryEnabled){w.document.querySelector('#tab-set').click();const toggle=w.document.querySelector('#militaryToggle');if(toggle.getAttribute('aria-pressed')==='false')toggle.click();w.document.querySelector('#tab-conv').click();}
   const $=s=>w.document.querySelector(s);
   function change(id,value){$(id).value=value;$(id).dispatchEvent(new w.Event('change',{bubbles:true}));}
-  function paste(text,row=0){const e=new w.Event('paste',{bubbles:true,cancelable:true});Object.defineProperty(e,'clipboardData',{value:{getData:()=>text}});$('#fromRows').children[row].querySelector('.a').dispatchEvent(e);}
+  // Pasting leaves the output out of date until Convert, so the helper presses it as a
+  // reader would, unless a question is waiting to be answered first.
+  function paste(text,row=0,{convert=true}={}){const e=new w.Event('paste',{bubbles:true,cancelable:true});Object.defineProperty(e,'clipboardData',{value:{getData:()=>text}});$('#fromRows').children[row].querySelector('.a').dispatchEvent(e);if(convert&&!/goo\.gl|maps\.apple\/[^?\s]/i.test(text)&&!w.document.querySelector('.overlay.open'))$('#convertBtn').click();}
+  // Links are followed first; once they land, the reader presses Convert.
+  async function settleLinks(){for(let i=0;i<80&&w.document.querySelector('#fromRows .a.busy');i++)await new Promise(r=>setTimeout(r,10));await new Promise(r=>setTimeout(r,10));$('#convertBtn').click();}
   const state=()=>JSON.parse(w.localStorage.getItem('mgrconv-v1'));
-  return {dom,w,$,change,paste,state};
+  return {dom,w,$,change,paste,state,settleLinks};
 }
 test('global round trips preserve prefix and digits worldwide',()=>{
   const c=core();
@@ -90,9 +96,9 @@ test('blank MGRS also auto-detects UTM; spaced MGRS gets a dedicated prefix fiel
   a.dom.window.close();
 });
 test('unlabeled projected meters require a zone; removed projection is rejected',()=>{
-  const raw='11553992.183085 151736.075979';const a=app();a.paste(raw);
+  const raw='11553992.183085 151736.075979';const a=app();a.paste(raw,0,{convert:false});
   assert.equal(a.$('#copyBtn').disabled,true);assert.match(a.$('#badPair').textContent,/zone prefix/);assert.equal(a.$('#fromRows .a').value,raw);
-  a.paste('EPSG:3857 '+raw);assert.equal(a.$('#copyBtn').disabled,true);assert.match(a.$('#badPair').textContent,/not supported/);
+  a.paste('EPSG:3857 '+raw,0,{convert:false});assert.equal(a.$('#copyBtn').disabled,true);assert.match(a.$('#badPair').textContent,/not supported/);
   assert.equal(a.$('#fromFormat option[value="mercator"]'),null);
   a.dom.window.close();
 });
@@ -136,7 +142,8 @@ test('global Settings controls format and holds examples outside converter',asyn
 test('leaving Auto-detect snaps and keeps focus in the Name field',async()=>{
   const a=app();const input=a.$('#fromRows .a');input.focus();input.value='48nug 6883 4332';input.dispatchEvent(new a.w.Event('input',{bubbles:true}));
   a.$('#fromRows .nm').focus();await new Promise(r=>setTimeout(r,20));
-  assert.equal(a.$('#fromRows .prefix').value,'48N UG');assert.equal(a.w.document.activeElement,a.$('#fromRows .nm'));assert.equal(a.$('#copyBtn').disabled,false);a.dom.window.close();
+  assert.equal(a.$('#fromRows .prefix').value,'48N UG');assert.equal(a.w.document.activeElement,a.$('#fromRows .nm'));
+  assert.equal(a.$('#copyBtn').disabled,true,'new input waits for Convert');a.$('#convertBtn').click();assert.equal(a.$('#copyBtn').disabled,false);a.dom.window.close();
 });
 test('Enter detects the coordinate and focuses a new row',async()=>{
   const a=app();const input=a.$('#fromRows .a');input.focus();input.value='51r th 93619 48618';input.dispatchEvent(new a.w.Event('input',{bubbles:true}));
@@ -468,7 +475,8 @@ test('real crosshair picker cancels cleanly and Add & continue adds distinct new
   a.$('#selectMap').click();a.w.pointTestMap.setView([1.35,103.82],15,{animate:false});a.$('#pointContinue').click();
   assert.equal(a.state().rows.length,1);assert.equal(a.$('#pointOverlay').classList.contains('open'),true);assert.match(a.$('#pointCount').textContent,/1 existing/);
   a.w.pointTestMap.setView([1.36,103.83],16,{animate:false});a.$('#pointConfirm').click();assert.equal(a.state().rows.length,2);assert.equal(a.$('#pointOverlay').classList.contains('open'),false);
-  a.$('#selectMap').click();assert.ok(Math.abs(a.w.pointTestMap.getCenter().lat-1.36)<.00005,JSON.stringify(a.w.pointTestMap.getCenter()));assert.equal(a.w.pointTestMap.getZoom(),16);
+  // Reopening shows every point picked so far.
+  a.$('#selectMap').click();{const b=a.w.pointTestMap.getBounds();assert.ok(b.contains([1.35,103.82])&&b.contains([1.36,103.83]),JSON.stringify(a.w.pointTestMap.getCenter()));}
   a.$('#pointOverlay').dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(a.$('#pointOverlay').classList.contains('open'),false);a.dom.window.close();
 });
 
@@ -1244,7 +1252,7 @@ test('a short map link resolves through the endpoint when one is configured',asy
   paste('https://maps.app.goo.gl/oxBekKUgBWZMeVJ89?g_st=ic');
   assert.match($('#detect').textContent,/Following the link/,'the reader should see it working');
   assert.equal($('#fromRows .a').classList.contains('busy'),true,'the cell should show it is busy');
-  await new Promise(r=>setTimeout(r,20));
+  await new Promise(r=>setTimeout(r,20));$('#convertBtn').click();
   assert.ok(asked&&asked.includes(encodeURIComponent('https://maps.app.goo.gl/oxBekKUgBWZMeVJ89?g_st=ic')),'the link must be sent whole: '+asked);
   const point=JSON.parse(w.localStorage.getItem('mgrconv-v1')).points[0];
   assert.ok(Math.abs(point.lat-1.3849163)<1e-6&&Math.abs(point.lon-103.9806071)<1e-6,'resolved to '+point.lat+','+point.lon);
@@ -1740,7 +1748,7 @@ test('mixed full and shortened Google and Apple links resolve without losing ord
   };
   try{
     a.paste([exampleCameraLink,'maps.app.goo.gl/first','maps.apple/second',examplePlaceLink,'maps.app.goo.gl/first'].join(','));
-    for(let i=0;i<30&&a.$('#copyBtn').disabled;i++)await new Promise(r=>setTimeout(r,10));
+    await a.settleLinks();
     assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
     assert.equal(a.state().points.length,5);
     assert.deepEqual(a.state().points.map(p=>Number(p.lat.toFixed(6))),[1.386791,1.36,1.37,1.384841,1.36]);
@@ -1761,7 +1769,7 @@ test('a name run onto its link survives, and every link is followed in one pass'
   try{
     // MLP3 is pasted straight onto its link, with no space between them.
     a.paste(['MLP1 https://maps.app.goo.gl/one','MLP2 https://maps.app.goo.gl/two','MLP3https://maps.app.goo.gl/three'].join('\n'));
-    for(let i=0;i<40&&a.$('#copyBtn').disabled;i++)await new Promise(r=>setTimeout(r,10));
+    await a.settleLinks();
     assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
     assert.deepEqual(asked,['https://maps.app.goo.gl/one','https://maps.app.goo.gl/two','https://maps.app.goo.gl/three']);
     assert.deepEqual(a.state().rows.map(r=>r[2]),['MLP1','MLP2','MLP3'],'each label names its own point');
@@ -1836,7 +1844,7 @@ test('auto-detect reads links and prefixless grid references from one paste',asy
   try{
     // Each point is a labelled link with its grid reference on the next line.
     a.paste(['MLP1 https://maps.app.goo.gl/one','3136 5148','MLP2 https://maps.app.goo.gl/two','3131 5067'].join('\n'));
-    for(let i=0;i<40&&a.$('#copyBtn').disabled;i++)await new Promise(r=>setTimeout(r,10));
+    await a.settleLinks();
     assert.equal(a.$('#badPair').hidden,true,'nothing in this paste should be rejected: '+a.$('#badPair').textContent);
     const rows=a.state().rows;
     assert.equal(rows.length,4,'every line is its own point');
@@ -1968,11 +1976,13 @@ test('unrelated preset toggles and settings preserve a completed conversion',asy
   const a=app();
   try{
     a.change('#fromSys','sg');a.paste('3000 3000');
-    const before=a.state(),output=a.$('#toRows').innerHTML;
+    // The Convert animation's classes are not part of the result.
+    const plain=h=>h.replace(/ detailed/g,'').replace(/ style="animation-delay: \d+ms;"/g,'');
+    const before=a.state(),output=plain(a.$('#toRows').innerHTML);
     const unchanged=()=>{
       const after=a.state();
       for(const key of ['from','to','rows','points','aoConfirmed'])assert.deepEqual(after[key],before[key],key);
-      assert.equal(a.$('#toRows').innerHTML,output);
+      assert.equal(plain(a.$('#toRows').innerHTML),output);
       assert.equal(a.$('#copyBtn').disabled,false);assert.equal(a.$('#gpxBtn').disabled,false);
     };
     a.$('#tab-set').click();
@@ -2003,9 +2013,9 @@ test('only actual active input setting changes require conversion again',async()
 });
 
 /* ---- v2 reference areas ---- */
-test('the app reports version 3.12.0',()=>{
+test('the app reports version 3.13.0',()=>{
   const a=app();
-  try{assert.equal(a.$('#appVersion').textContent,'v3.12.0');assert.match(read('version.js'),/APP_VERSION = "3\.12\.0"/);
+  try{assert.equal(a.$('#appVersion').textContent,'v3.13.0');assert.match(read('version.js'),/APP_VERSION = "3\.13\.0"/);
     const logo=a.$('header h1 .logo');assert.ok(logo,'the header shows the app icon');assert.equal(logo.getAttribute('src'),'icons/logo-64.png');assert.equal(logo.getAttribute('alt'),'');}
   finally{a.dom.window.close();}
 });
@@ -2511,5 +2521,20 @@ test('a global grid chosen in a country is kept there from then on, across paste
     const reopened=app(a.state());
     try{reopened.$('#clearAll').click();reopened.paste('1.33,103.85');assert.equal(reopened.state().to,'mgrs','the choice survives a reload');}finally{reopened.dom.window.close();}
     a.change('#toSys','sg');a.$('#clearAll').click();a.paste('1.34,103.84');assert.equal(a.state().to,'sg','choosing the country grid again restores auto-picking');
+  }finally{a.dom.window.close();}
+});
+test('new input greys the results as out of date until Convert or Enter',()=>{
+  const a=app();
+  try{
+    a.paste('1.35,103.82');assert.equal(a.$('#copyBtn').disabled,false);
+    const first=a.$('#toRows .a').value;
+    a.$('#addRow').click();a.paste('1.36,103.83',1,{convert:false});
+    assert.equal(a.$('#toRows').closest('.tbl').classList.contains('stale'),true,'the old results are greyed');
+    assert.equal(a.$('#toStale').hidden,false);
+    assert.equal(a.$('#toRows .a').value,first,'the old results stay in place');
+    for(const id of ['#mapsBtn','#viewBtn','#gpxBtn','#copyBtn'])assert.equal(a.$(id).disabled,true,id+' cannot send out-of-date results');
+    a.w.document.body.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+    assert.equal(a.$('#toRows').closest('.tbl').classList.contains('stale'),false);
+    assert.equal(a.$('#toRows').querySelectorAll('.trow').length,2);assert.equal(a.$('#copyBtn').disabled,false);
   }finally{a.dom.window.close();}
 });
