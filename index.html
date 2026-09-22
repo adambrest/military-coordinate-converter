@@ -34,12 +34,13 @@
   header h1 .title-text{overflow:hidden;text-overflow:ellipsis;min-width:0}
   .version{flex:0 0 auto;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:2px 6px;font-size:9px;font-weight:800;letter-spacing:.2px}
   .version:empty{display:none}
-  .feedback{color:var(--muted);font-size:12px;text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:8px}
+  .feedback{color:var(--muted);font-size:12px;text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:7px 9px;display:inline-flex;align-items:center;gap:5px}
+  .feedback:hover{color:var(--text)}
+  .feedback svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
   .tabs{display:flex;gap:2px;margin-left:6px;flex:0 0 auto}
   .tabs button{border:none;background:none;color:var(--muted);font-weight:600;font-size:13px;padding:5px 11px;border-radius:8px;cursor:pointer}
   .tabs button:hover{color:var(--text)}
   .tabs button.on{background:var(--panel2);color:var(--text)}
-  .tabs button#tab-set{font-size:12px}
   main{flex:1 1 auto;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch;padding:10px}
   .view{display:none} .view.on{display:block}
 
@@ -78,7 +79,7 @@
   .del{width:26px;height:30px;border:none;background:transparent;color:var(--muted);font-size:18px;line-height:1;border-radius:6px;cursor:pointer;opacity:.5;justify-self:center;display:grid;place-items:center;transition:opacity .12s,color .12s,background .12s}
   .del:hover{opacity:1;color:var(--danger);background:var(--panel2)}
   .trow.out .del{visibility:hidden}
-  .topo-muted{filter:saturate(.45) contrast(1.06)}
+  .tone-fallback{filter:saturate(.6) contrast(.78) brightness(1.12)}
   /* Zooming out, the same map is quietened before it is replaced outright. */
   /* Fading alone leaves the road colours; a little more desaturation takes the
      warmth out of them without the flattening that pure contrast changes cause. */
@@ -91,12 +92,10 @@
     text-align:center;white-space:normal;pointer-events:none;
     text-shadow:0 1px 2px #fff,0 -1px 2px #fff,1px 0 2px #fff,-1px 0 2px #fff}
   .area-note{border-left:2px solid var(--warn);padding-left:8px;margin:8px 0}
-  .local-grid{display:block;width:100%;margin-top:6px;padding:6px 8px;border:1px solid color-mix(in srgb,var(--warn) 40%,var(--line));border-radius:7px;background:color-mix(in srgb,var(--warn) 8%,transparent);color:var(--text);font:inherit;font-size:11px;text-align:left;cursor:pointer}
-  .local-grid[hidden]{display:none}
-  .local-grid:hover{border-color:var(--warn)}
-  .route-distance-control{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:6px;font-size:11px;color:var(--muted)}
-  .route-distance-control label{display:inline-flex;align-items:center;gap:4px}
+  .route-distance-control{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 10px;margin-top:6px;font-size:11px;color:var(--muted)}
+  .route-distance-control label{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
   #routeDistance,#fieldDistance,#pointDistance{margin:0;font-size:11px;color:var(--muted);text-align:right}
+  .route-distance-control p{margin-left:auto}
   .map-button a{display:grid;place-items:center;width:30px;height:30px;color:#334155;background:#fff}
   .map-button a:hover{color:var(--accent)}
   .map-button a.off{color:#cbd5e1;pointer-events:none}
@@ -231,7 +230,29 @@
     .swap{flex:0 0 auto}
   }
   @media (max-width:640px) and (orientation:portrait){.wide-title{display:none}}
+  /* Phone: name and links on one row, the tabs across the next. */
+  @media (max-width:640px){
+    header{padding:8px 12px;gap:8px 10px}
+    .tabs{order:3;width:100%;margin-left:0}
+    .tabs button{flex:1 1 0;padding:7px 6px}
+    .topright{gap:6px}
+    .feedback{padding:7px}
+    .feedback span{display:none}
+  }
   @media (max-width:420px){.cell,.cell.nm,.trow.out .cell{font-size:11px;padding-left:5px;padding-right:5px}}
+  /* One button shape under every table, on both tabs. The colours still say what a
+     button does; the height, type and corners are the same everywhere. */
+  .row-actions .select-map,.row-actions .addrow,.exportbar button{min-height:38px;padding:0 14px;border-radius:9px;font-family:inherit;font-size:13px;font-weight:600;line-height:1.2;margin:0}
+  .exportbar{gap:8px}
+  .exportbar button{padding:0 8px}
+  .row-actions .histbtn{min-width:38px;min-height:38px;border-radius:9px}
+  .cell.outside{color:var(--warn);font-weight:600}
+  /* Phone: two buttons a row, so no label breaks across lines. */
+  @media (max-width:480px){
+    .exportbar{flex-wrap:wrap}
+    .exportbar button{flex:1 1 calc(50% - 4px);white-space:nowrap}
+    .field-output .exportbar button:first-child{flex-basis:100%}
+  }
 </style>
 </head>
 <body>
@@ -244,8 +265,8 @@
     </nav>
     <div class="topright">
       <button class="update-msg" id="updateMsg" title="A new version is ready — click to update" hidden>Update available</button>
-      <a class="feedback" href="https://github.com/adambrest/military-coordinate-converter" target="_blank" rel="noopener noreferrer" title="View the source code and README">GitHub</a>
-      <a class="feedback" href="https://github.com/adambrest/military-coordinate-converter/issues/new?labels=bug&amp;title=Bug%3A%20&amp;body=What%20happened%3A%0A%0AWhat%20you%20expected%3A%0A%0AWhat%20you%20pasted%20or%20tapped%3A%0A%0ADevice%20and%20browser%3A%0A" target="_blank" rel="noopener noreferrer" title="Report a bug on GitHub (sign-in required)">Report a bug</a>
+      <a class="feedback" href="https://github.com/adambrest/military-coordinate-converter" target="_blank" rel="noopener noreferrer" title="View the source code and README" aria-label="GitHub"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"/></svg><span>GitHub</span></a>
+      <a class="feedback" href="https://github.com/adambrest/military-coordinate-converter/issues/new?labels=bug&amp;title=Bug%3A%20&amp;body=What%20happened%3A%0A%0AWhat%20you%20expected%3A%0A%0AWhat%20you%20pasted%20or%20tapped%3A%0A%0ADevice%20and%20browser%3A%0A" target="_blank" rel="noopener noreferrer" title="Report a bug on GitHub (sign-in required)" aria-label="Report a bug"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7a3 3 0 0 1 6 0M8 9h8v6a4 4 0 0 1-8 0zM12 11v7M4 13h4M16 13h4M5 8l3 2M19 8l-3 2M5 19l3-2M19 19l-3-2"/></svg><span>Report a bug</span></a>
     </div>
   </header>
 
@@ -280,7 +301,8 @@
           <label class="format-choice" id="toFormatWrap" hidden>Format <select id="toFormat" aria-label="Global output format"><option value="mgrs">MGRS</option><option value="globalutm">UTM</option></select></label>
           <div class="regionchip" id="regionChipTo" hidden></div>
           <div class="tbl"><div class="thead" id="toHead"></div><div id="toRows"></div></div>
-          <div class="route-distance-control"><label><input type="checkbox" id="measureRoute" checked> Measure points in order</label><p id="routeDistance" aria-live="polite"></p></div>
+          <p class="area-note" id="toOutside" role="status" hidden></p>
+          <div class="route-distance-control"><label><input type="checkbox" id="measureRoute" checked> Connect points in order</label><p id="routeDistance" aria-live="polite"></p></div>
           <div class="exportbar">
             <button class="maps" id="mapsBtn" disabled>Open in Maps</button>
             <button id="viewBtn" disabled>View on map</button>
@@ -293,18 +315,18 @@
     </section>
 
 <section class="view on" id="view-field">
- <div class="field-head"><h2>Point Picker</h2></div>
  <div class="field-layout"><div class="field-map-panel">
- <div class="field-tools"><label>Map <select id="fieldLayer"><option value="street">Street</option><option value="topo">Topo</option><option value="satellite">Satellite</option></select></label><select id="fieldRegion" aria-label="Jump to region"></select><label><input type="checkbox" id="fieldGrid" checked> Grid</label><label><input type="checkbox" id="fieldTap"> Tap to add</label></div>
- <div class="field-map-wrap"><div id="fieldMap" aria-label="Point Picker map"></div><span class="field-crosshair" aria-hidden="true">+</span></div>
- <div class="field-readout"><output id="fieldCoordinate"></output><button id="fieldAdd">Add point</button></div>
- </div><aside class="field-output"><h3 id="fieldTotal">0 points</h3>
- <label>Output &amp; grid <select id="fieldFormat"><option value="mgrs">Global MGRS</option><option value="wgs84">Coordinates</option><option value="sg">Singapore MGR</option><option value="brunei">Brunei MGR</option><option value="taiwan">Taiwan MGR</option><option value="thailand">Thailand MGR</option><option value="australia">Australia MGR</option></select></label><button type="button" id="fieldLocalGrid" class="local-grid" hidden></button>
+ <div class="field-tools"><div class="point-layers" role="group" aria-label="Map layer"><button type="button" data-layer="street" aria-pressed="true">Street</button><button type="button" data-layer="topo" aria-pressed="false">Topo</button><button type="button" data-layer="satellite" aria-pressed="false">Satellite</button></div><select id="fieldRegion" class="map-region" aria-label="Jump to region"></select><label><input type="checkbox" id="fieldGrid" checked> Grid</label><label><input type="checkbox" id="fieldTap"> Tap to add</label></div>
+ <div class="field-map-wrap"><div id="fieldMap" aria-label="Point Picker map"></div><svg class="field-crosshair" aria-hidden="true" viewBox="0 0 32 32"><path class="crosshair-edge" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/><path class="crosshair-core" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/></svg></div>
+ <div class="field-readout"><div class="readout-text"><span id="fieldReadoutGrid" class="readout-grid"></span><output id="fieldCoordinate"></output></div><button id="fieldAdd" class="convert">Add point</button></div>
+ </div><aside class="field-output side">
+ <div class="lbl">Output <span id="fieldTotal" class="lbl-count">0 points</span></div>
+ <select class="sys" id="fieldFormat" aria-label="Output grid"><option value="mgrs">Global MGRS</option><option value="wgs84">Coordinates</option><option value="sg">Singapore MGR</option><option value="brunei">Brunei MGR</option><option value="taiwan">Taiwan MGR</option><option value="thailand">Thailand MGR</option><option value="australia">Australia MGR</option></select>
  <input class="field-import" id="fieldFile" type="file" accept=".gpx,application/gpx+xml">
  <div class="tbl"><div class="thead"><span>#</span><span id="fieldEastHead">Easting</span><span id="fieldNorthHead">Northing</span><span>Name</span><span></span></div><ol id="fieldPoints"></ol></div>
- <div class="row-actions"><button id="fieldImport" class="select-map">Import GPX</button><span class="history"><button class="histbtn danger" id="fieldClear" type="button" title="Clear all points" aria-label="Clear all points" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button><button class="histbtn" id="fieldUndo" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-5 5 5 5M4 10h10a6 6 0 0 1 6 6v3"/></svg></button><button class="histbtn" id="fieldRedo" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 5 5-5 5M20 10H10a6 6 0 0 0-6 6v3"/></svg></button></span></div>
- <div class="route-distance-control field-route"><label><input type="checkbox" id="fieldRoute"> Connect points</label><p id="fieldDistance" aria-live="polite"></p></div>
- <div class="field-actions"><button id="fieldCopy">Copy points</button><button id="fieldExport">Download GPX</button><button id="fieldConvert">Send to converter</button></div>
+ <div class="row-actions"><button id="fieldImport" class="select-map" type="button">Import GPX</button><span class="history"><button class="histbtn danger" id="fieldClear" type="button" title="Clear all points" aria-label="Clear all points" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button><button class="histbtn" id="fieldUndo" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-5 5 5 5M4 10h10a6 6 0 0 1 6 6v3"/></svg></button><button class="histbtn" id="fieldRedo" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 5 5-5 5M20 10H10a6 6 0 0 0-6 6v3"/></svg></button></span></div>
+ <div class="route-distance-control"><label><input type="checkbox" id="fieldRoute"> Connect points in order</label><p id="fieldDistance" aria-live="polite"></p></div>
+ <div class="exportbar"><button id="fieldConvert">Send to converter</button><button id="fieldExport">Download GPX</button><button id="fieldCopy">Copy</button></div>
  <p class="field-note area-note" id="fieldAreaNote" role="status" hidden></p><p id="fieldStatus" role="status"></p>
  </aside></div></section>
     <!-- SETTINGS -->
@@ -359,7 +381,7 @@
   <div class="overlay" id="pointOverlay" role="dialog" aria-modal="true" aria-labelledby="pointTitle">
     <div class="modal point-modal">
       <div class="point-heading"><h3 id="pointTitle">Select a point</h3><button id="pointClose" aria-label="Close point map">×</button></div>
-      <div class="point-toolbar"><div class="point-layers" role="group" aria-label="Map layer"><button id="pointTopo" aria-pressed="true">Topo</button><button id="pointStreet" aria-pressed="false">Street</button><button id="pointSatellite" aria-pressed="false">Satellite</button></div><select id="pointRegion" class="map-region" aria-label="Jump to"></select><label class="point-grid-control"><input type="checkbox" id="pointGrid" checked> Grid</label><label class="point-tap-control"><input type="checkbox" id="pointTap"> Tap to add</label><span id="pointPreset"></span><span id="pointCount"></span></div>
+      <div class="point-toolbar"><div class="point-layers" role="group" aria-label="Map layer"><button id="pointStreet" aria-pressed="true">Street</button><button id="pointTopo" aria-pressed="false">Topo</button><button id="pointSatellite" aria-pressed="false">Satellite</button></div><select id="pointRegion" class="map-region" aria-label="Jump to"></select><label class="point-grid-control"><input type="checkbox" id="pointGrid" checked> Grid</label><label class="point-tap-control"><input type="checkbox" id="pointTap"> Tap to add</label><span id="pointPreset"></span><span id="pointCount"></span></div>
       <div class="point-map-wrap"><div id="pointMap" tabindex="0" aria-label="Point map. Arrow keys move the crosshair location; plus and minus zoom; Enter adds the point."></div><svg class="point-crosshair" aria-hidden="true" viewBox="0 0 32 32"><path class="crosshair-edge" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/><path class="crosshair-core" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/></svg></div>
       <div class="point-footer"><div id="pointCoordinate"></div><div id="pointFormatPreview" aria-live="polite"></div><p class="point-status" id="pointUnresolved" hidden></p><p class="point-status" id="pointNetwork" hidden></p><p class="point-status" id="pointAdded" role="status"></p><p id="pointDistance" aria-live="polite"></p><div class="point-actions"><button class="setting-action" id="pointContinue">Add point</button><button class="setting-action primary" id="pointConfirm">Add point and close</button></div></div>
     </div>
@@ -370,6 +392,9 @@
   </div>
   <div class="overlay" id="countryGridOverlay" role="dialog" aria-modal="true" aria-labelledby="countryGridTitle" aria-describedby="countryGridDetail">
     <div class="modal"><div class="dialog-heading"><h3 id="countryGridTitle">A country preset is available</h3><button id="countryGridClose" class="dialog-close" aria-label="Cancel conversion">×</button></div><p id="countryGridDetail"></p><div class="m-actions"><button id="countryGridSwitch" class="primary"></button><button id="countryGridContinue"></button></div></div>
+  </div>
+  <div class="overlay" id="fieldGridOverlay" role="dialog" aria-modal="true" aria-labelledby="fieldGridTitle" aria-describedby="fieldGridDetail">
+    <div class="modal"><div class="dialog-heading"><h3 id="fieldGridTitle">This point is outside the grid</h3><button id="fieldGridCancel" class="dialog-close" aria-label="Don't add this point">×</button></div><p id="fieldGridDetail" class="dialog-detail"></p><div class="m-actions"><button id="fieldGridGlobal" class="primary">Use Global MGRS</button><button id="fieldGridCoordinates">Use Coordinates</button></div></div>
   </div>
   <div class="toast" id="toast"></div>
 
@@ -1874,6 +1899,16 @@
     }
     // A point that leaves the reference area is described the same way wherever it is
     // read, so the converter and the Point Picker share this one sentence.
+    // A point a country grid cannot write is said to be outside it, with its
+    // coordinates beside that, in the converter and the Point Picker alike.
+    function outsidePreset(id,p){return COUNTRY_PRESETS.includes(id)&&!presetContains(id,p.lat,p.lon);}
+    function outsideCells(id,p){return ["Outside "+PRESETS[id].name,p.lat.toFixed(5)+", "+p.lon.toFixed(5)];}
+    function outsideNotice(id,points){
+      const numbers=points.map((p,i)=>outsidePreset(id,p)?i+1:0).filter(Boolean);
+      if(!numbers.length)return "";
+      const which=numbers.length===points.length?(numbers.length>1?"These points are":"This point is"):(numbers.length>1?"Points "+numbers.join(", ")+" are":"Point "+numbers[0]+" is");
+      return which+" outside "+PRESETS[id].name+", so "+(numbers.length>1?"their":"its")+" coordinates are shown instead.";
+    }
     function areaNotice(id,area,outside,total){
       if(!outside.length)return "";
       const name=PRESETS[id].name.replace(" MGR","");
@@ -1900,6 +1935,10 @@
     }
     // Output settings as shown: points across areas are written in full, without
     // changing the omission the reader chose.
+    function outputCells(points,id=state.to){
+      const shown=shownSettings(points.filter(p=>!outsidePreset(id,p)),id);
+      return points.map(p=>outsidePreset(id,p)?outsideCells(id,p):formatPoint(p.lat,p.lon,id,shown,p.digits));
+    }
     function shownSettings(points,id=state.to){
       if(!gridBoundary(points,id))return state.settings;
       return {...state.settings,[id]:{...state.settings[id],sgOmit:false}};
@@ -2356,7 +2395,7 @@
         const fit=enabledGrid(pts);
         if(fit&&fit!==state.to){state.to=fit;syncFormat("to");}
       }
-      const countryError=countryMismatchMessage(state.from,pts)||countryMismatchMessage(state.to,pts);
+      const countryError=countryMismatchMessage(state.from,pts);
       if(countryError){
         state.points=[]; renderTo(); detect(""); setBottomError(countryError); save(); return;
       }
@@ -2383,8 +2422,7 @@
       $("#toName").textContent=PRESETS[state.to].name;
       const rowsEl=$("#toRows"); rowsEl.innerHTML="";
       let pts=state.points||[];
-      const countryError=state.to!=="wgs84"?countryMismatchMessage(state.to,pts):"";
-      if(countryError){ state.points=[]; pts=[]; setBottomError(countryError); }
+      $("#toOutside").textContent=outsideNotice(state.to,pts);$("#toOutside").hidden=!$("#toOutside").textContent;
       const countryPreset=pts.length&&!COUNTRY_PRESETS.includes(state.from)&&GLOBAL_FORMATS.includes(state.to)?suggestedGrid(pts):null;
       if(countryPreset&&!countryGridAccepted.has(countryPreset)&&!countryGridReply){
         const savedPoints=pts;state.points=[];pts=[];
@@ -2402,7 +2440,7 @@
       }
       if(pts.length){
         let changes=[];
-        try{changes=[...new Set([state.from,state.to])].filter(id=>id!=="auto").map(id=>gridBoundary(pts,id)).filter(Boolean);}
+        try{changes=[...new Set([state.from,state.to])].filter(id=>id!=="auto").map(id=>gridBoundary(pts.filter(p=>!outsidePreset(id,p)),id)).filter(Boolean);}
         catch(error){state.points=[];pts=[];setBottomError(error.message);}
         const pending=changes.filter(c=>!boundaryAccepted.has(c.key));
         if(pending.length&&!boundaryReply){
@@ -2423,10 +2461,11 @@
             renderTo();save();
           });
         }
-        try{const warning=boundaryMessage(pts)||(state.from==="mgrs"?boundaryMessage(pts,"mgrs"):"");if(warning)setBottomError(warning);pts.forEach(p=>formatPoint(p.lat,p.lon,state.to,shownSettings(pts)));}
+        const writable=pts.filter(p=>!outsidePreset(state.to,p));
+        try{const warning=boundaryMessage(writable)||(state.from==="mgrs"?boundaryMessage(pts,"mgrs"):"");if(warning)setBottomError(warning);writable.forEach(p=>formatPoint(p.lat,p.lon,state.to,shownSettings(writable)));}
         catch(error){state.points=[];pts=[];setBottomError(error.message);}
       }
-      const shown=shownSettings(pts),cells=pts.map(p=>formatPoint(p.lat,p.lon,state.to,shown,p.digits));
+      const shown=shownSettings(pts.filter(p=>!outsidePreset(state.to,p))),cells=outputCells(pts);
       const split=a=>prefixed?a.match(/^(.*?[A-Za-z])\s*(\d*(?:\.\d+)?)$/):null;
       // An omitted MGRS prefix leaves nothing to show, so its column goes too.
       if(state.to==="mgrs"){
@@ -2446,7 +2485,7 @@
         const div=document.createElement("div"); div.className="trow out";
         div.innerHTML=`<span class="n">${i+1}</span>`+
           (prefixed?`<input class="cell prefix" aria-label="${state.to==="mgrs"?"MGRS prefix":"UTM zone"}" readonly value="${escAttr(pieces?.[1]||"")}">`:"")+
-          `<input class="cell a" readonly value="${escAttr(pieces?pieces[2]:a)}">`+
+          `<input class="cell a${outsidePreset(state.to,p)?" outside":""}" readonly value="${escAttr(pieces?pieces[2]:a)}">`+
           `<input class="cell b" readonly value="${escAttr(b)}">`+
           `<input class="cell nm" readonly value="${escAttr(p.name||"")}">`+
           `<button class="del"></button>`;
@@ -2650,7 +2689,7 @@
       if(!state.points||!state.points.length)return;
       // Tabs put reference and name in their own spreadsheet columns, and a paste back in
       // reads the name column as the point's name.
-      const shown=shownSettings(state.points),text=state.points.map(p=>{ const [a,b]=formatPoint(p.lat,p.lon,state.to,shown,p.digits); return [a,b,p.name].filter(Boolean).join("\t"); }).join("\n");
+      const cells=outputCells(state.points),text=state.points.map((p,i)=>{ const [a,b]=cells[i]; return [a,b,p.name].filter(Boolean).join("\t"); }).join("\n");
       navigator.clipboard.writeText(text).then(()=>toast("Copied "+state.points.length+" points")).catch(()=>toast("Copy failed",true));
     });
 
@@ -2684,13 +2723,16 @@
     });
 
     /* ---- GPX and map-first workspace ---- */
-    function importPoints(points,connected){
+    function importPoints(points,connected,output){
       rememberSnapshot(snapshot());
       state.from="wgs84";state.settings.wgs84={order:"latlon",format:"dd",decimals:6};
       state.rows=points.map(p=>[p.lat.toFixed(8),p.lon.toFixed(8),p.name||""]);
       state.points=points.map(p=>({...p}));
       state.importedRoute={signature:JSON.stringify(points.map(p=>[Number(p.lat.toFixed(8)),Number(p.lon.toFixed(8))])),points:points.map(p=>({...p}))};
       state.to="mgrs";state.militaryEnabled=true;state.militaryVersion=3;state.settings.mgrs.sgOmit=false;
+      // Points sent from the picker arrive in the grid they were read in there, so the
+      // same point never reads one way on one tab and another way on the next.
+      if(output&&PRESETS[output]){state.to=output;state.explicitOutput=true;}
       if(points.some(p=>p.lat < -80 || p.lat >84))state.to="wgs84";
       for(const id of COUNTRY_PRESETS)countryGridAccepted.add(id);
       $("#measureRoute").checked=connected;state.measureRoute=connected;
@@ -2726,38 +2768,39 @@
         const settings=JSON.parse(JSON.stringify(state.settings));
         const columns=colsFor(id,settings);
         const plain=p=>{
-          if(COUNTRY_PRESETS.includes(id)&&!presetContains(id,p.lat,p.lon))return ["Outside "+PRESETS[id].name,""];
+          if(outsidePreset(id,p))return outsideCells(id,p);
           try{return formatPoint(p.lat,p.lon,id,settings);}catch(error){return [error.message,""];}
         };
-        if(id==="wgs84"||!settings[id]||!hasAreas(id))return {text:p=>plain(p).join(" "),cells:plain,columns,notice:""};
+        const away=outsideNotice(id,points||[]);
+        if(id==="wgs84"||!settings[id]||!hasAreas(id))return {text:p=>plain(p).join(" "),cells:plain,columns,notice:away};
         const writable=p=>!COUNTRY_PRESETS.includes(id)||presetContains(id,p.lat,p.lon);
         const keyAt=p=>{try{return areaKeyAt(id,p.lat,p.lon);}catch(_){return null;}};
         // A fixed-footprint preset already names its area; otherwise point 1 sets it.
         const lead=PRESETS[id].lead?PRESETS[id].lead.join("/"):null;
         const anchor=(points||[]).find(writable);
         const area=lead||(anchor?keyAt(anchor):null);
-        if(!area)return {text:p=>plain(p).join(" "),cells:plain,columns,notice:""};
+        if(!area)return {text:p=>plain(p).join(" "),cells:plain,columns,notice:away};
         const short={...settings,[id]:{...settings[id],sgOmit:true}};
         const full={...settings,[id]:{...settings[id],sgOmit:false}};
         if(id==="mgrs")short[id].ao=area;else short[id].square=area.split("/").map(Number);
         const outside=[];
         (points||[]).forEach((p,i)=>{if(writable(p)&&keyAt(p)!==area)outside.push(i+1);});
         const cells=p=>{
-          if(!writable(p))return ["Outside "+PRESETS[id].name,""];
+          if(!writable(p))return outsideCells(id,p);
           const here=keyAt(p)===area;
           try{return formatPoint(p.lat,p.lon,id,here?short:full);}
           catch(error){return [error.message,""];}
         };
-        return {text:p=>cells(p).join(" "),cells,columns,notice:areaNotice(id,area,outside,(points||[]).length),area};
+        return {text:p=>cells(p).join(" "),cells,columns,notice:[away,areaNotice(id,area,outside,(points||[]).length)].filter(Boolean).join(" "),area};
       },
-      onConvert:points=>{
+      onConvert:(points,connected,output)=>{
         // Transfer is explicit; keep existing converter entries rather than overwriting them.
         const current=existingMapPoints();if(current.unresolved){toast("Resolve converter rows before sending points",true);return;}
         if(current.points.length+points.length>2000){toast("Converter supports up to 2,000 points",true);return;}
         const sig=JSON.stringify(current.points.map(p=>[Number(p.lat.toFixed(8)),Number(p.lon.toFixed(8))]));
         const prior=state.importedRoute?.signature===sig?state.importedRoute.points:current.points;
         const incoming=points.map((p,i)=>({...p,breakBefore:i===0||p.breakBefore}));
-        importPoints([...prior,...incoming],document.getElementById("fieldRoute").checked);
+        importPoints([...prior,...incoming],connected,output);
         // Sending points across is a request to look at them there.
         switchTab("conv");
       }});

@@ -13,8 +13,9 @@
 #pointPreset{font-size:12px;font-weight:700}#pointCount{margin-left:auto;font-size:11px;color:var(--muted)}
 .point-map-wrap{position:relative;flex:1;min-height:180px;background:#dceef5}
 #pointMap{height:100%;width:100%;font-family:inherit;background:#dceef5}
-.point-crosshair{position:absolute;left:50%;top:50%;width:32px;height:32px;transform:translate(-50%,-50%);z-index:600;pointer-events:none;shape-rendering:crispEdges;fill:none;stroke-linecap:butt}
-.crosshair-edge{stroke:#111827;stroke-width:4}.crosshair-core{stroke:#fff;stroke-width:2}
+.point-crosshair,.field-crosshair{position:absolute;left:50%;top:50%;width:32px;height:32px;transform:translate(-50%,-50%);z-index:600;pointer-events:none;shape-rendering:crispEdges;fill:none;stroke-linecap:butt}
+/* A dark core on a white halo reads on imagery and paper-toned maps alike. */
+.crosshair-edge{stroke:rgba(255,255,255,.92);stroke-width:4}.crosshair-core{stroke:#111827;stroke-width:1.6}
 .country-name{color:#334155;font:600 11px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-align:center;text-shadow:0 1px 2px white,0 -1px 2px white;white-space:normal;pointer-events:none}
 .chosen-point-label{font:600 11px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;width:max-content;max-width:180px;white-space:normal;overflow-wrap:anywhere}
 .point-footer{padding:12px 18px 16px;border-top:1px solid var(--line)}
@@ -44,7 +45,7 @@
 .point-modal.tap-mode .point-actions{visibility:hidden;pointer-events:none}
 .overlay.viewing .point-tap-control{display:none}
 .point-footer{min-height:118px;box-sizing:border-box}
-#pointCoordinate{min-height:19px;font-family:ui-monospace,Menlo,monospace}
+#pointCoordinate{min-height:19px}
 #pointFormatPreview,#pointAdded,#pointDistance{min-height:16px}
 
 #pointDistance{height:30px;line-height:15px}

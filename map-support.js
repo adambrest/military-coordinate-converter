@@ -263,18 +263,23 @@
   }
   function trainingArea(map){
     map.createPane('trainingArea').style.zIndex='300';
-    const area=L.geoJSON(null,{pane:'trainingArea',interactive:false,style:{color:'#64748b',weight:1.5,dashArray:'6 5',fill:false}});
-    const update=()=>{if(map.getZoom()>=6){if(!map.hasLayer(area))area.addTo(map);}else if(map.hasLayer(area))map.removeLayer(area);};
-    fetch('vendor/shoalwater.geojson').then(r=>{if(!r.ok)throw Error();return r.json();}).then(data=>{area.addData(data);update();}).catch(()=>{});
-    map.on('zoomend',update);
-    map.attributionControl.addAttribution('© <a href="https://spatial-gis.information.qld.gov.au/arcgis/rest/services/Location/Places/FeatureServer/17">State of Queensland</a>');
+    // The credit travels with the layer, so it is only shown while the area is.
+    const area=L.geoJSON(null,{pane:'trainingArea',interactive:false,style:{color:'#64748b',weight:1.5,dashArray:'6 5',fill:false},
+      attribution:'© <a href="https://spatial-gis.information.qld.gov.au/arcgis/rest/services/Location/Places/FeatureServer/17">State of Queensland</a>'});
+    let extent=null;
+    const update=()=>{
+      const show=!!extent&&map.getZoom()>=6&&map.getBounds().intersects(extent);
+      if(show&&!map.hasLayer(area))area.addTo(map);else if(!show&&map.hasLayer(area))map.removeLayer(area);
+    };
+    fetch('vendor/shoalwater.geojson').then(r=>{if(!r.ok)throw Error();return r.json();}).then(data=>{area.addData(data);extent=area.getBounds();update();}).catch(()=>{});
+    map.on('zoomend moveend',update);
   }
   // Shared basemaps, so every map surface agrees on url, zoom ceiling and credit.
   // Street avoids the dense building hatching of the optional topo layer.
   // OpenTopoMap stops at zoom 17; enlarge its tiles beyond that ceiling.
   const BASEMAPS={
-    topo:{label:"Topo",url:"https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",subdomains:"abc",maxNativeZoom:17,className:"topo-muted",
-      attribution:'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Rendering: &copy; <a href="https://opentopomap.org/">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'},
+    topo:{label:"Topo",url:"https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",subdomains:"abc",maxNativeZoom:17,toned:true,
+      attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, SRTM · &copy; <a href="https://opentopomap.org/">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'},
     street:{label:"Street",url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png",maxNativeZoom:19,
       attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'},
     satellite:{label:"Satellite",url:imageryService+"/tile/{z}/{y}/{x}",maxNativeZoom:17,
@@ -284,12 +289,62 @@
   const basemapIds=Object.keys(BASEMAPS);
   // An unknown or dropped id falls back to the default rather than leaving a blank map.
   function basemapId(value){return BASEMAPS[value]?value:DEFAULT_BASEMAP;}
+  // OpenTopoMap fills every building with one flat dark grey and draws its roads in
+  // full orange, which is what makes a town shout over the ground around it. Its
+  // lettering is pure black on a white halo and its hillshade is pale grey, so a
+  // tone curve that only touches the band between them lifts buildings (#2b2b2b to
+  // #555) to a soft grey with a darker edge and leaves names and relief alone.
+  const TOPO_TONE=(()=>{
+    const table=new Uint8ClampedArray(256),knots=[[0,0],[26,26],[40,196],[108,214],[136,140],[255,255]];
+    for(let v=0,i=1;v<256;v++){
+      while(knots[i][0]<v)i++;
+      const [a,fa]=knots[i-1],[b,fb]=knots[i];table[v]=fa+(fb-fa)*(v-a)/(b-a);
+    }
+    return table;
+  })();
+  function softenTopo(data){
+    for(let i=0;i<data.length;i+=4){
+      const r=data[i],g=data[i+1],b=data[i+2],hi=Math.max(r,g,b);
+      if(hi-Math.min(r,g,b)<14){const d=TOPO_TONE[hi]-hi;data[i]=r+d;data[i+1]=g+d;data[i+2]=b+d;continue;}
+      // Colour keeps its meaning (water, forest, road class) at a lower volume.
+      const l=.299*r+.587*g+.114*b;
+      for(let c=0;c<3;c++){const v=l+(data[i+c]-l)*.88;data[i+c]=v+(255-v)*.04;}
+    }
+  }
+  // Built on first use: this file loads before Leaflet in some contexts.
+  let TonedTiles=null;
+  const tonedTiles=()=>TonedTiles||(TonedTiles=L.TileLayer.extend({
+    createTile(coords,done){
+      const size=this.getTileSize(),tile=document.createElement("canvas");
+      tile.width=size.x;tile.height=size.y;tile.setAttribute("role","presentation");
+      // Leaflet discards a tile of another zoom that is not yet complete, so the flag
+      // has to exist on the canvas or finished tiles vanish at the start of a zoom.
+      tile.complete=false;
+      const url=this.getTileUrl(coords);
+      const draw=(img,cors)=>{
+        const ctx=tile.getContext("2d",{willReadFrequently:true});
+        ctx.drawImage(img,0,0,size.x,size.y);
+        if(cors){try{const pixels=ctx.getImageData(0,0,size.x,size.y);softenTopo(pixels.data);ctx.putImageData(pixels,0,0);return;}catch(_){}}
+        // Without CORS the pixels cannot be read, so a flatter filter stands in.
+        tile.classList.add("tone-fallback");
+      };
+      const load=cors=>{
+        const img=new Image();
+        if(cors)img.crossOrigin="anonymous";
+        img.onload=()=>{draw(img,cors);tile.complete=true;done(null,tile);};
+        img.onerror=e=>{if(cors)load(false);else{tile.complete=true;done(e,tile);}};
+        img.src=url;
+      };
+      load(true);
+      return tile;
+    }
+  }));
   function basemap(id,options){
     const spec=BASEMAPS[basemapId(id)];
     const settings={maxNativeZoom:spec.maxNativeZoom,attribution:spec.attribution,...options};
     if(spec.subdomains)settings.subdomains=spec.subdomains;
     if(spec.className)settings.className=[spec.className,options&&options.className].filter(Boolean).join(" ");
-    return L.tileLayer(spec.url,settings);
+    return spec.toned?new (tonedTiles())(spec.url,settings):L.tileLayer(spec.url,settings);
   }
   // A button that asks the device where it is and goes there. The opening view still
   // uses the coarse IP/timezone estimate, so the permission prompt only ever appears
@@ -419,5 +474,5 @@
       colors:BROAD
     };
   }
-  root.MapSupport={regions,baseView,approximateLocation,tileUrls,prefetchTiles,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,pointTarget,imageryZoom,imageryService,trainingArea,BASEMAPS,DEFAULT_BASEMAP,basemapIds,basemapId,basemap,locate,mapButton,autoZoom,clampLatitude,broadView,BROAD_COLORS:BROAD};
+  root.MapSupport={regions,baseView,approximateLocation,tileUrls,prefetchTiles,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,pointTarget,imageryZoom,imageryService,trainingArea,BASEMAPS,DEFAULT_BASEMAP,basemapIds,basemapId,basemap,locate,mapButton,autoZoom,clampLatitude,broadView,BROAD_COLORS:BROAD,softenTopo};
 })(globalThis);

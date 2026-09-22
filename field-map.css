@@ -1,10 +1,48 @@
-.field-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}.field-head h2{margin:0;font-size:20px}.field-head p{margin:0;color:var(--muted);font-size:12px}.field-layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(360px,1fr);gap:14px;align-items:start}.field-map-panel{min-width:0}.field-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;background:var(--panel2);border-radius:12px 12px 0 0;font-size:12px}.field-tools select,.field-output select{max-width:180px;padding:7px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--text)}#fieldMap{height:58vh;min-height:340px;background:#d9e2e8;transition:background .2s}.field-map-wrap{position:relative}.field-crosshair{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:500;pointer-events:none;font-size:32px;line-height:1;color:#172b3a;text-shadow:0 0 3px white}.field-readout{padding:12px;background:var(--panel2);border-radius:0 0 12px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}.field-readout output{font:13px ui-monospace,monospace;flex:1}.field-output{border:1px solid var(--line);border-radius:12px;padding:14px;min-width:0}.field-output h3{margin:0 0 12px}.field-actions{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}.field-actions button,.field-readout button,.field-head button{padding:8px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--text);cursor:pointer}.field-readout button{background:var(--accent);color:white}.field-actions button:disabled{opacity:.4;cursor:default}#fieldPoints{max-height:37vh;overflow:auto;list-style:none;padding:0;margin:0}.field-point .cell.a,.field-point .cell.b{background:transparent;border-color:transparent}.field-point .cell.nm{background:var(--panel)}.field-note,#fieldStatus,#fieldDistance,#routeDistance{font-size:12px;line-height:1.5;color:var(--muted)}#fieldStatus{min-height:18px}.km-label{font:bold 13px ui-monospace,monospace;text-align:center;color:#244b79;background:radial-gradient(ellipse,rgba(255,255,255,.98) 35%,rgba(255,255,255,0) 75%);line-height:26px;text-shadow:0 0 3px white}.deg-label{font:bold 11px ui-monospace,monospace;letter-spacing:-.2px}.field-index{background:#2563eb;color:white;border:2px solid white;border-radius:50%;text-align:center;line-height:22px;font:bold 11px/22px system-ui;box-shadow:0 1px 5px #0004}.field-import{display:none}.field-output #fieldDistance{display:block;text-align:right}.field-output label{font-size:12px}.field-output .full{width:100%}@media(max-width:850px){.field-layout{grid-template-columns:1fr}#fieldMap{height:46vh;min-height:300px}#fieldPoints{max-height:30vh}.field-head p{width:100%}.field-output{padding:12px}}@media(prefers-color-scheme:dark){.km-label{color:#173d69}.field-crosshair{color:#111}}
-
+/* Point Picker. The panel beside the map is the converter's output by another route,
+   so it borrows the converter's parts (.lbl, .sys, .tbl, .row-actions, .exportbar)
+   rather than restyling them here. */
+.field-layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(360px,1fr);gap:16px;align-items:start;max-width:1500px;margin:0 auto}
+.field-map-panel{min-width:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}
+.field-tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line);font-size:12px}
+.field-tools label{display:inline-flex;align-items:center;gap:4px}
+.field-tools .point-layers button{padding:6px 12px}
+.field-tools .map-region{max-width:170px}
+.field-map-wrap{position:relative;isolation:isolate}
+#fieldMap{height:62vh;min-height:340px;background:#d9e2e8;font-family:inherit}
+.field-readout{display:flex;gap:12px;align-items:center;padding:10px 12px;border-top:1px solid var(--line);min-height:62px}
+.readout-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.readout-grid{font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
+.readout-grid:empty{display:none}
+#fieldCoordinate{font-size:15px;font-weight:600;line-height:1.3;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.field-readout .convert{flex:0 0 auto;min-height:40px;padding:0 18px;font-size:14px}
+.field-output{min-width:0}
+.lbl-count{margin-left:6px;font-weight:600;letter-spacing:0;text-transform:none}
+#fieldPoints{max-height:40vh;overflow:auto;list-style:none;padding:0;margin:0}
+.field-point .cell.a,.field-point .cell.b{background:transparent;border-color:transparent}
+.field-output .exportbar button{min-width:0}
+.field-note,#fieldStatus{font-size:12px;line-height:1.5;color:var(--muted)}
+#fieldStatus{min-height:18px;margin:8px 2px 0}
+.field-import{display:none}
 .tap-mode .field-crosshair,.tap-mode #fieldAdd{display:none}
-.field-readout{min-height:60px;box-sizing:border-box}
-.field-output .field-route{justify-content:space-between;height:36px;margin:6px 0;gap:8px}
-.field-route label{white-space:nowrap;font-size:11px}
-.field-route #fieldDistance{font-size:10px;line-height:14px;max-width:210px}
 .coordinate-grid{pointer-events:none}
-#fieldCoordinate,#pointCoordinate,.cell.a,.cell.b,.cell.prefix{font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
-@media(max-width:850px){.field-layout{grid-template-columns:minmax(0,1fr)}}
+#fieldCoordinate,#pointCoordinate,.cell.a,.cell.b,.cell.prefix{font-variant-numeric:tabular-nums}
+.dialog-detail{font-size:14px;line-height:1.5;margin:0 0 6px}
+#fieldGridOverlay .m-actions{flex-direction:column}
+#fieldGridOverlay .m-actions button{flex:auto;padding:10px 14px}
+@media(max-width:1050px){
+ .field-layout{grid-template-columns:minmax(0,1fr);max-width:640px}
+ #fieldMap{height:52vh;min-height:300px}
+ #fieldPoints{max-height:none}
+}
+@media(max-width:420px){
+ .field-tools{gap:8px;padding:8px}
+ .field-tools .point-layers button{padding:6px 9px}
+ .field-tools .map-region{max-width:120px}
+}
+
+/* Grid numbers ride the top and left edges of the view, above the tiles and below
+   the point names and map buttons. */
+.grid-labels{position:absolute;inset:0;pointer-events:none;z-index:450;overflow:hidden}
+.grid-label-edge{position:absolute;left:0;top:0;font:600 11px/1 ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;color:#1e3a5f;background:rgba(255,255,255,.9);border-radius:4px;padding:2px 4px;white-space:nowrap;box-shadow:0 0 0 1px rgba(30,58,95,.14);transition:opacity .15s}
+.grid-label-edge.off{display:none}
+.grid-labels.zooming .grid-label-edge{opacity:0;transition:none}

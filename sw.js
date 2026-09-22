@@ -19,7 +19,9 @@ self.addEventListener("activate", e => e.waitUntil(caches.keys().then(ks=>Promis
 async function tile(req){
   const cache = await caches.open(TILE_CACHE);
   const hit = await cache.match(req);
-  if(hit) return hit;
+  // A tile stored from a plain image request is opaque, and an opaque answer to a
+  // CORS request fails outright; the recoloured topo layer asks with CORS.
+  if(hit && !(hit.type==="opaque" && req.mode==="cors")) return hit;
   const res = await fetch(req);
   // A cross-origin tile can only ever answer opaquely, which is still storable.
   if(res && (res.ok || res.type==="opaque")) await cache.put(req,res.clone()).then(()=>trimTiles(cache)).catch(()=>{});

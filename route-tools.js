@@ -8,7 +8,7 @@
     return 6371008.8*2*Math.atan2(Math.sqrt(Math.min(1,h)),Math.sqrt(Math.max(0,1-h)));
   }
   function length(points){let total=0;for(let i=1;i<points.length;i++)if(!points[i].breakBefore&&valid(points[i-1])&&valid(points[i]))total+=distance(points[i-1],points[i]);return total;}
-  function summary(points){return points.length<2?'':`${(length(points)/1000).toFixed(2)} km · horizontal distance along point order`;}
+  function summary(points){return points.length<2?'':`Total distance: ${(length(points)/1000).toFixed(2)} km`;}
   function parse(text){
     if(text.length>20*1024*1024)throw Error('GPX files must be smaller than 20 MB.');
     if(/<!DOCTYPE|<!ENTITY/i.test(text))throw Error('GPX files with document entities are not supported.');

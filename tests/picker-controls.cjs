@@ -16,12 +16,17 @@ for(const [engine,mobile] of [[chromium,false],[webkit,true]]){
  const layout=await page.evaluate(()=>{const a=document.querySelector('.field-map-panel').getBoundingClientRect(),b=document.querySelector('.field-output').getBoundingClientRect();return {beside:b.left>=a.right,below:b.top>=a.bottom};});
  assert.equal(layout.beside,!mobile);assert.equal(layout.below,mobile);
  assert.equal(await page.locator('#fieldAdd').textContent(),'Add point');
- assert.equal(await page.locator('#fieldMap .leaflet-top.leaflet-left .leaflet-control-zoom').count(),1);
+ assert.equal(await page.locator('#fieldMap .leaflet-bottom.leaflet-right .leaflet-control-zoom').count(),1,'zoom sits with the other map buttons');
  await page.selectOption('#fieldFormat','thailand');
  assert.ok(Math.abs((await page.evaluate(()=>fm.getCenter().lng))-99.24459)<.001,'country grid jumps to its country');
  await page.selectOption('#fieldFormat','sg');
  await page.evaluate(()=>{fm.setView([1.35,103.82],15,{animate:false});});
- await page.waitForFunction(()=>[...document.querySelectorAll('#fieldMap .coordinate-grid-tile')].some(el=>+el.dataset.labels>0));
+ await page.waitForFunction(()=>document.querySelectorAll('#fieldMap .grid-label-edge:not(.off)').length>0);
+ // Edge numbers follow their lines on every frame of a pan, not after it ends.
+ const labelX=()=>page.evaluate(()=>{const el=document.querySelector('#fieldMap .grid-label-edge.top:not(.off)');return el&&el.getBoundingClientRect().left;});
+ const x0=await labelX();await page.evaluate(()=>{fm.fire('movestart');fm._rawPanBy(L.point(-25,0));fm.fire('move');});
+ assert.ok(Math.abs((await labelX())-x0-25)<1.5,'labels move with the grid during a drag');
+ await page.evaluate(()=>{fm._rawPanBy(L.point(25,0));fm.fire('move');fm.fire('moveend');});
  // Panning preserves the same geographic tiles, with labels baked into the lines.
  await page.evaluate(()=>{window.oldGrid=[...document.querySelectorAll('#fieldMap .coordinate-grid-tile')];fm.panBy([40,30],{animate:false});});
  assert.ok(await page.evaluate(()=>oldGrid.some(el=>el.isConnected)),'pan retains existing grid tiles');

@@ -17,22 +17,53 @@ await page.addInitScript(()=>{addEventListener('DOMContentLoaded',()=>{const mak
 await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);await page.click('#tab-field');
 await page.evaluate(()=>{fieldTestMap.setView([1.35,103.82],14);});
 assert.equal(await page.locator('#fieldFormat').inputValue(),'sg','empty Singapore view selects its local grid');
-assert.equal(await page.locator('#fieldLayer').inputValue(),'street','Street is the default');
-assert.equal(await page.locator('#fieldLocalGrid').isVisible(),false);
+const layerNow=()=>page.locator('.field-tools [data-layer][aria-pressed="true"]').getAttribute('data-layer');
+assert.equal(await layerNow(),'street','Street is the default');
+// With nothing collected the grid follows the ground: a country's own grid inside it,
+// Coordinates outside every one, and a grid chosen by hand only where the rules allow.
+const gridAt=async(lat,lon,z=11)=>{await page.waitForFunction(()=>!fieldTestMap._animatingZoom);await page.evaluate(([lat,lon,z])=>{fieldTestMap.setView([lat,lon],z,{animate:false});},[lat,lon,z]);return page.locator('#fieldFormat').inputValue();};
+assert.equal(await gridAt(55.75,37.6),'wgs84','outside every country grid, Coordinates');
+await page.selectOption('#fieldFormat','mgrs');
+assert.equal(await gridAt(56.0,38.0),'mgrs','Global MGRS chosen by hand holds outside a country');
+assert.equal(await gridAt(4.9,114.94),'brunei','Brunei selects Brunei MGR');
+assert.equal(await gridAt(55.75,37.6),'mgrs','leaving returns to the hand-picked global grid');
+await page.selectOption('#fieldFormat','wgs84');
+assert.equal(await gridAt(1.35,103.82,14),'wgs84','Coordinates chosen by hand is left alone');
+await page.selectOption('#fieldFormat','mgrs');await gridAt(55.75,37.6);
+assert.equal(await gridAt(1.35,103.82,14),'sg','Global MGRS gives way to the country grid');
 assert.equal(await page.locator('#fieldGridNote').count(),0,'no grid confirmation under the map');
 // The grid redraws on an animation frame, so wait for the labels instead of guessing a delay.
-await page.waitForFunction(()=>[...document.querySelectorAll('#fieldMap .coordinate-grid-tile')].some(el=>Number(el.dataset.labels)>0),{},{timeout:15000}).catch(()=>{throw new Error('kilometer labels rendered');});
+// Grid numbers sit on the edges of the view, not inside the tiles.
+const edgeLabels=()=>page.evaluate(()=>[...document.querySelectorAll('#fieldMap .grid-label-edge:not(.off)')].map(el=>el.textContent));
+await page.waitForFunction(()=>[...document.querySelectorAll('#fieldMap .grid-label-edge:not(.off)')].some(el=>/^\d\d$/.test(el.textContent)),{},{timeout:15000}).catch(()=>{throw new Error('kilometer labels rendered');});
 // Coordinates read in degrees, so their grid is meridians and parallels, not kilometres.
 await page.selectOption('#fieldFormat','wgs84');
-await page.waitForFunction(()=>[...document.querySelectorAll('#fieldMap .coordinate-grid-tile')].some(el=>el.dataset.system==='wgs84'&&Number(el.dataset.labels)>0),{},{timeout:15000}).catch(()=>{throw new Error('latitude/longitude labels rendered');});
+await page.waitForFunction(()=>[...document.querySelectorAll('#fieldMap .coordinate-grid-tile')].some(el=>el.dataset.system==='wgs84')&&[...document.querySelectorAll('#fieldMap .grid-label-edge:not(.off)')].some(el=>el.textContent.includes('°')),{},{timeout:15000}).catch(()=>{throw new Error('latitude/longitude labels rendered');});
 await page.selectOption('#fieldFormat','mgrs');
-await page.waitForFunction(()=>[...document.querySelectorAll('#fieldMap .coordinate-grid-tile')].some(el=>el.dataset.system==='mgrs'&&Number(el.dataset.labels)>0),{},{timeout:15000}).catch(()=>{throw new Error('kilometre labels returned');});
-// With existing points the choice stays put, and a suggestion is offered instead.
+await page.waitForFunction(()=>[...document.querySelectorAll('#fieldMap .coordinate-grid-tile')].some(el=>el.dataset.system==='mgrs')&&[...document.querySelectorAll('#fieldMap .grid-label-edge:not(.off)')].every(el=>!el.textContent.includes('°')),{},{timeout:15000}).catch(()=>{throw new Error('kilometre labels returned');});
+// A grid chosen by hand is kept, and once a point is down the grid is fixed.
 await page.click('#fieldAdd');
 assert.equal(await page.locator('#fieldFormat').inputValue(),'mgrs');
-assert.equal(await page.locator('#fieldLocalGrid').isVisible(),true);
-await page.locator('#fieldLocalGrid').click();
+await page.evaluate(()=>fieldTestMap.setView([4.9,114.94],13,{animate:false}));
+assert.equal(await page.locator('#fieldFormat').inputValue(),'mgrs','moving to another country leaves a started list alone');
+assert.equal(await page.locator('#fieldFormat option[value="brunei"]').isDisabled(),true,'a grid that cannot hold the points cannot be chosen');
+await page.evaluate(()=>fieldTestMap.setView([1.35,103.82],14,{animate:false}));
+await page.selectOption('#fieldFormat','sg');
 assert.equal(await page.locator('#fieldFormat').inputValue(),'sg');
+// A new point the grid cannot write asks before anything is added.
+await page.evaluate(()=>fieldTestMap.setView([4.9,114.94],13,{animate:false}));
+await page.click('#fieldAdd');
+assert.equal(await page.locator('#fieldGridOverlay').isVisible(),true,'a point outside the grid warns');
+assert.equal(await page.locator('#fieldPoints .trow').count(),1,'nothing is added until a grid is chosen');
+await page.click('#fieldGridCancel');
+assert.equal(await page.locator('#fieldPoints .trow').count(),1);
+await page.click('#fieldAdd');await page.click('#fieldGridGlobal');
+assert.equal(await page.locator('#fieldPoints .trow').count(),2);
+assert.equal(await page.locator('#fieldFormat').inputValue(),'mgrs','insisting moves every point to a global grid');
+await page.click('#fieldUndo');
+assert.equal(await page.locator('#fieldPoints .trow').count(),1);
+assert.equal(await page.locator('#fieldFormat').inputValue(),'sg','one undo takes back the point and the grid change');
+await page.evaluate(()=>fieldTestMap.setView([1.35,103.82],14,{animate:false}));
 assert.equal(await page.locator('#fieldPoints .nm').getAttribute('placeholder'),'Optional');
 // Double-click a collected point as well as empty ground; neither may swallow zoom.
 await page.check('#fieldTap');
@@ -90,12 +121,13 @@ assert.ok(step.names>0,'the broad view names the countries it shows');
 await page.evaluate(()=>{fieldTestMap.setView([1.35,103.82],14,{animate:false});});
 // A selected label alone is not enough: the actual tile layer must change.
 for(const [id,host] of [['street','openstreetmap'],['satellite','arcgisonline'],['topo','opentopomap']]){
- await page.selectOption('#fieldLayer',id);
+ await page.click(`.field-tools [data-layer="${id}"]`);
  const urls=await page.evaluate(()=>{const urls=[];fieldTestMap.eachLayer(l=>{if(l._url)urls.push(l._url);});return urls;});
  assert.equal(urls.length,1,'exactly one basemap is active');
  assert.ok(urls[0].includes(host),id+' must change the active layer');
- await stage(5);
- assert.equal(await page.evaluate(()=>{let n=0;fieldTestMap.eachLayer(l=>{if(l._url)n++;});return n;}),0);
+ const far=await stage(5);
+ // Imagery stays at every zoom; the drawn maps give way to the outlines.
+ assert.equal(far.tiles,id==='satellite'?1:0);
  await stage(12);
 }
 
@@ -133,16 +165,15 @@ await page.click('#tab-field');await page.selectOption('#fieldFormat','wgs84');a
 await page.setInputFiles('#fieldFile',{name:'bad.gpx',mimeType:'application/gpx+xml',buffer:Buffer.from('<gpx><wpt lat="999" lon="0"/></gpx>')});await page.waitForFunction(()=>document.getElementById('fieldStatus').textContent.includes('Invalid coordinate'));assert.equal(await page.locator('#fieldPoints li').count(),4);
 await page.evaluate(()=>{navigator.clipboard.writeText=async text=>{window.copiedPoints=text;};});await page.click('#fieldCopy');const copied=(await page.evaluate(()=>window.copiedPoints)).split('\n');assert.equal(copied.length,4);assert.equal(copied[0].split('\t').length,2,'unnamed points copy only coordinate columns, just like converter');
 const download=page.waitForEvent('download');await page.click('#fieldExport');const d=await download;assert.equal(d.suggestedFilename(),'mike-golf-romeo.gpx');
-await page.selectOption('#fieldLayer','satellite');await context.setOffline(true);await page.click('#fieldAdd');assert.equal(await page.locator('#fieldPoints li').count(),5,'adding coordinates works without tiles');await context.setOffline(false);
+await page.click('.field-tools [data-layer="satellite"]');await context.setOffline(true);await page.click('#fieldAdd');assert.equal(await page.locator('#fieldPoints li').count(),5,'adding coordinates works without tiles');await context.setOffline(false);
 // Upgrading an old saved picker changes the basemap, never its collected points/grid.
 await page.evaluate(()=>{const key='mike-golf-romeo-field-v1',s=JSON.parse(localStorage.getItem(key));s.layer='topo';s.system='wgs84';delete s.basemapRevision;localStorage.setItem(key,JSON.stringify(s));});
 await page.reload();
-assert.equal(await page.locator('#fieldLayer').inputValue(),'street');
+assert.equal(await layerNow(),'street');
 assert.equal(await page.locator('#fieldFormat').inputValue(),'wgs84');
 assert.equal(await page.locator('#fieldPoints .trow').count(),5);
-assert.equal(await page.locator('#fieldLocalGrid').isVisible(),true);
-await page.selectOption('#fieldLayer','topo');await page.reload();
-assert.equal(await page.locator('#fieldLayer').inputValue(),'topo','an explicit new choice persists');
+await page.click('.field-tools [data-layer="topo"]');await page.reload();
+assert.equal(await layerNow(),'topo','an explicit new choice persists');
 await page.screenshot({path:`/tmp/mgr-field-${device.replaceAll(' ','-')}.png`,fullPage:true});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'no horizontal overflow');assert.deepEqual(errors,[]);console.log(device+': add, name, undo, persistence, grids, GPX, segment distance, converter transfer/reload, export passed');
 }finally{await browser.close();}}
 }finally{server.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

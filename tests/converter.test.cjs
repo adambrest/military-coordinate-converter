@@ -144,9 +144,11 @@ test('Enter detects the coordinate and focuses a new row',async()=>{
   assert.equal(a.$('#fromRows').children.length,2);assert.equal(a.$('#fromRows .prefix').value,'51R TH');
   assert.equal(a.w.document.activeElement,a.$('#fromRows').children[1].querySelector('.a'));assert.equal(a.w.mapOptions,undefined);a.dom.window.close();
 });
-test('new projected formats still enforce country output and never need an AO',()=>{
+test('new projected formats name points outside the country and never need an AO',()=>{
   const a=app();a.change('#toSys','taiwan');a.paste('48N 366000 149000');
-  assert.equal(a.$('#copyBtn').disabled,true);assert.match(a.$('#badPair').textContent,/Singapore, not Taiwan/);
+  // A point the chosen grid cannot write is said to be outside it, with its coordinates.
+  assert.equal(a.$('#toRows .a').value,'Outside Taiwan MGR');assert.match(a.$('#toRows .b').value,/^1\.\d{5}, 103\.\d{5}$/);
+  assert.match(a.$('#toOutside').textContent,/outside Taiwan MGR/);
   a.change('#toSys','wgs84');assert.equal(a.$('#copyBtn').disabled,false);
   assert.equal(a.w.mapOptions,undefined);assert.equal(a.$('#copyBtn').disabled,false);
   a.dom.window.close();
@@ -241,9 +243,9 @@ test('paste outside presets selects global MGRS with letters and auto AO',()=>{
   const a=app();a.paste('48.8582, 2.2945');assert.equal(a.$('#toSys').value,'mgrs');
   assert.equal(a.$('#toRows .prefix').value,'31U DQ');assert.match(a.$('#toRows .a').value,/^\d{4}$/);assert.equal(a.state().settings.mgrs.ao,'31UDQ');a.dom.window.close();
 });
-test('country change revalidates immediately, clears output and exports',()=>{
+test('country change revalidates immediately and names points outside the grid',()=>{
   const a=app();a.paste('1.352083,103.819836');assert.equal(a.$('#toSys').value,'sg');assert.equal(a.$('#copyBtn').disabled,false);
-  a.change('#toSys','taiwan');assert.match(a.$('#badPair').textContent,/Singapore, not Taiwan/);assert.equal(a.$('#copyBtn').disabled,true);assert.equal(a.$('#toRows .a'),null);a.dom.window.close();
+  a.change('#toSys','taiwan');assert.equal(a.$('#toRows .a').value,'Outside Taiwan MGR');assert.equal(a.$('#toRows .b').value,'1.35208, 103.81984');assert.equal(a.$('#toOutside').hidden,false);a.dom.window.close();
 });
 test('explicit global output asks about the country preset and allows an informed override',()=>{
   const a=app();
@@ -1065,7 +1067,7 @@ test('the output grid follows the country the points sit in',()=>{
   a.change('#toSys','taiwan');
   // Naming a grid is explicit, so the mismatch has to be reported, not corrected.
   a.change('#fromSys','wgs84');a.paste('1.35, 103.82');
-  assert.match(a.$('#badPair').textContent,/Taiwan/);
+  assert.equal(a.state().to,'taiwan');assert.match(a.$('#toOutside').textContent,/outside Taiwan MGR/);
   const b=app(undefined,false,false);
   b.change('#fromSys','wgs84');b.paste('1.35, 103.82');
   assert.equal(b.state().to,'sg','an unnamed output should follow the points to Singapore');
@@ -2011,9 +2013,9 @@ test('only actual active input setting changes require conversion again',async()
 });
 
 /* ---- v2 reference areas ---- */
-test('the app reports version 3.7.0',()=>{
+test('the app reports version 3.8.0',()=>{
   const a=app();
-  try{assert.equal(a.$('#appVersion').textContent,'v3.7.0');assert.match(read('version.js'),/APP_VERSION = "3\.7\.0"/);
+  try{assert.equal(a.$('#appVersion').textContent,'v3.8.0');assert.match(read('version.js'),/APP_VERSION = "3\.8\.0"/);
     const logo=a.$('header h1 .logo');assert.ok(logo,'the header shows the app icon');assert.equal(logo.getAttribute('src'),'icons/logo-64.png');assert.equal(logo.getAttribute('alt'),'');}
   finally{a.dom.window.close();}
 });
@@ -2418,4 +2420,26 @@ test('a half-typed run of digits is never split, whatever the preset',()=>{
   const a=app(undefined,false,false);a.change('#fromSys','sg');
   const A=a.$('#fromRows .a');A.value='1212';A.dispatchEvent(new a.w.Event('input',{bubbles:true}));a.$('#convertBtn').click();
   assert.equal(a.$('#fromRows .a').value,'1212');assert.equal(a.$('#fromRows .b').value,'');a.dom.window.close();
+});
+test('topo recolour lifts building fill and keeps lettering, paper and relief',()=>{
+  const a=app();
+  // Building fill, lettering, paper, hillshade, road.
+  const d=new Uint8ClampedArray([85,85,85,255, 0,0,0,255, 255,255,255,255, 200,200,200,255, 245,151,41,255]);
+  a.w.MapSupport.softenTopo(d);
+  assert.ok(d[0]>190,'buildings become a soft grey');
+  assert.deepEqual([...d.slice(4,7)],[0,0,0],'lettering stays black');
+  assert.deepEqual([...d.slice(8,11)],[255,255,255],'paper stays white');
+  assert.ok(Math.abs(d[12]-200)<8,'hillshade keeps its tone');
+  assert.ok(d[16]-d[18]<245-41,'roads are a touch calmer');
+});
+test('grid appears at 1 km scale and refines to 100 m closest in',()=>{
+  const a=app(),{metricSteps,degreeStep}=a.w.createCoordinateGrid.steps;
+  assert.equal(metricSteps(0,11),null,'no grid while the scale reads more than 1 km');
+  assert.equal(metricSteps(0,12),null);
+  assert.equal(degreeStep(0,12),null);
+  const steps=z=>JSON.stringify(metricSteps(0,z));
+  assert.equal(steps(13),'{"major":1000,"minor":0}');
+  assert.equal(steps(16),'{"major":1000,"minor":100}');
+  assert.equal(steps(18),'{"major":100,"minor":0}');
+  assert.ok(degreeStep(0,18)<degreeStep(0,13),'finer degree lines closer in');
 });

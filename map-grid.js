@@ -1,10 +1,43 @@
-/* A geographic grid rendered into Leaflet tiles. Lines and numbers share the
-   same transform, so dragging and animated zoom never detach or repin labels. */
+/* A geographic grid. Lines are drawn into Leaflet tiles, so dragging and animated
+   zoom move them with the map. Numbers sit on the top and left edges of the view,
+   where a reader looks for them, and are placed again on every frame of a drag so
+   they slide with their lines instead of catching up afterwards. */
 (function(root){
  'use strict';
+ const STEPS_DEG=[30,20,10,5,2,1,.5,.2,.1,.05,.02,.01,.005,.002,.001,.0005,.0002,.0001];
+ const STEPS_M=[1000,100];
+ // A labelled line needs room for its number; an unlabelled one only has to stay
+ // clear of its neighbours to read as a finer grid rather than a texture.
+ const MAJOR_PX=44,MINOR_PX=22,DEG_PX=84;
+ // No grid until the scale bar reads 1 km or less: before that, kilometre squares
+ // are too small to aim into and only crowd the map.
+ const KM_PX=50;
+ const gridVisible=(lat,z)=>1000/metresPerPixel(lat,z)>=KM_PX;
+ const metresPerPixel=(lat,z)=>156543.03392*Math.cos(lat*Math.PI/180)/2**z;
+ function metricSteps(lat,z){
+  const mpp=metresPerPixel(lat,z);
+  if(!gridVisible(lat,z))return null;
+  const i=[...STEPS_M].reverse().findIndex(s=>s/mpp>=MAJOR_PX);
+  if(i<0)return null;
+  const major=STEPS_M[STEPS_M.length-1-i],minor=major/10;
+  return {major,minor:minor>=100&&minor/mpp>=MINOR_PX?minor:0};
+ }
+ function degreeStep(lat,z){
+  if(!gridVisible(lat,z))return null;
+  const pxPerDegree=2**z*256/360/Math.cos(lat*Math.PI/180);
+  return [...STEPS_DEG].reverse().find(d=>d*pxPerDegree>=DEG_PX)||STEPS_DEG[0];
+ }
+ // Two figures name a kilometre line, as on a paper map; a 100 m line takes a third.
+ const gridLabel=(v,step)=>step<1000
+  ?String(((Math.round(v/100))%1000+1000)%1000).padStart(3,'0')
+  :String(((Math.round(v/1000))%100+100)%100).padStart(2,'0');
+ const degLabel=(v,axis,step)=>{
+  const places=Math.max(0,Math.ceil(-Math.log10(step)-1e-9));
+  return Math.abs(v).toFixed(places)+'°'+(axis==='lat'?(v<0?'S':'N'):(v<0?'W':'E'));
+ };
  root.createCoordinateGrid=function(map,{system,projection,contains=()=>true,enabled=()=>true}){
-  let signature='',config;
-  const size=512,steps=[30,20,10,5,2,1,.5,.2,.1,.05,.02,.01,.005,.002,.001,.0005,.0002,.0001];
+  let signature='',config=null;
+  const size=512;
   const layer=new (L.GridLayer.extend({
    createTile(coords){
     const tile=document.createElement('canvas'),ratio=Math.min(root.devicePixelRatio||1,2);
@@ -17,18 +50,15 @@
     const top=ll(0,0),bottom=ll(size,size),center=ll(size/2,size/2);
     const lines=[];
     if(config.id==='wgs84'){
-     const anchor=map.project([config.latitude,0],z);
-     const span=map.unproject(anchor.subtract([0,size/2]),z).lat-map.unproject(anchor.add([0,size/2]),z).lat;
-     const step=steps.find(d=>span/d>=3)||steps.at(-1);
-     const places=Math.max(0,Math.ceil(-Math.log10(step)));
-     const label=(v,axis)=>Math.abs(v).toFixed(places)+'°'+(axis==='lat'?(v<0?'S':'N'):(v<0?'W':'E'));
-     for(let lat=Math.ceil(bottom.lat/step)*step;lat<=top.lat;lat+=step)
-      lines.push({points:[[top.lng,lat],[bottom.lng,lat]],text:label(lat,'lat'),vertical:false});
-     if((bottom.lng-top.lng)/step<100)for(let lon=Math.ceil(top.lng/step)*step;lon<=bottom.lng;lon+=step)
-      lines.push({points:[[lon,bottom.lat],[lon,top.lat]],text:label(MapSupport.longitude(lon),'lon'),vertical:true});
+     const step=degreeStep(config.latitude,z);if(!step)return tile;
+     for(let i=Math.ceil(bottom.lat/step);i*step<=top.lat;i++)
+      lines.push({points:[[top.lng,i*step],[bottom.lng,i*step]],weight:2});
+     for(let i=Math.ceil(top.lng/step);i*step<=bottom.lng;i++)
+      lines.push({points:[[i*step,bottom.lat],[i*step,top.lat]],weight:2});
     }else{
-     if(z<11)return tile;
-     const {proj,clip}=config;if(!proj)return tile;
+     const steps=metricSteps(config.latitude,z),{proj,clip}=config;
+     if(!steps||!proj)return tile;
+     const fine=steps.minor||steps.major;
      const wrap=360*Math.round((center.lng-MapSupport.longitude(center.lng))/360);
      try{
       const sample=[];
@@ -36,57 +66,131 @@
        const p=ll(...xy);sample.push(proj4('WGS84',proj,[p.lng-wrap,p.lat]));
       }
       const es=sample.map(p=>p[0]),ns=sample.map(p=>p[1]);
-      const e0=Math.floor(Math.min(...es)/1000)*1000,e1=Math.ceil(Math.max(...es)/1000)*1000;
-      const n0=Math.floor(Math.min(...ns)/1000)*1000,n1=Math.ceil(Math.max(...ns)/1000)*1000;
-      if((e1-e0+n1-n0)/1000>160)return tile;
+      const e0=Math.floor(Math.min(...es)/fine)*fine,e1=Math.ceil(Math.max(...es)/fine)*fine;
+      const n0=Math.floor(Math.min(...ns)/fine)*fine,n1=Math.ceil(Math.max(...ns)/fine)*fine;
+      if((e1-e0+n1-n0)/fine>240)return tile;
       const line=(value,vertical)=>{
-       let points=[];const flush=()=>{if(points.length>1)lines.push({points,text:String(((value/1000)%100+100)%100).padStart(2,'0'),vertical});points=[];};
+       // Kilometre lines stay the strongest whenever they show; finer labelled lines
+       // sit a step below them, and unlabelled ones below that.
+       const weight=value%Math.max(1000,steps.major)===0?2:value%steps.major===0?1:0;
+       let points=[];const flush=()=>{if(points.length>1)lines.push({points,weight});points=[];};
        for(let i=0;i<=16;i++){
         const p=proj4(proj,'WGS84',vertical?[value,n0+(n1-n0)*i/16]:[e0+(e1-e0)*i/16,value]);
         if(!clip||(p[0]>=clip.west&&p[0]<=clip.east&&p[1]>=clip.south&&p[1]<=clip.north))points.push([p[0]+wrap,p[1]]);else flush();
        }
        flush();
       };
-      for(let e=e0;e<=e1;e+=1000)line(e,true);
-      for(let n=n0;n<=n1;n+=1000)line(n,false);
+      for(let e=e0;e<=e1;e+=fine)line(e,true);
+      for(let n=n0;n<=n1;n+=fine)line(n,false);
      }catch(_){return tile;}
     }
-    const labels=[];
+    // Fine lines first, so a major line always draws cleanly over its neighbours.
+    lines.sort((a,b)=>a.weight-b.weight);
     for(const line of lines){
      const pts=line.points.map(pixel);ctx.beginPath();pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
-     ctx.strokeStyle='rgba(255,255,255,.65)';ctx.lineWidth=3;ctx.stroke();
-     ctx.strokeStyle='rgba(36,75,121,.75)';ctx.lineWidth=1;ctx.stroke();
-     // The label belongs to the geographic tile, not the viewport edge.
-     // It therefore pans and scales with its line instead of jumping after a drag.
-     const axis=line.vertical?'y':'x',edge=28;
-     for(let i=1;i<pts.length;i++){
-      const a=pts[i-1],b=pts[i];if((a[axis]-edge)*(b[axis]-edge)>0||a[axis]===b[axis])continue;
-      const t=(edge-a[axis])/(b[axis]-a[axis]);
-      const x=a.x+t*(b.x-a.x),y=a.y+t*(b.y-a.y);
-      if(x>10&&x<size-10&&y>10&&y<size-10)labels.push({x,y,text:line.text});
+     if(line.weight===2){
+      ctx.strokeStyle='rgba(255,255,255,.6)';ctx.lineWidth=3;ctx.stroke();
+      ctx.strokeStyle='rgba(30,58,95,.72)';ctx.lineWidth=1;ctx.stroke();
+     }else if(line.weight===1){
+      ctx.strokeStyle='rgba(30,58,95,.5)';ctx.lineWidth=1;ctx.stroke();
+     }else{
+      ctx.strokeStyle='rgba(30,58,95,.26)';ctx.lineWidth=.75;ctx.stroke();
      }
     }
-    ctx.font='600 12px ui-monospace, Menlo, monospace';ctx.textAlign='center';ctx.textBaseline='middle';
-    for(const {x,y,text} of labels){ctx.lineWidth=4;ctx.strokeStyle='rgba(255,255,255,.95)';ctx.strokeText(text,x,y);ctx.fillStyle='#244b79';ctx.fillText(text,x,y);}
-    tile.dataset.labels=String(labels.length);tile.dataset.system=config.id;
+    tile.dataset.lines=String(lines.length);tile.dataset.system=config.id;
     return tile;
    }
   }))({tileSize:size,pane:'overlayPane',className:'coordinate-grid',opacity:1,keepBuffer:1,updateWhenIdle:false,updateWhenZooming:false});
+
+  // ---- edge labels ----
+  const box=L.DomUtil.create('div','grid-labels',map.getContainer());
+  const pool=[];let used=0;
+  function label(text,x,y,edge){
+   let el=pool[used];
+   if(!el){el=document.createElement('span');box.append(el);pool.push(el);}
+   used++;
+   if(el.textContent!==text)el.textContent=text;
+   el.className='grid-label-edge '+edge;
+   el.style.transform='translate('+Math.round(x)+'px,'+Math.round(y)+'px) translate('+(edge==='top'?'-50%':'0')+',-50%)';
+  }
+  const TOP=11,LEFT=6,GAP=6;
+  function place(){
+   used=0;
+   if(config&&map.hasLayer(layer)){
+    const size=map.getSize(),z=layer._tileZoom??Math.round(map.getZoom());
+    const at=(x,y)=>{const p=map.containerPointToLatLng([x,y]);return {lat:p.lat,lng:p.lng};};
+    const tops=[],lefts=[];
+    if(config.id==='wgs84'){
+     const step=degreeStep(config.latitude,z);
+     if(step){
+     const w=at(0,TOP).lng,e=at(size.x,TOP).lng,n=at(LEFT,0).lat,s=at(LEFT,size.y).lat;
+     for(let i=Math.ceil(w/step);i*step<=e;i++){
+      const x=map.latLngToContainerPoint([n,i*step]).x;
+      tops.push({x,text:degLabel(MapSupport.longitude(i*step),'lon',step)});
+     }
+     for(let i=Math.ceil(s/step);i*step<=n;i++){
+      const y=map.latLngToContainerPoint([i*step,w]).y;
+      lefts.push({y,text:degLabel(i*step,'lat',step)});
+     }
+     }
+    }else{
+     const steps=metricSteps(config.latitude,z),{proj,clip}=config;
+     if(steps&&proj){
+      const inside=p=>!clip||(p.lng>=clip.west&&p.lng<=clip.east&&p.lat>=clip.south&&p.lat<=clip.north);
+      const walk=(edge,length,axis,out)=>{
+       const count=24;let prev=null;
+       for(let i=0;i<=count;i++){
+        const t=length*i/count,p=at(edge==='top'?t:LEFT,edge==='top'?TOP:t);
+        const g={lat:p.lat,lng:MapSupport.longitude(p.lng)};
+        let v;try{v=proj4('WGS84',proj,[g.lng,g.lat])[axis];}catch(_){prev=null;continue;}
+        if(!Number.isFinite(v)){prev=null;continue;}
+        const cur={t,v,ok:inside(g)};
+        if(prev&&prev.ok&&cur.ok){
+         const lo=Math.min(prev.v,cur.v),hi=Math.max(prev.v,cur.v);
+         for(let m=Math.ceil(lo/steps.major)*steps.major;m<=hi;m+=steps.major){
+          if(m===prev.v&&i>1)continue;
+          const k=hi===lo?0:(m-prev.v)/(cur.v-prev.v);
+          out.push({[edge==='top'?'x':'y']:prev.t+k*(cur.t-prev.t),text:gridLabel(m,steps.major)});
+         }
+        }
+        prev=cur;
+       }
+      };
+      walk('top',size.x,0,tops);walk('left',size.y,1,lefts);
+     }
+    }
+    // Corners belong to neither edge, and two numbers closer than their own width
+    // read as one; the second is dropped rather than drawn on top.
+    let last=-Infinity;
+    for(const p of tops.sort((a,b)=>a.x-b.x)){if(p.x<40||p.x>size.x-24||p.x-last<GAP+p.text.length*7.2)continue;label(p.text,p.x,TOP,'top');last=p.x;}
+    last=-Infinity;
+    for(const p of lefts.sort((a,b)=>a.y-b.y)){if(p.y<30||p.y>size.y-30||p.y-last<20)continue;label(p.text,LEFT,p.y,'left');last=p.y;}
+   }
+   for(let i=used;i<pool.length;i++)pool[i].className='grid-label-edge off';
+  }
+  // A zoom animation scales the tiles with CSS; the numbers cannot follow that, so
+  // they step aside for its quarter second and return where the new zoom puts them.
+  map.on('zoomanim',()=>box.classList.add('zooming'));
+  map.on('zoomend',()=>{box.classList.remove('zooming');place();});
+  map.on('move resize',place);
+
   function refresh(){
    const id=system(),p=map.getCenter(),lon=MapSupport.longitude(p.lng);
-   let next={id,latitude:Math.round(p.lat/10)*10},key=id;
-   if(id==='wgs84')key+=':'+next.latitude;
+   const latitude=Math.round(p.lat/10)*10;
+   let next={id,latitude},key=id+':'+latitude;
    if(id!=='wgs84'){
     if(['mgrs','globalutm'].includes(id)){
-     try{const g=GlobalGrid.at(p.lat,lon);next={id,proj:g.proj,clip:GlobalGrid.zoneBounds(g.zone,g.band)};key+=':'+g.zone+g.band;}catch(_){next=null;}
-    }else if(contains(id,p.lat,lon)){next={id,proj:projection(id)};}else next=null;
+     try{const g=GlobalGrid.at(p.lat,lon);next={id,latitude,proj:g.proj,clip:GlobalGrid.zoneBounds(g.zone,g.band)};key+=':'+g.zone+g.band;}catch(_){next=null;}
+    }else if(contains(id,p.lat,lon)){next={id,latitude,proj:projection(id)};}else next=null;
    }
-   if(!enabled()||!next){if(map.hasLayer(layer))map.removeLayer(layer);signature='';return;}
+   if(!enabled()||!next){if(map.hasLayer(layer))map.removeLayer(layer);signature='';config=null;place();return;}
    config=next;
    if(signature!==key){signature=key;if(map.hasLayer(layer))layer.redraw();}
    if(!map.hasLayer(layer))layer.addTo(map);
+   place();
   }
   map.on('moveend',refresh);
   return {refresh,layer};
  };
+ root.createCoordinateGrid.steps={metricSteps,degreeStep};
 })(globalThis);

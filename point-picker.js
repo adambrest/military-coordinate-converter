@@ -104,7 +104,7 @@
       $("pointUnresolved").textContent=options.unresolved+" incomplete or unresolved row"+(options.unresolved===1?" is":"s are")+" not shown on the map.";
     }
     function init(){
-      map=L.map("pointMap",{minZoom:1,maxZoom:22,worldCopyJump:true,maxBoundsViscosity:1,preferCanvas:true,zoomControl:true,keyboard:true,trackResize:false});
+      map=L.map("pointMap",{minZoom:1,maxZoom:22,worldCopyJump:true,maxBoundsViscosity:1,preferCanvas:true,zoomControl:false,keyboard:true,trackResize:false});
       map.attributionControl.setPrefix(false);L.control.scale({imperial:false}).addTo(map);
       map.createPane("pointCountries").style.zIndex="150";
       map.createPane("offlineLand").style.zIndex="160";
@@ -146,11 +146,13 @@
         confirm(true,{lat:p.lat,lon:MapSupport.longitude(p.lng)});
         return ()=>{if(saved&&retract){retract(saved);options=before;drawPoints(options.points||[]);$('pointAdded').textContent='';update();}};
       }});
-      pointAutoZoom=MapSupport.autoZoom(map,()=>options.points||[]);
+      // The same button stack as the Point Picker, in the same order.
       MapSupport.locate(map,{position:"bottomright",onStatus:text=>{
         const note=$("pointNetwork");
         if(text){note.hidden=false;note.textContent=text;}else networkStatus();
       }});
+      pointAutoZoom=MapSupport.autoZoom(map,()=>options.points||[]);
+      L.control.zoom({position:"bottomright"}).addTo(map);
       root.addEventListener("online",networkStatus);root.addEventListener("offline",networkStatus);
       const resize=()=>{
         if(!overlay.classList.contains("open"))return;
