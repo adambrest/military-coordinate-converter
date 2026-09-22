@@ -49,3 +49,16 @@
 #pointFormatPreview,#pointAdded,#pointDistance{min-height:16px}
 
 #pointDistance{height:30px;line-height:15px}
+
+/* The readout reads as the Point Picker's: grid name, then the reference, with the
+   add buttons beside it and the running distance a quiet line underneath. */
+#pointPreset{display:none}
+.point-footer{min-height:0}
+.point-readout{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.point-readout .readout-text{flex:1 1 220px}
+.point-readout .point-actions{margin-top:0;margin-left:auto}
+#pointCoordinate{font-size:15px;font-weight:600;line-height:1.3;min-height:20px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+#pointFormatPreview{margin-top:0;min-height:0}
+.point-footer #pointDistance{height:auto;min-height:15px;line-height:15px;margin:6px 0 0;text-align:left}
+#pointAdded:empty{display:none}
+.overlay.viewing .point-readout .readout-text{display:none}

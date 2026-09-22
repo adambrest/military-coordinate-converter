@@ -5,12 +5,12 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
  const $=id=>document.getElementById(id),key='mike-golf-romeo-field-v1';
  // `preferred` is a global grid someone chose by hand; `area` is the country grid the
  // view was last over, so a grid only changes on the way into or out of a country.
- let points=[],connected=false,system='mgrs',layer=MapSupport.DEFAULT_BASEMAP,map,markers,route,grid,view,undo=[],redo=[],bases,autoZoom,written=null,broad,target,preferred=null,area,choices={};
+ let points=[],connected=false,system='mgrs',layer=MapSupport.DEFAULT_BASEMAP,map,markers,route,grid,view,undo=[],redo=[],bases,autoZoom,written=null,broad,target,preferred=null,area,choices={},mapHistory,labels;
  try{const s=JSON.parse(localStorage.getItem(key));if(s&&Array.isArray(s.points)){points=s.points.filter(RouteTools.valid).slice(0,20000);connected=!!s.connected;system=presets.includes(s.system)?s.system:'mgrs';layer=MapSupport.basemapId(s.basemapRevision===2?s.layer:(s.layer==='topo'?'street':s.layer));view=s.view;preferred=['mgrs','wgs84'].includes(s.preferred)?s.preferred:null;area=s.area;if(s.choices&&typeof s.choices==='object')choices=s.choices;}}catch(_){}
  const status=t=>{$('fieldStatus').textContent=t;};
  function save(){try{localStorage.setItem(key,JSON.stringify({points,connected,system,layer,view,preferred,area,choices,basemapRevision:2}));}catch(_){status('Device storage is full. Export your points before closing.');}}
  const snapshot=()=>JSON.stringify({points,connected,system});
- function historyButtons(){$('fieldUndo').disabled=!undo.length;$('fieldRedo').disabled=!redo.length;}
+ function historyButtons(){$('fieldUndo').disabled=!undo.length;$('fieldRedo').disabled=!redo.length;mapHistory?.sync(undo.length>0,redo.length>0);}
  function remember(){undo.push(snapshot());if(undo.length>30)undo.shift();redo=[];historyButtons();}
  function restore(json){({points,connected,system}=JSON.parse(json));refresh();}
  const GRID_LABELS={mgrs:'Global MGRS',wgs84:'Coordinates'};
@@ -245,6 +245,7 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
    MapSupport.marker(map,{...p,number:i+1}).addTo(markers);
   });
   drawRoute();
+  labels?.run();
  }
  function drawRoute(){if(!route)return;route.clearLayers();
   if(connected){let segment=[];const flush=()=>{if(segment.length>1)L.polyline(segment,{color:'#2563eb',weight:3,interactive:false}).addTo(route);segment=[];};for(const p of points){if(p.breakBefore)flush();segment.push([p.lat,p.lon]);}flush();}
@@ -261,6 +262,8 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   MapSupport.locate(map,{position:'bottomright',onStatus:text=>{if(text||!$('fieldStatus').textContent.startsWith('Finding'))status(text);}});
   autoZoom=MapSupport.autoZoom(map,()=>points);
   L.control.zoom({position:'bottomright'}).addTo(map);
+  mapHistory=MapSupport.historyButtons(map,{onUndo:()=>$('fieldUndo').click(),onRedo:()=>$('fieldRedo').click()});
+  labels=MapSupport.labelLayout(map,{toggle:$('fieldLabels')});
   target=MapSupport.pointTarget(map,{tapMode:()=>$('fieldTap').checked,onChange:p=>{$('fieldCoordinate').textContent=coordinate(p);}});
   MapSupport.pointGestures(map,{onTap:p=>{
    if(!$('fieldTap').checked)return;
@@ -310,7 +313,7 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   map.on('moveend',()=>{const p=map.getCenter();view={lat:p.lat,lon:MapSupport.longitude(p.lng),zoom:map.getZoom()};moved();});
   $('fieldAdd').onclick=()=>{const p=map.getCenter();add({lat:p.lat,lon:MapSupport.longitude(p.lng)});};
   new ResizeObserver(()=>{map.invalidateSize({pan:false});grid.refresh();}).observe($('fieldMap'));
-  draw();if(points.length)fit();moved();target.update();offerGrids();detail();grid.refresh();
+  historyButtons();draw();if(points.length)fit();moved();target.update();offerGrids();detail();grid.refresh();
  }
  $('fieldFormat').value=system;
  layerButtons();
@@ -334,8 +337,11 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
  $('fieldTap').onchange=()=>{$('view-field').classList.toggle('tap-mode',$('fieldTap').checked);render();target?.update();};
  // With the list empty again, the grid is free to follow the map once more.
  const unlocked=()=>{if(!points.length&&map){area=undefined;moved();}};
- $('fieldUndo').onclick=()=>{const old=undo.pop();if(old){redo.push(snapshot());restore(old);unlocked();}};
- $('fieldRedo').onclick=()=>{const next=redo.pop();if(next){undo.push(snapshot());restore(next);unlocked();}};
+ // With the crosshair in use, stepping back puts it on the last point still listed,
+ // where the undone pick was made from, and stepping forward on the point restored.
+ const recentre=()=>{const last=points.at(-1);if(map&&last&&!$('fieldTap').checked)map.panTo([last.lat,last.lon]);};
+ $('fieldUndo').onclick=()=>{const old=undo.pop();if(old){redo.push(snapshot());restore(old);unlocked();recentre();}};
+ $('fieldRedo').onclick=()=>{const next=redo.pop();if(next){undo.push(snapshot());restore(next);unlocked();recentre();}};
  document.addEventListener('keydown',e=>{
   if(!(e.ctrlKey||e.metaKey)||e.key.toLowerCase()!=='z'||!$('view-field').classList.contains('on')||document.querySelector('.overlay.open'))return;
   const el=document.activeElement;if(el&&/^(INPUT|TEXTAREA)$/.test(el.tagName)&&!el.readOnly)return;

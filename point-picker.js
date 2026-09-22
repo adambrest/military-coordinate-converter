@@ -1,10 +1,10 @@
 /* Crosshair point selection. Only visible street/satellite tiles are requested. */
 (function(root){
   "use strict";
-  root.createPointPicker=function({preview,onConfirm,onViewChange,projection,contains,capture,retract,fine}){
+  root.createPointPicker=function({preview,onConfirm,onViewChange,projection,contains,capture,retract,fine,history}){
     const $=id=>document.getElementById(id),overlay=$("pointOverlay");
     const STREET_ZOOM=7;
-    let map,countries,labels,markers,streets,topo,satellite,options={},returnFocus,frame,stableCenter,limitCenter,pointAutoZoom,grid,target;
+    let picks=0,redos=0,mapHistory,pointLabels,map,countries,labels,markers,streets,topo,satellite,options={},returnFocus,frame,stableCenter,limitCenter,pointAutoZoom,grid,target;
     // Beyond the imagery a provider actually holds for an area the tiles are only
     // enlarged, so stopping there keeps the crosshair from implying detail that
     // is not in the picture.
@@ -97,6 +97,7 @@
       }
       $("pointCount").textContent=points.length+(options.readOnly?" output point":" existing point")+(points.length===1?"":"s");
       pointAutoZoom&&pointAutoZoom.sync();
+      mapHistory?.sync(picks>0,redos>0);pointLabels?.run();
       // Adding point by point, the running distance is worth seeing straight away.
       const run=globalThis.RouteTools&&points.length>1?RouteTools.summary(points.map(p=>({...p,breakBefore:false}))):"";
       $("pointDistance").textContent=run;
@@ -144,7 +145,7 @@
         target.clicked(p);
         const saved=capture?.(),before=options;
         confirm(true,{lat:p.lat,lon:MapSupport.longitude(p.lng)});
-        return ()=>{if(saved&&retract){retract(saved);options=before;drawPoints(options.points||[]);$('pointAdded').textContent='';update();}};
+        return ()=>{if(saved&&retract){retract(saved);picks=Math.max(0,picks-1);options=before;drawPoints(options.points||[]);$('pointAdded').textContent='';update();}};
       }});
       // The same button stack as the Point Picker, in the same order.
       MapSupport.locate(map,{position:"bottomright",onStatus:text=>{
@@ -153,6 +154,23 @@
       }});
       pointAutoZoom=MapSupport.autoZoom(map,()=>options.points||[]);
       L.control.zoom({position:"bottomright"}).addTo(map);
+      // Undo and redo step through the picks made since this map was opened, and with
+      // the crosshair in use the view goes back to the last point still listed.
+      const step=(fn,undoing)=>{
+        if(!history||busy||(undoing?!picks:!redos))return;
+        const result=fn();picks+=undoing?-1:1;redos+=undoing?1:-1;
+        options={...options,...result};drawPoints(options.points||[]);$("pointAdded").textContent="";
+        const last=(options.points||[]).at(-1);
+        if(last&&!$("pointTap").checked)map.panTo([last.lat,last.lon]);
+        update();
+      };
+      mapHistory=MapSupport.historyButtons(map,{onUndo:()=>step(history.undo,true),onRedo:()=>step(history.redo,false)});
+      overlay.addEventListener("keydown",e=>{
+        if(!(e.ctrlKey||e.metaKey)||e.key.toLowerCase()!=="z")return;
+        const el=document.activeElement;if(el&&/^(INPUT|TEXTAREA)$/.test(el.tagName)&&el.type!=="checkbox")return;
+        e.preventDefault();e.shiftKey?step(history.redo,false):step(history.undo,true);
+      });
+      pointLabels=MapSupport.labelLayout(map,{toggle:$("pointLabels")});
       root.addEventListener("online",networkStatus);root.addEventListener("offline",networkStatus);
       const resize=()=>{
         if(!overlay.classList.contains("open"))return;
@@ -180,7 +198,8 @@
         if(result?.then)result=await result;
         if(result?.canceled)return;
         if(result?.error){failure=result.error;return;}
-        if(keepOpen){options={...options,...result};drawPoints(options.points||[]);$("pointAdded").textContent="Point added.";}
+        picks++;redos=0;
+        if(keepOpen){options={...options,...result};drawPoints(options.points||[]);}
         else close();
       }catch(error){failure="Could not add this point. "+error.message;}
       finally{busy=false;if(overlay.classList.contains("open")){update();if(failure){$("pointFormatPreview").textContent=failure;$("pointFormatPreview").classList.add("invalid");}}}
@@ -202,7 +221,7 @@
       }
     });
     return {open(opts){
-      options=opts;returnFocus=document.activeElement;mode=MapSupport.basemapId(opts.layer||mode);busy=false;coverageKey="";coveragePending=mode==="satellite";
+      options=opts;returnFocus=document.activeElement;picks=0;redos=0;mode=MapSupport.basemapId(opts.layer||mode);busy=false;coverageKey="";coveragePending=mode==="satellite";
       overlay.classList.add("open");overlay.classList.toggle("viewing",!!opts.readOnly);$("pointAdded").textContent="";
       $("pointTitle").textContent=opts.title||"Select a point";
       $("pointMap").setAttribute("aria-label",opts.readOnly
@@ -216,6 +235,8 @@
       // The crosshair, not the whole viewport, is what has to stay in the area.
       if(opts.bounds){const b=L.latLngBounds(opts.bounds);map.setMinZoom(Math.max(1,Math.min(map.getMaxZoom(),map.getBoundsZoom(b))));limitCenter(b);}
       $("pointPreset").textContent=opts.presetLabel;
+      // Named above the reference, as on the Point Picker.
+      $("pointReadoutGrid").textContent=opts.presetLabel||({wgs84:"Coordinates",mgrs:"Global MGRS",globalutm:"Global UTM"})[opts.presetId]||"";
       map.invalidateSize();map.setView([opts.center.lat,opts.center.lon],Math.min(map.getMaxZoom(),Math.max(map.getMinZoom(),opts.zoom||12)),{animate:false});
       drawPoints(opts.points||[]);checkCoverage();layers();update();
       map.invalidateSize({pan:false,animate:false});map.setView([opts.center.lat,opts.center.lon],Math.min(map.getMaxZoom(),Math.max(map.getMinZoom(),opts.zoom||map.getZoom())),{animate:false,reset:true});

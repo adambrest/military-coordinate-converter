@@ -103,6 +103,8 @@
   .map-button a:hover{color:var(--accent)}
   .map-button a.off{color:#cbd5e1;pointer-events:none}
   .map-locate svg{width:18px;height:18px;fill:currentColor;stroke:none}
+  .map-history svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .labels-off .chosen-point-label{display:none}.chosen-point-label.label-aside{visibility:hidden}
   .map-autozoom svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   .map-button a.busy{color:var(--accent)}
   .map-button a.busy svg{animation:locatePulse 1s ease-in-out infinite}
@@ -320,7 +322,7 @@
 
 <section class="view on" id="view-field">
  <div class="field-layout"><div class="field-map-panel">
- <div class="field-tools"><div class="point-layers" role="group" aria-label="Map layer"><button type="button" data-layer="street" aria-pressed="true">Street</button><button type="button" data-layer="topo" aria-pressed="false">Topo</button><button type="button" data-layer="satellite" aria-pressed="false">Satellite</button></div><select id="fieldRegion" class="map-region" aria-label="Jump to region"></select><label><input type="checkbox" id="fieldGrid" checked> Grid</label><label><input type="checkbox" id="fieldTap"> Tap to add</label></div>
+ <div class="field-tools"><div class="point-layers" role="group" aria-label="Map layer"><button type="button" data-layer="street" aria-pressed="true">Street</button><button type="button" data-layer="topo" aria-pressed="false">Topo</button><button type="button" data-layer="satellite" aria-pressed="false">Satellite</button></div><select id="fieldRegion" class="map-region" aria-label="Jump to region"></select><label><input type="checkbox" id="fieldGrid" checked> Grid</label><label><input type="checkbox" id="fieldLabels" checked> Labels</label><label><input type="checkbox" id="fieldTap"> Tap to add</label></div>
  <div class="field-map-wrap"><div id="fieldMap" aria-label="Point Picker map"></div><svg class="field-crosshair" aria-hidden="true" viewBox="0 0 32 32"><path class="crosshair-edge" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/><path class="crosshair-core" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/></svg></div>
  <div class="field-readout"><div class="readout-text"><span id="fieldReadoutGrid" class="readout-grid"></span><output id="fieldCoordinate"></output></div><button id="fieldAdd" class="convert">Add point</button></div>
  </div><aside class="field-output side">
@@ -386,9 +388,9 @@
   <div class="overlay" id="pointOverlay" role="dialog" aria-modal="true" aria-labelledby="pointTitle">
     <div class="modal point-modal">
       <div class="point-heading"><h3 id="pointTitle">Select a point</h3><button id="pointClose" aria-label="Close point map">×</button></div>
-      <div class="point-toolbar"><div class="point-layers" role="group" aria-label="Map layer"><button id="pointStreet" aria-pressed="true">Street</button><button id="pointTopo" aria-pressed="false">Topo</button><button id="pointSatellite" aria-pressed="false">Satellite</button></div><select id="pointRegion" class="map-region" aria-label="Jump to"></select><label class="point-grid-control"><input type="checkbox" id="pointGrid" checked> Grid</label><label class="point-tap-control"><input type="checkbox" id="pointTap"> Tap to add</label><span id="pointPreset"></span><span id="pointCount"></span></div>
+      <div class="point-toolbar"><div class="point-layers" role="group" aria-label="Map layer"><button id="pointStreet" aria-pressed="true">Street</button><button id="pointTopo" aria-pressed="false">Topo</button><button id="pointSatellite" aria-pressed="false">Satellite</button></div><select id="pointRegion" class="map-region" aria-label="Jump to"></select><label class="point-grid-control"><input type="checkbox" id="pointGrid" checked> Grid</label><label class="point-grid-control"><input type="checkbox" id="pointLabels" checked> Labels</label><label class="point-tap-control"><input type="checkbox" id="pointTap"> Tap to add</label><span id="pointPreset"></span><span id="pointCount"></span></div>
       <div class="point-map-wrap"><div id="pointMap" tabindex="0" aria-label="Point map. Arrow keys move the crosshair location; plus and minus zoom; Enter adds the point."></div><svg class="point-crosshair" aria-hidden="true" viewBox="0 0 32 32"><path class="crosshair-edge" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/><path class="crosshair-core" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/></svg></div>
-      <div class="point-footer"><div id="pointCoordinate"></div><div id="pointFormatPreview" aria-live="polite"></div><p class="point-status" id="pointUnresolved" hidden></p><p class="point-status" id="pointNetwork" hidden></p><p class="point-status" id="pointAdded" role="status"></p><p id="pointDistance" aria-live="polite"></p><div class="point-actions"><button class="setting-action" id="pointContinue">Add point</button><button class="setting-action primary" id="pointConfirm">Add point and close</button></div></div>
+      <div class="point-footer"><div class="point-readout"><div class="readout-text"><span class="readout-grid" id="pointReadoutGrid"></span><div id="pointCoordinate"></div><div id="pointFormatPreview" aria-live="polite"></div></div><div class="point-actions"><button class="setting-action" id="pointContinue">Add point</button><button class="setting-action primary" id="pointConfirm">Add point and close</button></div></div><p id="pointDistance" aria-live="polite"></p><p class="point-status" id="pointUnresolved" hidden></p><p class="point-status" id="pointNetwork" hidden></p><p class="point-status" id="pointAdded" role="status"></p></div>
     </div>
   </div>
 
@@ -1459,7 +1461,7 @@
       try{return (locationGuess||=MapSupport.approximateLocation({helper:MAP_HELPER})).current();}
       catch(_){return {lat:1.35,lon:103.82,zoom:10};}
     };
-    const pointPicker=createPointPicker({projection:projectionFor,contains:presetContains,fine:id=>fineGrid(id==='globalutm'?'mgrs':id),preview:mapPointPreview,onConfirm:addMapPoint,onViewChange:view=>{state.pointMapView=view;save();},capture:()=>({state:snapshot(),lastLocation:state.lastLocation,pointMapView:state.pointMapView,past:[...history.past],future:[...history.future]}),retract:saved=>{history.past=saved.past;history.future=saved.future;restore(saved.state);state.lastLocation=saved.lastLocation;state.pointMapView=saved.pointMapView;save();pointOptions={...pointOptions,...existingMapPoints()};}});
+    const pointPicker=createPointPicker({history:{undo:()=>{undo();return existingMapPoints();},redo:()=>{redo();return existingMapPoints();}},projection:projectionFor,contains:presetContains,fine:id=>fineGrid(id==='globalutm'?'mgrs':id),preview:mapPointPreview,onConfirm:addMapPoint,onViewChange:view=>{state.pointMapView=view;save();},capture:()=>({state:snapshot(),lastLocation:state.lastLocation,pointMapView:state.pointMapView,past:[...history.past],future:[...history.future]}),retract:saved=>{history.past=saved.past;history.future=saved.future;restore(saved.state);state.lastLocation=saved.lastLocation;state.pointMapView=saved.pointMapView;save();pointOptions={...pointOptions,...existingMapPoints()};}});
     // Warm the guess before the click so the first open already has it.
     for(const event of ["pointerenter","focus"])$("#selectMap").addEventListener(event,guessLocation,{once:true,passive:true});
     // With a worker to cache them, fetch the tiles around the guessed area while

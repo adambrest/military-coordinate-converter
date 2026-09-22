@@ -100,12 +100,81 @@
   }
   function marker(map,p,onClick){
     const label=document.createElement('span');label.textContent=p.name||'Point '+p.number;
-    const pin=L.circleMarker([p.lat,p.lon],{radius:6,color:'#fff',weight:1.5,fillColor:'#2563eb',fillOpacity:1,interactive:!!onClick})
+    const pin=L.circleMarker([p.lat,p.lon],{radius:6,color:'#fff',weight:1.5,fillColor:'#2563eb',fillOpacity:1,interactive:!!onClick,labelRank:p.number??1e6})
       .bindTooltip(label,{permanent:true,direction:'top',offset:[0,-5],className:'map-point-label chosen-point-label'})
       .on('click',e=>{L.DomEvent.stopPropagation(e);onClick?.(p);});
     const wrap=()=>pin.setLatLng([p.lat,p.lon+360*Math.round((map.getCenter().lng-p.lon)/360)]);
     pin.on('add',()=>{wrap();map.on('moveend',wrap);});pin.on('remove',()=>map.off('moveend',wrap));
     return pin;
+  }
+  // Point names never sit on one another. Each label tries above its point, then to
+  // the side, below and the corners, and takes the first place clear of labels and
+  // points already placed; point 1 chooses first. With nowhere clear it steps aside
+  // until the reader zooms in. The choice to show names at all is shared by both maps.
+  const LABELS_KEY="map-point-labels-v1";
+  function labelsWanted(){try{return localStorage.getItem(LABELS_KEY)!=="off";}catch(_){return true;}}
+  const PLACES=[["top",[0,-5]],["right",[6,0]],["left",[-6,0]],["bottom",[0,5]],["top",[14,-5]],["top",[-14,-5]],["bottom",[14,5]],["bottom",[-14,5]]];
+  function labelLayout(map,{toggle}={}){
+    let on=labelsWanted(),frame=0;
+    const container=map.getContainer();
+    const box=(dir,p,w,h,[dx,dy])=>{
+      const x=p.x+dx,y=p.y+dy;
+      if(dir==="top")return {x:x-w/2,y:y-h-6,w,h};
+      if(dir==="bottom")return {x:x-w/2,y:y+6,w,h};
+      if(dir==="right")return {x:x+6,y:y-h/2,w,h};
+      return {x:x-w-6,y:y-h/2,w,h};
+    };
+    const clash=(a,b)=>a.x<b.x+b.w+2&&b.x<a.x+a.w+2&&a.y<b.y+b.h+2&&b.y<a.y+a.h+2;
+    function layout(){
+      container.classList.toggle("labels-off",!on);
+      if(!on||!map._loaded)return;
+      const size=map.getSize(),labels=[];
+      map.eachLayer(l=>{
+        const t=l.getTooltip?.();
+        if(!t||!/chosen-point-label/.test(t.options.className||"")||!t.getElement?.())return;
+        const p=map.latLngToContainerPoint(l.getLatLng());
+        if(p.x<-60||p.y<-60||p.x>size.x+60||p.y>size.y+60)return;
+        labels.push({l,t,p});
+      });
+      labels.sort((a,b)=>(a.l.options.labelRank??1e6)-(b.l.options.labelRank??1e6));
+      const placed=[];
+      labels.forEach(({t,p},k)=>{
+        const el=t.getElement(),w=el.offsetWidth,h=el.offsetHeight;
+        let pick=null;
+        for(const [dir,off] of PLACES){
+          const r=box(dir,p,w,h,off);
+          if(placed.some(q=>clash(q,r)))continue;
+          if(labels.some((o,j)=>j!==k&&o.p.x>r.x-5&&o.p.x<r.x+r.w+5&&o.p.y>r.y-5&&o.p.y<r.y+r.h+5))continue;
+          pick={dir,off,r};break;
+        }
+        el.classList.toggle("label-aside",!pick);
+        if(!pick)return;
+        const o=t.options.offset;
+        if(t.options.direction!==pick.dir||!o||o.x!==pick.off[0]||o.y!==pick.off[1]){t.options.direction=pick.dir;t.options.offset=L.point(pick.off);t.update();}
+        placed.push(pick.r);
+      });
+    }
+    const run=()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(layout);};
+    map.on("zoomend moveend resize layeradd",run);
+    if(toggle){
+      toggle.checked=on;
+      toggle.addEventListener("change",()=>{on=toggle.checked;try{localStorage.setItem(LABELS_KEY,on?"on":"off");}catch(_){}layout();});
+    }
+    return {run,visible:()=>on};
+  }
+  // Undo and redo on the map itself, in the same button stack as zoom.
+  function historyButtons(map,{onUndo,onRedo,position="bottomright"}){
+    const make=(title,icon,go)=>{const a=L.DomUtil.create("a","");a.href="#";a.title=title;a.setAttribute("role","button");a.setAttribute("aria-label",title);a.innerHTML=icon;L.DomEvent.on(a,"click",e=>{L.DomEvent.stop(e);if(!a.classList.contains("off"))go();});return a;};
+    let undoEl,redoEl;
+    const control=L.control({position});
+    control.onAdd=()=>{
+      const bar=L.DomUtil.create("div","leaflet-bar map-button map-history");
+      undoEl=make("Undo last point",'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-5 5 5 5M4 10h10a6 6 0 0 1 6 6v3"/></svg>',onUndo);
+      redoEl=make("Redo",'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 5 5-5 5M20 10H10a6 6 0 0 0-6 6v3"/></svg>',onRedo);
+      bar.append(undoEl,redoEl);L.DomEvent.disableClickPropagation(bar);return bar;
+    };
+    control.addTo(map);
+    return {sync(canUndo,canRedo){undoEl?.classList.toggle("off",!canUndo);redoEl?.classList.toggle("off",!canRedo);}};
   }
   function context(map,onClick){
     const land=L.layerGroup().addTo(map),pins=L.layerGroup();
@@ -486,5 +555,5 @@
       colors:BROAD
     };
   }
-  root.MapSupport={regions,baseView,approximateLocation,tileUrls,prefetchTiles,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,pointTarget,imageryZoom,imageryService,trainingArea,BASEMAPS,DEFAULT_BASEMAP,basemapIds,basemapId,basemap,locate,mapButton,autoZoom,clampLatitude,broadView,BROAD_COLORS:BROAD,softenTopo,seamless};
+  root.MapSupport={regions,baseView,approximateLocation,tileUrls,prefetchTiles,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,pointTarget,imageryZoom,imageryService,trainingArea,BASEMAPS,DEFAULT_BASEMAP,basemapIds,basemapId,basemap,locate,mapButton,autoZoom,clampLatitude,broadView,BROAD_COLORS:BROAD,softenTopo,seamless,labelLayout,historyButtons};
 })(globalThis);
