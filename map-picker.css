@@ -37,7 +37,7 @@
 .side.flexible-input textarea{min-height:84px;resize:vertical;font:inherit;font-size:12px;line-height:1.5}
 .addrow[hidden]{display:none}
 .side.flexible-input .del{grid-column:3;grid-row:1}
-.side.prefixed-input .thead,.side.prefixed-input .trow{grid-template-columns:26px minmax(74px,1.05fr) minmax(0,1fr) minmax(0,1fr) minmax(0,.8fr) 22px;gap:4px;padding:8px 4px}
+.side.prefixed-input .thead,.side.prefixed-input .trow{grid-template-columns:26px minmax(74px,1.05fr) minmax(0,1fr) minmax(0,1fr) minmax(0,.8fr) 22px;gap:4px;padding:5px 4px}
 .side.prefixed-input .del{width:22px}
 .workspace{max-width:1180px;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:12px}
 @media(max-width:1050px){.workspace{grid-template-columns:minmax(0,1fr)}.middle{margin:0;flex-direction:row;justify-content:center}.side{min-width:0}}

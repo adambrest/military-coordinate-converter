@@ -30,7 +30,9 @@ assert.equal(await gridAt(55.75,37.6),'mgrs','leaving returns to the hand-picked
 await page.selectOption('#fieldFormat','wgs84');
 assert.equal(await gridAt(1.35,103.82,14),'wgs84','Coordinates chosen by hand is left alone');
 await page.selectOption('#fieldFormat','mgrs');await gridAt(55.75,37.6);
-assert.equal(await gridAt(1.35,103.82,14),'sg','Global MGRS gives way to the country grid');
+assert.equal(await gridAt(1.35,103.82,14),'mgrs','Global MGRS chosen in Singapore is kept there from then on');
+await page.selectOption('#fieldFormat','sg');await gridAt(55.75,37.6);
+assert.equal(await gridAt(1.35,103.82,14),'sg','choosing the country grid again restores auto-picking');
 assert.equal(await page.locator('#fieldGridNote').count(),0,'no grid confirmation under the map');
 // The grid redraws on an animation frame, so wait for the labels instead of guessing a delay.
 // Grid numbers sit on the edges of the view, not inside the tiles.

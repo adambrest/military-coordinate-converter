@@ -249,6 +249,8 @@
   .exportbar button{padding:0 8px}
   .row-actions .histbtn{min-width:38px;min-height:38px;border-radius:9px}
   .cell.outside{color:var(--warn);font-weight:600}
+  /* Input and output rows are one height, filled or not, so they line up across. */
+  #fromRows .trow,#toRows .trow{min-height:46px}
   /* Phone: two buttons a row, so no label breaks across lines. */
   @media (max-width:480px){
     .exportbar{flex-wrap:wrap}
@@ -691,6 +693,14 @@
     // Rich-text copies may carry Markdown wrappers or escaped separators. Keep
     // each link destination once, then recognize bare map hosts as URLs too.
     return String(text)
+      // A GPX point copied out of a file: its latitude, longitude and name.
+      .replace(/<(wpt|trkpt|rtept)\b([^>]*?)\/?>(?:([\s\S]*?)<\/\1>)?/gi,(whole,tag,attrs,inner)=>{
+        const lat=attrs.match(/\blat\s*=\s*["']\s*([-+]?[\d.]+)/i),lon=attrs.match(/\blon\s*=\s*["']\s*([-+]?[\d.]+)/i);
+        if(!lat||!lon)return whole;
+        const name=(inner||"").match(/<name>\s*(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?\s*<\/name>/i)?.[1]?.trim();
+        return "\n"+(name?name+" ":"")+lat[1]+", "+lon[1]+"\n";
+      })
+      .replace(/<\/(?:wpt|trkpt|rtept)>/gi,"\n")
       .replace(/\\([&_])/g,"$1").replace(/&amp;/gi,"&")
       .replace(/\\?&#(?:x0*a|0*10);/gi,"\n").replace(/\\?&#(?:x0*d|0*13);/gi,"\n")
       .replace(/&nbsp;|&#(?:x20|32);/gi," ")
@@ -1163,7 +1173,6 @@
       if(state.from==="auto")hint.textContent="Paste coordinates or Maps links.";
       else if(state.from==="globalutm")hint.textContent="Zone, easting and northing.";
       else if(!rowsHaveContent()) hint.textContent="Paste coordinates, MGR or a Maps link.";
-      else if(PRESETS[state.from].kind==="latlong") hint.textContent="Paste latitude and longitude together.";
       else hint.textContent="";
       hint.hidden=!hint.textContent;
     }
@@ -2100,6 +2109,9 @@
       const insert=opts.insert??!!e.target;
       readRows();
       const before=snapshot();
+      // One number pasted into one box is typing: a latitude, a longitude or an easting
+      // on its own belongs in that box, and must not replace the row around it.
+      if(e.target&&/^[-+]?\d{1,3}(?:[.,]\d+)?\s*°?\s*[NSEW]?$/i.test(text.trim()))return;
       // A few digits pasted into a grid field are just typing: leave them where they land.
       if(e.target&&state.from!=="auto"&&PRESETS[state.from].kind!=="latlong"&&/^\d[\d ]*$/.test(text.trim())){
         const g=splitGrid(text.trim());if(g.error||g.d<3)return;
@@ -2138,6 +2150,19 @@
       const paired=pairs.length&&pairs.every(p=>p&&!p.error)&&new Set(pairs.map(p=>p.id)).size===1?pairs[0].id:null;
       if(short){
         e.preventDefault();
+        // Digits beside points already down are a reference in those points' grid and
+        // area. They are read there and written into this table's grid, which stays.
+        const others=state.rows.some((r,k)=>k!==i&&(String(r[0]).trim()||String(r[1]).trim()));
+        const existing=others&&state.from==="wgs84"?existingMapPoints():null;
+        if(existing&&!existing.unresolved&&existing.points.length){
+          const anchor=existing.points[0],home=enabledGrid([anchor]),id=keptGrid(home)||home||(presetEnabled("mgrs")?"mgrs":null);
+          const read=lines.map(({text:line})=>{const g=splitGrid(line);return id&&!g.error?readDigits(id,g,anchor):{error:"Digits alone need a grid. Paste a full reference."};});
+          const k=read.findIndex(r=>r.error);
+          if(k>=0){setBottomError(explain(read[k].error,multiline?k+1:null,multiline?"Line":null));return;}
+          rememberSnapshot(before);
+          writeRows(i,read.map((r,k)=>({cells:llCells(r.lat,r.lon),name:lines[k].name})),insert);
+          state.points=[];renderFrom();renderTo();flashRows(i,read.length);convert();save();return;
+        }
         if(PRESETS[state.from].lead)state.aoConfirmed=true;
         // Auto-detect has no reference area, even if a previous conversion confirmed one.
         if(state.from==="auto"||!state.aoConfirmed||state.from==="wgs84"||(state.from==="mgrs"&&!state.settings.mgrs.ao)){
@@ -2248,6 +2273,31 @@
       if(pasted.length){const d=$("#detect");d.textContent=[d.textContent,...pasted].filter(Boolean).join(" ");d.className="detect warn";}
       save();
     }
+    // A reference given as digits alone, read in a grid at the area of a nearby point.
+    function readDigits(id,g,anchor){
+      try{
+        const S={...state.settings,[id]:{...state.settings[id]}};
+        if(!PRESETS[id].lead){
+          const key=areaKeyAt(id,anchor.lat,anchor.lon);
+          if(id==="mgrs")S.mgrs={...S.mgrs,ao:key,sgOmit:true};else S[id]={...S[id],square:key.split("/").map(Number),sgOmit:true};
+        }
+        const q=parseCells(id,g.e,g.n,S);
+        return q.error?q:{lat:q.lat,lon:q.lon};
+      }catch(error){return {error:error.message};}
+    }
+    // A grid chosen by hand over a country's own is remembered for that country, so
+    // auto-picking never switches back once the reader has said what they want.
+    function keptGrid(home){
+      const kept=home&&state.gridChoice?.[home];
+      return kept&&PRESETS[kept]&&presetEnabled(kept)?kept:null;
+    }
+    function noteChoice(points,chosen){
+      const home=points?.length?enabledGrid(points):null;
+      if(!home)return;
+      state.gridChoice={...(state.gridChoice||{})};
+      if(chosen===home)delete state.gridChoice[home];
+      else if(chosen!=="wgs84"&&chosen!=="auto")state.gridChoice[home]=chosen;
+    }
     // A pasted line in another format, as a point, so it can be rewritten in the grid
     // the table already uses.
     function pointOfParsed(r,id){
@@ -2260,6 +2310,8 @@
     // sense when it cannot hold every point, when it is Coordinates and a grid reference
     // arrives, or when it is a global grid and a country's own reference arrives.
     function inputGridFor(selected,target,points){
+      const kept=target!=="wgs84"?keptGrid(enabledGrid(points)):null;
+      if(kept&&!points.some(p=>outsidePreset(kept,p)))return kept;
       if(selected==="auto"||!PRESETS[selected]||!presetEnabled(selected))return target;
       // MGRS and UTM are one choice, Military grid; the paste says which is meant.
       if(GLOBAL_FORMATS.includes(selected)&&GLOBAL_FORMATS.includes(target))return target;
@@ -2428,7 +2480,7 @@
       // pair left the reader converting coordinates into coordinates. Naming an
       // output settles the question for good.
       if(!state.explicitOutput&&(COUNTRY_PRESETS.includes(state.to)||(state.to==="wgs84"&&PRESETS[state.from].kind==="latlong"))){
-        const fit=enabledGrid(pts);
+        const home=enabledGrid(pts),fit=keptGrid(home)||home;
         if(fit&&fit!==state.to){state.to=fit;syncFormat("to");}
       }
       const countryError=countryMismatchMessage(state.from,pts);
@@ -2456,7 +2508,7 @@
       // chosen by hand overrides it, and then the choice is kept and flagged.
       const home=state.points?.length&&!COUNTRY_PRESETS.includes(state.from)&&GLOBAL_FORMATS.includes(state.to)?enabledGrid(state.points):null;
       if(home&&!state.explicitOutput){
-        state.to=home;
+        state.to=keptGrid(home)||home;
         const square=suggestedSquare(home,state.points,state.settings);
         if(square)assignSquare(home,...square);
         autoArea(state.points);
@@ -2467,7 +2519,7 @@
       $("#toName").textContent=PRESETS[state.to].name;
       const rowsEl=$("#toRows"); rowsEl.innerHTML="";
       let pts=state.points||[];
-      const notes=[outsideNotice(state.to,pts),home&&home!==state.to?otherGridNotice(home,state.to):""].filter(Boolean);
+      const notes=[outsideNotice(state.to,pts),home&&home!==state.to&&GLOBAL_FORMATS.includes(state.to)?otherGridNotice(home,state.to):""].filter(Boolean);
       $("#toOutside").textContent=notes.join(" ");$("#toOutside").hidden=!notes.length;
       if(pts.length){
         let changes=[];
@@ -2629,7 +2681,7 @@
       else if(!fromGrid&&state.to==="wgs84"&&!state.explicitOutput){
         // Only a grid the points actually fall in, never merely the first one
         // enabled. With nothing fitting, coordinates out is an honest reformat.
-        const fit=suggestedGrid(points,COUNTRY_PRESETS.filter(presetEnabled))||(presetEnabled("mgrs")?"mgrs":null);
+        const home=suggestedGrid(points,COUNTRY_PRESETS.filter(presetEnabled)),fit=keptGrid(home)||home||(presetEnabled("mgrs")?"mgrs":null);
         if(fit){state.to=fit;state.explicitOutput=false;}
       }
     }
@@ -2652,13 +2704,26 @@
       if(target===previous){syncFormat("from");return;}
       const hadInput=state.rows.some(r=>r.some(v=>String(v).trim()));
       if(hadInput)remember();
-      const preserve=previous!=="auto"&&PRESETS[previous].kind!=="latlong";
-      if(!preserve)state.rows=[["","",""]];
+      // Points already entered are rewritten in the chosen grid, never cleared.
+      const showing=(state.points||[]).length>0;
+      const current=hadInput?existingMapPoints():{points:[],unresolved:0};
+      const away=[];
+      if(current.points.length&&!current.unresolved&&target!=="auto"){
+        noteChoice(current.points,target);
+        const rows=[...state.rows];
+        for(const p of current.points){
+          if(outsidePreset(target,p)){away.push(p.number);continue;}
+          rows[p.number-1]=[...inputCells(target,p),state.rows[p.number-1]?.[2]||""];
+        }
+        state.rows=rows;
+      }else if(previous==="auto"||PRESETS[previous].kind==="latlong")state.rows=[["","",""]];
       finishFrom(target,[]);
       setBottomError("");
-      detect(hadInput?(preserve?"Entries kept unchanged. Press Convert to use the selected input system.":"Entries cleared for "+PRESETS[target].name.replace(" MGR","")+" — undo to bring them back."):"",hadInput?"warn":"");
+      detect(away.length?(away.length===1?"Point "+away[0]+" is":"Points "+away.join(", ")+" are")+" outside "+PRESETS[target].name+", so "+(away.length===1?"it was":"they were")+" left as entered.":"",away.length?"warn":"");
+      if(showing&&current.points.length&&!current.unresolved)convert();
     });
-    $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value;if(state.to==="mgrs")state.to=state.settings.mgrs.format||"mgrs";state.explicitOutput=true;seedOutputArea();updatePairState();if(rowsHaveContent())convert();else renderTo();save(); });
+    $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value;if(state.to==="mgrs")state.to=state.settings.mgrs.format||"mgrs";state.explicitOutput=true;
+      readRows();const shown=state.points?.length?state.points:existingMapPoints().points;noteChoice(shown,state.to);seedOutputArea();updatePairState();if(rowsHaveContent())convert();else renderTo();save(); });
     $("#fromFormat").addEventListener("change",()=>{
       readRows();const id=$("#fromFormat").value;
       if(id===state.from)return;
@@ -3082,6 +3147,22 @@
       if(state.from==="auto"&&state.rows.length>1){state.rows=[[text,"",""]];renderFrom();}
     }
 
+    // Side by side, the two tables start level and their rows line up: whatever sits
+    // above one table (a hint, a reference area) is matched by space above the other.
+    function alignTables(){
+      const [a,b]=[$("#fromHead"),$("#toHead")].map(h=>h?.closest(".tbl"));
+      if(!a||!b)return;
+      a.style.marginTop=b.style.marginTop="";
+      const columns=getComputedStyle($(".workspace")).gridTemplateColumns.trim().split(/\s+/).length;
+      if(columns<3)return;
+      const d=a.getBoundingClientRect().top-b.getBoundingClientRect().top;
+      if(Math.abs(d)>=1)(d>0?b:a).style.marginTop=Math.abs(d)+"px";
+    }
+    if(globalThis.ResizeObserver){
+      const watch=new ResizeObserver(()=>requestAnimationFrame(alignTables));
+      for(const el of document.querySelectorAll(".workspace > .side > *:not(.tbl)"))watch.observe(el);
+      watch.observe($(".workspace"));
+    }
     // initial render
     renderFrom(); updatePairState(); renderTo(); settleAutoRows();
     // Output is recomputed rather than stored, so the page reopens as it was left.

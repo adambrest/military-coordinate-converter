@@ -5,10 +5,10 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
  const $=id=>document.getElementById(id),key='mike-golf-romeo-field-v1';
  // `preferred` is a global grid someone chose by hand; `area` is the country grid the
  // view was last over, so a grid only changes on the way into or out of a country.
- let points=[],connected=false,system='mgrs',layer=MapSupport.DEFAULT_BASEMAP,map,markers,route,grid,view,undo=[],redo=[],bases,autoZoom,written=null,broad,target,preferred=null,area;
- try{const s=JSON.parse(localStorage.getItem(key));if(s&&Array.isArray(s.points)){points=s.points.filter(RouteTools.valid).slice(0,20000);connected=!!s.connected;system=presets.includes(s.system)?s.system:'mgrs';layer=MapSupport.basemapId(s.basemapRevision===2?s.layer:(s.layer==='topo'?'street':s.layer));view=s.view;preferred=['mgrs','wgs84'].includes(s.preferred)?s.preferred:null;area=s.area;}}catch(_){}
+ let points=[],connected=false,system='mgrs',layer=MapSupport.DEFAULT_BASEMAP,map,markers,route,grid,view,undo=[],redo=[],bases,autoZoom,written=null,broad,target,preferred=null,area,choices={};
+ try{const s=JSON.parse(localStorage.getItem(key));if(s&&Array.isArray(s.points)){points=s.points.filter(RouteTools.valid).slice(0,20000);connected=!!s.connected;system=presets.includes(s.system)?s.system:'mgrs';layer=MapSupport.basemapId(s.basemapRevision===2?s.layer:(s.layer==='topo'?'street':s.layer));view=s.view;preferred=['mgrs','wgs84'].includes(s.preferred)?s.preferred:null;area=s.area;if(s.choices&&typeof s.choices==='object')choices=s.choices;}}catch(_){}
  const status=t=>{$('fieldStatus').textContent=t;};
- function save(){try{localStorage.setItem(key,JSON.stringify({points,connected,system,layer,view,preferred,area,basemapRevision:2}));}catch(_){status('Device storage is full. Export your points before closing.');}}
+ function save(){try{localStorage.setItem(key,JSON.stringify({points,connected,system,layer,view,preferred,area,choices,basemapRevision:2}));}catch(_){status('Device storage is full. Export your points before closing.');}}
  const snapshot=()=>JSON.stringify({points,connected,system});
  function historyButtons(){$('fieldUndo').disabled=!undo.length;$('fieldRedo').disabled=!redo.length;}
  function remember(){undo.push(snapshot());if(undo.length>30)undo.shift();redo=[];historyButtons();}
@@ -99,7 +99,8 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   if(points.length||local===area)return false;
   area=local;
   let next=system;
-  if(local){if(!(system==='wgs84'&&preferred==='wgs84'))next=local;}
+  // A grid chosen by hand in this country before is kept rather than switched back.
+  if(local){if(choices[local]&&presets.includes(choices[local]))next=choices[local];else if(!(system==='wgs84'&&preferred==='wgs84'))next=local;}
   else if(isCountry(system))next=preferred==='mgrs'?'mgrs':'wgs84';
   if(next===system)return false;
   system=next;written=null;return true;
@@ -317,6 +318,9 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   const next=$('fieldFormat').value;
   if(points.length&&!points.every(p=>fits(next,p))){$('fieldFormat').value=system;return;}
   if(points.length)remember();
+  // Remember a global grid picked where a country grid would serve, per country.
+  const centre=map&&map.getCenter(),home=points.length?homeGrid(points):centre?localAt(centre.lat,centre.lng):null;
+  if(home){if(next===home)delete choices[home];else if(next==='mgrs')choices[home]=next;}
   system=next;preferred=isCountry(system)?null:system;written=null;
   const region=MapSupport.regions.find(r=>r.id===system);
   // A country grid chosen from elsewhere goes to that country, since it cannot be read

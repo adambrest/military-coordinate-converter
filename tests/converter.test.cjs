@@ -1681,17 +1681,22 @@ test('grid input corrections retain every row and name even when switching to co
   }
 });
 
-test('coordinates to grid clears all rows and names with working undo and redo',()=>{
+test('changing the input grid rewrites the rows in it, keeping names, with undo and redo',()=>{
   const a=app();
   try{
     a.paste('1.35,103.82\n1.36,103.83');
     a.$('#fromRows .nm').value='First';a.$('#fromRows').children[1].querySelector('.nm').value='Second';
     const before=a.state().rows;before[0][2]='First';before[1][2]='Second';
-    a.change('#fromSys','thailand');assert.deepEqual(a.state().rows,[['','','']]);
+    a.change('#fromSys','sg');
+    const after=a.state().rows;
+    assert.equal(after.length,2);assert.deepEqual(after.map(r=>r[2]),['First','Second']);
+    assert.ok(after.every(r=>/^\d+$/.test(r[0])&&/^\d+$/.test(r[1])),JSON.stringify(after));
     assert.equal(a.$('#undoBtn').disabled,false);a.$('#undoBtn').click();
     assert.equal(a.state().from,'wgs84');assert.deepEqual(a.state().rows,before);
     assert.equal(a.$('#redoBtn').disabled,false);a.$('#redoBtn').click();
-    assert.equal(a.state().from,'thailand');assert.deepEqual(a.state().rows,[['','','']]);
+    assert.equal(a.state().from,'sg');assert.deepEqual(a.state().rows,after);
+    a.change('#fromSys','thailand');assert.deepEqual(a.state().rows,after,'points Thailand MGR cannot hold stay as entered');
+    assert.match(a.$('#detect').textContent,/outside Thailand MGR/);
   }finally{a.dom.window.close();}
 });
 
@@ -1998,9 +2003,9 @@ test('only actual active input setting changes require conversion again',async()
 });
 
 /* ---- v2 reference areas ---- */
-test('the app reports version 3.9.0',()=>{
+test('the app reports version 3.9.1',()=>{
   const a=app();
-  try{assert.equal(a.$('#appVersion').textContent,'v3.9.0');assert.match(read('version.js'),/APP_VERSION = "3\.9\.0"/);
+  try{assert.equal(a.$('#appVersion').textContent,'v3.9.1');assert.match(read('version.js'),/APP_VERSION = "3\.9\.1"/);
     const logo=a.$('header h1 .logo');assert.ok(logo,'the header shows the app icon');assert.equal(logo.getAttribute('src'),'icons/logo-64.png');assert.equal(logo.getAttribute('alt'),'');}
   finally{a.dom.window.close();}
 });
@@ -2463,5 +2468,48 @@ test('Enter outside a field converts; inside a row it opens the next row',()=>{
     let converted=0;a.$('#convertBtn').addEventListener('click',()=>converted++);
     a.w.document.body.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
     assert.equal(converted,1,'Enter elsewhere converts');
+  }finally{a.dom.window.close();}
+});
+test('one number pasted into one box stays in that box',()=>{
+  const a=app();
+  try{
+    a.change('#fromSys','wgs84');
+    const e=new a.w.Event('paste',{bubbles:true,cancelable:true});Object.defineProperty(e,'clipboardData',{value:{getData:()=>'103.66344594955444'}});
+    a.$('#fromRows .a').value='1.333564043045044';a.$('#fromRows .b').dispatchEvent(e);
+    assert.equal(e.defaultPrevented,false,'the browser pastes the number into the box');
+    assert.equal(a.$('#fromRows .a').value,'1.333564043045044','the latitude already typed stays');
+  }finally{a.dom.window.close();}
+});
+test('a GPX waypoint snippet pastes as its point and name',()=>{
+  const a=app();
+  try{
+    a.paste('<wpt lat="1.333564043045044" lon="103.66344594955444"><name>Hill</name></wpt>');
+    assert.equal(a.state().points.length,1,a.$('#badPair').textContent);
+    assert.ok(Math.abs(a.state().points[0].lat-1.333564)<1e-5);assert.equal(a.state().rows[0][2],'Hill');
+    const b=app();
+    try{b.paste('<wpt lat="1.333564043045044" lon="103.66344594955444">');assert.equal(b.state().points.length,1);}finally{b.dom.window.close();}
+  }finally{a.dom.window.close();}
+});
+test('MGR digits pasted into a coordinates table are read and written as coordinates',()=>{
+  const a=app();
+  try{
+    a.paste('1.35,103.82\n1.36,103.83\n1.34,103.84');assert.equal(a.state().from,'wgs84');
+    a.$('#addRow').click();a.paste('4724 4951',3);
+    assert.equal(a.state().from,'wgs84','the input grid stays');
+    assert.equal(a.$('#aoOverlay').classList.contains('open'),false);assert.equal(a.$('#locationOverlay').classList.contains('open'),false);
+    assert.equal(a.state().rows.length,4);assert.match(a.state().rows[3][0],/^1\.\d+/);
+    assert.equal(a.state().points.length,4);
+  }finally{a.dom.window.close();}
+});
+test('a global grid chosen in a country is kept there from then on, across pastes and reloads',()=>{
+  const a=app();
+  try{
+    a.paste('1.35,103.82');assert.equal(a.state().to,'sg');
+    a.change('#toSys','mgrs');
+    a.paste('1.36,103.83');assert.equal(a.state().to,'mgrs');
+    a.$('#clearAll').click();a.paste('1.34,103.84');assert.equal(a.state().to,'mgrs','a fresh batch in Singapore keeps the choice');
+    const reopened=app(a.state());
+    try{reopened.$('#clearAll').click();reopened.paste('1.33,103.85');assert.equal(reopened.state().to,'mgrs','the choice survives a reload');}finally{reopened.dom.window.close();}
+    a.change('#toSys','sg');a.$('#clearAll').click();a.paste('1.34,103.84');assert.equal(a.state().to,'sg','choosing the country grid again restores auto-picking');
   }finally{a.dom.window.close();}
 });
