@@ -168,21 +168,13 @@ const server=http.createServer((req,res)=>{
      'topo tiles stop at zoom 17; past that Leaflet must enlarge rather than request');
    await page.locator('#pointClose').click();
    await page.locator('#fromRows .a').fill('1.35,103.82');await page.locator('#convertBtn').click();
+   assert.equal(await page.locator('#toSys').inputValue(),'sg','Singapore points are written in Singapore MGR');
    await page.locator('#toSys').selectOption('mgrs');
-   await page.locator('#countryGridOverlay.open').waitFor();
-   assert.equal(await page.locator('#countryGridSwitch').textContent(),'Change to Singapore MGR');
-   assert.equal(await page.locator('#copyBtn').isEnabled(),false);
-   assert.equal(await page.locator('main').evaluate(el=>el.inert),true);
-   await page.screenshot({path:`/tmp/saf-${name}-country-preset.png`});
-   await page.keyboard.press('Shift+Tab');assert.equal(await page.locator('#countryGridClose').evaluate(el=>el===document.activeElement),true);
-   await page.keyboard.press('Shift+Tab');assert.equal(await page.locator('#countryGridContinue').evaluate(el=>el===document.activeElement),true);
-   await page.locator('#countryGridSwitch').click();
-   assert.equal(await page.locator('#toSys').inputValue(),'sg');assert.equal(await page.locator('#copyBtn').isEnabled(),true);
-   await page.locator('#toSys').selectOption('mgrs');
-   await page.locator('#countryGridContinue').click();
+   // A hand-picked global grid is kept, flagged in a note, and nothing blocks the page.
    assert.equal(await page.locator('#toSys').inputValue(),'mgrs');assert.equal(await page.locator('#copyBtn').isEnabled(),true);
+   assert.match(await page.locator('#toOutside').innerText(),/Singapore has its own grid/);
    assert.equal(await page.locator('main').evaluate(el=>el.inert),false);
-   await page.locator('#convertBtn').click();assert.equal(await page.locator('#countryGridOverlay').isVisible(),false);
+   await page.locator('#convertBtn').click();assert.equal(await page.locator('#toSys').inputValue(),'mgrs');
    if(errors.length)console.error('PAGE ERRORS:',errors);
    assert.deepEqual(errors,[]);
    console.log(`${name} ${device}: touch timing, stationary single tap, anchored zoom, collapsed toggles, satellite coverage and country preset choices passed`);

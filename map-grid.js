@@ -6,26 +6,28 @@
  'use strict';
  const STEPS_DEG=[30,20,10,5,2,1,.5,.2,.1,.05,.02,.01,.005,.002,.001,.0005,.0002,.0001];
  const STEPS_M=[1000,100];
- // A labelled line needs room for its number; an unlabelled one only has to stay
- // clear of its neighbours to read as a finer grid rather than a texture.
- const MAJOR_PX=44,MINOR_PX=22,DEG_PX=84;
- // No grid until the scale bar reads 1 km or less: before that, kilometre squares
- // are too small to aim into and only crowd the map.
- const KM_PX=50;
- const gridVisible=(lat,z)=>1000/metresPerPixel(lat,z)>=KM_PX;
+ // The grid is only drawn where every line can carry its number at full size with
+ // clear space either side: no zoom is fixed, the labels decide. Numbers are 11px
+ // monospace in a padded chip (see .grid-label-edge), so their size is known here.
+ const CHAR_PX=6.7,CHIP_PAD=8,CHIP_HEIGHT=15,LABEL_GAP=14,MINOR_PX=22;
+ const chipWidth=chars=>chars*CHAR_PX+CHIP_PAD;
+ const fits=(spacing,chars)=>spacing>=Math.max(chipWidth(chars),CHIP_HEIGHT)+LABEL_GAP;
+ // Degree lines are never drawn wider apart than about a kilometre, the same scale
+ // the metric grid starts at; a world of 30° lines is not something to aim with.
+ const COARSEST_DEG=.01;
  const metresPerPixel=(lat,z)=>156543.03392*Math.cos(lat*Math.PI/180)/2**z;
  function metricSteps(lat,z){
   const mpp=metresPerPixel(lat,z);
-  if(!gridVisible(lat,z))return null;
-  const i=[...STEPS_M].reverse().findIndex(s=>s/mpp>=MAJOR_PX);
-  if(i<0)return null;
-  const major=STEPS_M[STEPS_M.length-1-i],minor=major/10;
+  const major=[...STEPS_M].reverse().find(s=>fits(s/mpp,s<1000?3:2));
+  if(!major)return null;
+  const minor=major/10;
   return {major,minor:minor>=100&&minor/mpp>=MINOR_PX?minor:0};
  }
+ const degreeChars=step=>{const places=Math.max(0,Math.ceil(-Math.log10(step)-1e-9));return 3+(places?places+1:0)+2;};
  function degreeStep(lat,z){
-  if(!gridVisible(lat,z))return null;
   const pxPerDegree=2**z*256/360/Math.cos(lat*Math.PI/180);
-  return [...STEPS_DEG].reverse().find(d=>d*pxPerDegree>=DEG_PX)||STEPS_DEG[0];
+  const step=[...STEPS_DEG].reverse().find(d=>fits(d*pxPerDegree,degreeChars(d)));
+  return step&&step<=COARSEST_DEG?step:null;
  }
  // Two figures name a kilometre line, as on a paper map; a 100 m line takes a third.
  const gridLabel=(v,step)=>step<1000
@@ -113,7 +115,7 @@
    el.className='grid-label-edge '+edge;
    el.style.transform='translate('+Math.round(x)+'px,'+Math.round(y)+'px) translate('+(edge==='top'?'-50%':'0')+',-50%)';
   }
-  const TOP=11,LEFT=6,GAP=6;
+  const TOP=11,LEFT=6;
   function place(){
    used=0;
    if(config&&map.hasLayer(layer)){
@@ -162,9 +164,9 @@
     // Corners belong to neither edge, and two numbers closer than their own width
     // read as one; the second is dropped rather than drawn on top.
     let last=-Infinity;
-    for(const p of tops.sort((a,b)=>a.x-b.x)){if(p.x<40||p.x>size.x-24||p.x-last<GAP+p.text.length*7.2)continue;label(p.text,p.x,TOP,'top');last=p.x;}
+    for(const p of tops.sort((a,b)=>a.x-b.x)){if(p.x<40||p.x>size.x-24||p.x-last<chipWidth(p.text.length)+LABEL_GAP)continue;label(p.text,p.x,TOP,'top');last=p.x;}
     last=-Infinity;
-    for(const p of lefts.sort((a,b)=>a.y-b.y)){if(p.y<30||p.y>size.y-30||p.y-last<20)continue;label(p.text,LEFT,p.y,'left');last=p.y;}
+    for(const p of lefts.sort((a,b)=>a.y-b.y)){if(p.y<30||p.y>size.y-30||p.y-last<CHIP_HEIGHT+LABEL_GAP)continue;label(p.text,LEFT,p.y,'left');last=p.y;}
    }
    for(let i=used;i<pool.length;i++)pool[i].className='grid-label-edge off';
   }

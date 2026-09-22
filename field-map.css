@@ -20,8 +20,7 @@
 #fieldPoints{max-height:40vh;overflow:auto;list-style:none;padding:0;margin:0}
 .field-point .cell.a,.field-point .cell.b{background:transparent;border-color:transparent}
 .field-output .exportbar button{min-width:0}
-.field-note,#fieldStatus{font-size:12px;line-height:1.5;color:var(--muted)}
-#fieldStatus{min-height:18px;margin:8px 2px 0}
+#fieldStatus:empty{display:none}
 .field-import{display:none}
 .tap-mode .field-crosshair,.tap-mode #fieldAdd{display:none}
 .coordinate-grid{pointer-events:none}

@@ -91,7 +91,10 @@
   .broad-name{color:#4c5a64;font:600 11px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     text-align:center;white-space:normal;pointer-events:none;
     text-shadow:0 1px 2px #fff,0 -1px 2px #fff,1px 0 2px #fff,-1px 0 2px #fff}
-  .area-note{border-left:2px solid var(--warn);padding-left:8px;margin:8px 0}
+  /* Two kinds of text under a control, the same on every tab: a hint (.pastehint)
+     says how to use it; a note (.area-note) flags something about the result. */
+  .area-note{border-left:2px solid var(--warn);padding:1px 0 1px 8px;margin:8px 2px;font-size:11px;line-height:1.45;color:var(--muted)}
+  .area-note[hidden]{display:none}
   .route-distance-control{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 10px;margin-top:6px;font-size:11px;color:var(--muted)}
   .route-distance-control label{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
   #routeDistance,#fieldDistance,#pointDistance{margin:0;font-size:11px;color:var(--muted);text-align:right}
@@ -105,7 +108,7 @@
   .map-button a.busy svg{animation:locatePulse 1s ease-in-out infinite}
   @keyframes locatePulse{50%{opacity:.35}}
   .detect{font-size:11px;color:var(--muted);padding:3px 8px 6px;min-height:6px}
-  .detect.warn{color:var(--warn)} .detect.err{color:var(--danger)}
+  .detect.warn{color:var(--muted);border-left:2px solid var(--warn);padding-left:8px;margin:4px 2px} .detect.err{color:var(--danger)}
   .pastehint{font-size:11px;color:var(--muted);line-height:1.45;margin:-2px 2px 8px}
 
   .convert{min-height:46px;padding:0 22px;border-radius:10px;border:none;background:var(--accent);color:var(--accent-ink);font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 1px 2px rgba(37,99,235,.25)}
@@ -206,9 +209,8 @@
   .preset-body{display:none;padding:12px 14px}
   .preset.open .preset-body{display:block}
   .basis{font-size:12px;color:var(--text);margin-bottom:6px;line-height:1.5}
-  #countryGridOverlay .m-actions,.maps-parts{flex-direction:column}
+  .maps-parts{flex-direction:column}
   .maps-parts button{flex:auto;padding:10px 14px}
-  #countryGridOverlay .m-actions button{flex:auto;padding:10px 14px}
   .datum-info{font-size:12px;line-height:1.5}
   .datum-info p{margin:8px 0}
   .datum-info summary{cursor:pointer;font-weight:700}
@@ -322,12 +324,13 @@
  </div><aside class="field-output side">
  <div class="lbl">Output <span id="fieldTotal" class="lbl-count">0 points</span></div>
  <select class="sys" id="fieldFormat" aria-label="Output grid"><option value="mgrs">Global MGRS</option><option value="wgs84">Coordinates</option><option value="sg">Singapore MGR</option><option value="brunei">Brunei MGR</option><option value="taiwan">Taiwan MGR</option><option value="thailand">Thailand MGR</option><option value="australia">Australia MGR</option></select>
+ <div class="pastehint" id="fieldHint"></div>
  <input class="field-import" id="fieldFile" type="file" accept=".gpx,application/gpx+xml">
  <div class="tbl"><div class="thead"><span>#</span><span id="fieldEastHead">Easting</span><span id="fieldNorthHead">Northing</span><span>Name</span><span></span></div><ol id="fieldPoints"></ol></div>
  <div class="row-actions"><button id="fieldImport" class="select-map" type="button">Import GPX</button><span class="history"><button class="histbtn danger" id="fieldClear" type="button" title="Clear all points" aria-label="Clear all points" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button><button class="histbtn" id="fieldUndo" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-5 5 5 5M4 10h10a6 6 0 0 1 6 6v3"/></svg></button><button class="histbtn" id="fieldRedo" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 5 5-5 5M20 10H10a6 6 0 0 0-6 6v3"/></svg></button></span></div>
  <div class="route-distance-control"><label><input type="checkbox" id="fieldRoute"> Connect points in order</label><p id="fieldDistance" aria-live="polite"></p></div>
  <div class="exportbar"><button id="fieldConvert">Send to converter</button><button id="fieldExport">Download GPX</button><button id="fieldCopy">Copy</button></div>
- <p class="field-note area-note" id="fieldAreaNote" role="status" hidden></p><p id="fieldStatus" role="status"></p>
+ <p class="area-note" id="fieldAreaNote" role="status" hidden></p><p class="detect err" id="fieldStatus" role="status"></p>
  </aside></div></section>
     <!-- SETTINGS -->
     <section class="view" id="view-set"></section>
@@ -389,9 +392,6 @@
 
   <div class="overlay" id="boundaryOverlay" role="dialog" aria-modal="true" aria-labelledby="boundaryTitle">
     <div class="modal"><div class="dialog-heading"><h3 id="boundaryTitle">Points cross a grid boundary</h3><button id="boundaryClose" class="dialog-close" aria-label="Close boundary notice">×</button></div><p id="boundaryDetail"></p><div class="m-actions"><button id="boundaryContinue" class="primary">Continue</button></div></div>
-  </div>
-  <div class="overlay" id="countryGridOverlay" role="dialog" aria-modal="true" aria-labelledby="countryGridTitle" aria-describedby="countryGridDetail">
-    <div class="modal"><div class="dialog-heading"><h3 id="countryGridTitle">A country preset is available</h3><button id="countryGridClose" class="dialog-close" aria-label="Cancel conversion">×</button></div><p id="countryGridDetail"></p><div class="m-actions"><button id="countryGridSwitch" class="primary"></button><button id="countryGridContinue"></button></div></div>
   </div>
   <div class="overlay" id="fieldGridOverlay" role="dialog" aria-modal="true" aria-labelledby="fieldGridTitle" aria-describedby="fieldGridDetail">
     <div class="modal"><div class="dialog-heading"><h3 id="fieldGridTitle">This point is outside the grid</h3><button id="fieldGridCancel" class="dialog-close" aria-label="Don't add this point">×</button></div><p id="fieldGridDetail" class="dialog-detail"></p><div class="m-actions"><button id="fieldGridGlobal" class="primary">Use Global MGRS</button><button id="fieldGridCoordinates">Use Coordinates</button></div></div>
@@ -1830,30 +1830,6 @@
       }catch(_){}
     }
     // Acknowledgment lasts for this session and country, never silently for every country.
-    const countryGridAccepted=new Set();
-    let countryGridReply;
-    function reviewCountryGrid(id,reply){
-      if(countryGridReply)return;
-      const overlay=$("#countryGridOverlay"),focus=document.activeElement;
-      const others=[...document.querySelectorAll("body > header,body > main,.overlay.open")].filter(el=>el!==overlay).map(el=>[el,el.inert]);
-      for(const [el] of others)el.inert=true;
-      const preset=PRESETS[id].name,country=preset.replace(" MGR",""),format=state.to==="globalutm"?"UTM":"MGRS";
-      $("#countryGridDetail").textContent="These coordinates are in "+country+", which has a dedicated "+preset+" preset. Use that preset for the country’s military map references. Continue with global "+format+" only if that is the format you need; its references may not match the country preset.";
-      $("#countryGridSwitch").textContent="Change to "+preset;
-      $("#countryGridContinue").textContent="I know what I’m doing — use "+format;
-      countryGridReply=choice=>{overlay.classList.remove("open");for(const [el,inert] of others)el.inert=inert;countryGridReply=null;focus?.focus();reply(choice);};
-      overlay.classList.add("open");$("#countryGridSwitch").focus();
-    }
-    $("#countryGridSwitch").addEventListener("click",()=>countryGridReply?.("country"));
-    $("#countryGridContinue").addEventListener("click",()=>countryGridReply?.("global"));
-    $("#countryGridClose").addEventListener("click",()=>countryGridReply?.("cancel"));
-    $("#countryGridOverlay").addEventListener("keydown",e=>{
-      if(e.key==="Escape"){e.preventDefault();e.stopPropagation();countryGridReply?.("cancel");}
-      if(e.key==="Tab"){
-        const buttons=[...$("#countryGridOverlay").querySelectorAll("button")],index=buttons.indexOf(document.activeElement);
-        e.preventDefault();buttons[(index+(e.shiftKey?-1:1)+buttons.length)%buttons.length].focus();
-      }
-    });
     const boundaryAccepted=new Set();
     let boundaryReply;
     function reviewBoundary(changes,reply){
@@ -1908,6 +1884,12 @@
       if(!numbers.length)return "";
       const which=numbers.length===points.length?(numbers.length>1?"These points are":"This point is"):(numbers.length>1?"Points "+numbers.join(", ")+" are":"Point "+numbers[0]+" is");
       return which+" outside "+PRESETS[id].name+", so "+(numbers.length>1?"their":"its")+" coordinates are shown instead.";
+    }
+    // A global grid chosen by hand where a country grid covers every point is kept,
+    // and said once, in the same words on both tabs.
+    function otherGridNotice(home,current){
+      const name=id=>id==="wgs84"?"Coordinates":GLOBAL_FORMATS.includes(id)?"Global "+(id==="globalutm"?"UTM":"MGRS"):PRESETS[id].name;
+      return PRESETS[home].name.replace(" MGR","")+" has its own grid, "+PRESETS[home].name+". These points are written in "+name(current)+", as chosen.";
     }
     function areaNotice(id,area,outside,total){
       if(!outside.length)return "";
@@ -2416,28 +2398,23 @@
     }
 
     function renderTo(){
+      // Points in a country with its own grid are written in that grid. Only a grid
+      // chosen by hand overrides it, and then the choice is kept and flagged.
+      const home=state.points?.length&&!COUNTRY_PRESETS.includes(state.from)&&GLOBAL_FORMATS.includes(state.to)?enabledGrid(state.points):null;
+      if(home&&!state.explicitOutput){
+        state.to=home;
+        const square=suggestedSquare(home,state.points,state.settings);
+        if(square)assignSquare(home,...square);
+        autoArea(state.points);
+      }
       syncFormat("to");
       const cols=colsFor(state.to,state.settings);
       let prefixed=GLOBAL_FORMATS.includes(state.to);
       $("#toName").textContent=PRESETS[state.to].name;
       const rowsEl=$("#toRows"); rowsEl.innerHTML="";
       let pts=state.points||[];
-      $("#toOutside").textContent=outsideNotice(state.to,pts);$("#toOutside").hidden=!$("#toOutside").textContent;
-      const countryPreset=pts.length&&!COUNTRY_PRESETS.includes(state.from)&&GLOBAL_FORMATS.includes(state.to)?suggestedGrid(pts):null;
-      if(countryPreset&&!countryGridAccepted.has(countryPreset)&&!countryGridReply){
-        const savedPoints=pts;state.points=[];pts=[];
-        reviewCountryGrid(countryPreset,choice=>{
-          if(choice==="global")countryGridAccepted.add(countryPreset);
-          if(choice==="country"){
-            state.disabledPresets=(state.disabledPresets||[]).filter(id=>id!==countryPreset);
-            state.to=countryPreset;state.explicitOutput=true;
-            const square=suggestedSquare(countryPreset,savedPoints,state.settings);
-            if(square)assignSquare(countryPreset,...square);
-          }
-          if(choice!=="cancel"){state.points=savedPoints;autoArea(savedPoints);}
-          updatePairState();renderTo();save();
-        });
-      }
+      const notes=[outsideNotice(state.to,pts),home&&home!==state.to?otherGridNotice(home,state.to):""].filter(Boolean);
+      $("#toOutside").textContent=notes.join(" ");$("#toOutside").hidden=!notes.length;
       if(pts.length){
         let changes=[];
         try{changes=[...new Set([state.from,state.to])].filter(id=>id!=="auto").map(id=>gridBoundary(pts.filter(p=>!outsidePreset(id,p)),id)).filter(Boolean);}
@@ -2734,7 +2711,6 @@
       // same point never reads one way on one tab and another way on the next.
       if(output&&PRESETS[output]){state.to=output;state.explicitOutput=true;}
       if(points.some(p=>p.lat < -80 || p.lat >84))state.to="wgs84";
-      for(const id of COUNTRY_PRESETS)countryGridAccepted.add(id);
       $("#measureRoute").checked=connected;state.measureRoute=connected;
       renderFrom();updatePairState();renderTo();save();switchTab("conv");
     }
@@ -2758,6 +2734,7 @@
     });
     const field=globalThis.createFieldMap?.({helper:MAP_HELPER,presets:["mgrs","wgs84",...COUNTRY_PRESETS],projection:projectionFor,
       countryPresets:COUNTRY_PRESETS,presetName:id=>PRESETS[id].name,
+      homeGrid:points=>points.length?enabledGrid(points):null,otherGridNotice,
       localGrid:(lat,lon)=>COUNTRY_PRESETS.find(id=>presetLikely(id,lat,lon))||null,
       presetHolds:(id,lat,lon)=>{try{return presetContains(id,lat,lon);}catch(_){return false;}},
       // The picker is the converter's output by another route, so it writes references

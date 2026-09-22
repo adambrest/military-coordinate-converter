@@ -44,6 +44,7 @@ await page.waitForFunction(()=>[...document.querySelectorAll('#fieldMap .coordin
 // A grid chosen by hand is kept, and once a point is down the grid is fixed.
 await page.click('#fieldAdd');
 assert.equal(await page.locator('#fieldFormat').inputValue(),'mgrs');
+assert.match(await page.locator('#fieldAreaNote').innerText(),/Singapore has its own grid, Singapore MGR/,'a hand-picked global grid is flagged as in the converter');
 await page.evaluate(()=>fieldTestMap.setView([4.9,114.94],13,{animate:false}));
 assert.equal(await page.locator('#fieldFormat').inputValue(),'mgrs','moving to another country leaves a started list alone');
 assert.equal(await page.locator('#fieldFormat option[value="brunei"]').isDisabled(),true,'a grid that cannot hold the points cannot be chosen');
@@ -160,7 +161,7 @@ await page.click('#fieldClear');assert.equal(await page.locator('#fieldPoints li
 await page.reload();await page.click('#tab-field');assert.equal(await page.locator('#fieldPoints li').count(),2);await page.click('#fieldClear');
 await page.setInputFiles('#fieldFile',{name:'segments.gpx',mimeType:'application/gpx+xml',buffer:Buffer.from(gpx)});await page.waitForFunction(()=>document.getElementById('fieldTotal').textContent==='4 points');assert.match(await page.locator('#fieldDistance').innerText(),/3\.14 km/);
 await page.click('#fieldConvert');assert.match(await page.locator('#routeDistance').innerText(),/3\.14 km/);assert.equal(await page.locator('#toRows .trow').count(),4);
-await page.reload();await page.click('#tab-conv');await page.click('#convertBtn');if(await page.locator('#countryGridContinue').isVisible())await page.click('#countryGridContinue');assert.match(await page.locator('#routeDistance').innerText(),/3\.14 km/,'segment breaks survive converter reload');
+await page.reload();await page.click('#tab-conv');await page.click('#convertBtn');assert.match(await page.locator('#routeDistance').innerText(),/3\.14 km/,'segment breaks survive converter reload');
 await page.click('#tab-field');await page.selectOption('#fieldFormat','wgs84');assert.match(await page.locator('#fieldPoints .a').first().inputValue(),/1\.350000/);
 await page.setInputFiles('#fieldFile',{name:'bad.gpx',mimeType:'application/gpx+xml',buffer:Buffer.from('<gpx><wpt lat="999" lon="0"/></gpx>')});await page.waitForFunction(()=>document.getElementById('fieldStatus').textContent.includes('Invalid coordinate'));assert.equal(await page.locator('#fieldPoints li').count(),4);
 await page.evaluate(()=>{navigator.clipboard.writeText=async text=>{window.copiedPoints=text;};});await page.click('#fieldCopy');const copied=(await page.evaluate(()=>window.copiedPoints)).split('\n');assert.equal(copied.length,4);assert.equal(copied[0].split('\t').length,2,'unnamed points copy only coordinate columns, just like converter');

@@ -1,7 +1,7 @@
 /* Independent map-first point collection. Uses the existing local coordinate engine. */
 (function(root){
 'use strict';
-root.createFieldMap=function({formatter,projection,presets,onConvert,helper,countryPresets=[],presetName=id=>id,localGrid=()=>null,presetHolds=()=>true}){
+root.createFieldMap=function({formatter,projection,presets,onConvert,helper,countryPresets=[],presetName=id=>id,localGrid=()=>null,presetHolds=()=>true,homeGrid=()=>null,otherGridNotice=()=>''}){
  const $=id=>document.getElementById(id),key='mike-golf-romeo-field-v1';
  // `preferred` is a global grid someone chose by hand; `area` is the country grid the
  // view was last over, so a grid only changes on the way into or out of a country.
@@ -25,8 +25,14 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   $('fieldFormat').value=system;$('fieldRoute').checked=connected;
   $('fieldTotal').textContent=points.length?points.length+(points.length===1?' point':' points'):'';
   $('fieldDistance').textContent=connected?RouteTools.summary(points):'';
-  $('fieldAreaNote').textContent=writer().notice||'';
-  $('fieldAreaNote').hidden=!writer().notice;
+  // A global grid picked by hand where a country grid would serve is kept, and said
+  // in the converter's words. Before any point, the ground under the crosshair decides.
+  const centre=map&&map.getCenter();
+  const home=points.length?homeGrid(points):centre?localAt(centre.lat,centre.lng):null;
+  const notes=[writer().notice,home&&system==='mgrs'&&home!==system?otherGridNotice(home,system):''].filter(Boolean);
+  $('fieldAreaNote').textContent=notes.join(' ');
+  $('fieldAreaNote').hidden=!notes.length;
+  $('fieldHint').textContent=$('fieldTap').checked?'Tap the map to add a point.':'Move the map to put the crosshair on a point, then press Add point.';
   $('fieldReadoutGrid').textContent=gridName(system)+(system==='mgrs'&&writer().area?' · '+writer().area:'');
   const list=$('fieldPoints');list.replaceChildren();
   const headings=writer().columns||['Easting','Northing'];
@@ -91,7 +97,7 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
  function moved(){
   if(!map)return;
   const p=map.getCenter();
-  if(enterArea(localAt(p.lat,p.lng)))refresh();else{save();offerGrids();}
+  if(enterArea(localAt(p.lat,p.lng)))refresh();else{save();offerGrids();if(!points.length)render();}
  }
 
  // ---- adding points, with the grid held once the first is down ----
@@ -216,7 +222,7 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
  };
  $('fieldRoute').onchange=()=>{remember();connected=$('fieldRoute').checked;if(connected&&points.every(p=>p.breakBefore))points.forEach((p,i)=>p.breakBefore=i===0);drawRoute();$('fieldDistance').textContent=connected?RouteTools.summary(points):'';save();};
  $('fieldGrid').onchange=()=>grid?.refresh();
- $('fieldTap').onchange=()=>{$('view-field').classList.toggle('tap-mode',$('fieldTap').checked);target?.update();};
+ $('fieldTap').onchange=()=>{$('view-field').classList.toggle('tap-mode',$('fieldTap').checked);render();target?.update();};
  // With the list empty again, the grid is free to follow the map once more.
  const unlocked=()=>{if(!points.length&&map){area=undefined;moved();}};
  $('fieldUndo').onclick=()=>{const old=undo.pop();if(old){redo.push(snapshot());restore(old);unlocked();}};

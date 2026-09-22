@@ -247,19 +247,20 @@ test('country change revalidates immediately and names points outside the grid',
   const a=app();a.paste('1.352083,103.819836');assert.equal(a.$('#toSys').value,'sg');assert.equal(a.$('#copyBtn').disabled,false);
   a.change('#toSys','taiwan');assert.equal(a.$('#toRows .a').value,'Outside Taiwan MGR');assert.equal(a.$('#toRows .b').value,'1.35208, 103.81984');assert.equal(a.$('#toOutside').hidden,false);a.dom.window.close();
 });
-test('explicit global output asks about the country preset and allows an informed override',()=>{
+test('a global grid chosen by hand where a country grid fits is kept and flagged',()=>{
   const a=app();
   try{
-    a.paste('1.352083,103.819836');a.change('#toSys','mgrs');
-    assert.equal(a.$('#countryGridOverlay').classList.contains('open'),true);
-    assert.equal(a.$('#countryGridSwitch').textContent,'Change to Singapore MGR');
-    assert.equal(a.$('#copyBtn').disabled,true);
-    a.$('#countryGridContinue').click();assert.equal(a.$('#copyBtn').disabled,false);
+    a.paste('1.352083,103.819836');assert.equal(a.state().to,'sg','points in Singapore are written in Singapore MGR');
+    assert.equal(a.$('#toOutside').hidden,true);
+    a.change('#toSys','mgrs');
+    assert.equal(a.state().to,'mgrs');assert.equal(a.$('#copyBtn').disabled,false);
     assert.match(a.$('#toRows .prefix').value,/^48N/);
-    a.paste('1.36,103.83');assert.equal(a.$('#toSys').value,'mgrs');
-    assert.equal(a.$('#countryGridOverlay').classList.contains('open'),false);
+    assert.match(a.$('#toOutside').textContent,/Singapore has its own grid, Singapore MGR\. These points are written in Global MGRS, as chosen\./);
+    a.paste('1.36,103.83');assert.equal(a.$('#toSys').value,'mgrs');assert.equal(a.$('#toOutside').hidden,false);
+    assert.equal(a.w.document.querySelector('#countryGridOverlay'),null,'no dialog is raised');
   }finally{a.dom.window.close();}
 });
+
 test('cross-AO batch forces prefixes and red warning even after format toggles',()=>{
   const a=app();a.paste('48.8582,2.2945');
   const s=a.state();s.settings.mgrs.sgOmit=true;s.militaryVersion=3;s.omitVersion=2;
@@ -1642,9 +1643,8 @@ test('auto-detect map output respects disabled country grids and refreshes the g
     a.$('#selectMap').click();a.w.pointPickerHooks.onConfirm({lat:1.35,lon:103.82},{zoom:15,layer:'street'});
     assert.equal(a.state().to,'mgrs');
     assert.equal(a.state().settings.mgrs.ao,c.GlobalGrid.parts(1.35,103.82,0).prefix);
-    assert.equal(a.$('#countryGridOverlay').classList.contains('open'),true);
-    a.$('#countryGridContinue').click();
     assert.equal(a.$('#copyBtn').disabled,false);
+    assert.equal(a.$('#toOutside').hidden,true,'a grid turned off in Settings is not pressed on anyone');
   }finally{a.dom.window.close();}
 });
 
@@ -1901,75 +1901,61 @@ test('map points outside global MGRS latitude coverage remain coordinates',()=>{
   }finally{a.dom.window.close();}
 });
 
-test('global military output offers each matching country preset and switches without losing points',()=>{
+test('each country grid is picked for its points, and a hand-picked global grid is flagged',()=>{
   for(const [id,lat,lon] of [['sg',1.35,103.82],['taiwan',24.86965,121.04745],['thailand',14.00287,99.24459],['australia',-22.71,150.409],['brunei',4.7,114.7]]){
     const a=app();
     try{
-      a.paste(`${lat},${lon}`);a.change('#toSys','mgrs');
-      assert.equal(a.$('#countryGridOverlay').classList.contains('open'),true,id);
-      assert.equal(a.$('#copyBtn').disabled,true);assert.equal(a.$('#gpxBtn').disabled,true);
-      assert.equal(a.$('#countryGridSwitch').textContent,'Change to '+a.$(`#toSys option[value="${id}"]`).textContent);
-      assert.equal(a.w.document.activeElement,a.$('#countryGridSwitch'));
+      a.paste(`${lat},${lon}`);assert.equal(a.state().to,id,id);
       const rows=a.state().rows;
-      a.$('#countryGridSwitch').click();
+      a.change('#toSys','mgrs');
+      assert.equal(a.state().to,'mgrs');assert.equal(a.$('#copyBtn').disabled,false,id);
+      assert.ok(a.$('#toOutside').textContent.includes(a.$(`#toSys option[value="${id}"]`).textContent),id);
+      a.change('#toSys',id);
       assert.equal(a.state().to,id);assert.deepEqual(a.state().rows,rows);
-      assert.equal(a.state().points.length,1);assert.equal(a.$('#copyBtn').disabled,false,id);
-      assert.equal(a.$('#countryGridOverlay').classList.contains('open'),false);
-      assert.equal(!!a.$('main').inert,false);
+      assert.equal(a.state().points.length,1);assert.equal(a.$('#toOutside').hidden,true,id);
     }finally{a.dom.window.close();}
   }
 });
 
-test('global acknowledgment is country-specific and UTM remains available',()=>{
+test('the flag names the chosen global format and follows the points',()=>{
   const a=app();
   try{
     a.change('#toSys','mgrs');a.change('#toFormat','globalutm');a.paste('1.35,103.82');
-    assert.match(a.$('#countryGridContinue').textContent,/use UTM/);
-    a.$('#countryGridContinue').click();
     assert.equal(a.state().to,'globalutm');assert.equal(a.$('#copyBtn').disabled,false);
-    a.$('#convertBtn').click();assert.equal(a.$('#countryGridOverlay').classList.contains('open'),false);
-    a.paste('4.7,114.7');assert.match(a.$('#countryGridSwitch').textContent,/Brunei MGR/);
-    assert.equal(a.$('#countryGridOverlay').classList.contains('open'),true);
+    assert.match(a.$('#toOutside').textContent,/written in Global UTM/);
+    a.paste('4.7,114.7');assert.match(a.$('#toOutside').textContent,/Brunei MGR/);
   }finally{a.dom.window.close();}
 });
 
-test('canceling the country preset notice leaves exports disabled and Convert asks again',()=>{
+test('after a reload the points go back to their country grid until another is chosen',()=>{
   const a=app();
   try{
     a.paste('1.35,103.82');a.change('#toSys','mgrs');
-    a.$('#countryGridOverlay').dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
-    assert.equal(a.$('#countryGridOverlay').classList.contains('open'),false);
-    assert.equal(a.$('#copyBtn').disabled,true);assert.equal(!!a.$('main').inert,false);
-    a.$('#convertBtn').click();assert.equal(a.$('#countryGridOverlay').classList.contains('open'),true);
-    a.$('#countryGridContinue').click();assert.equal(a.$('#copyBtn').disabled,false);
-    const saved=a.state();
-    const reopened=app(saved);
-    try{reopened.$('#convertBtn').click();reopened.change('#toSys','mgrs');assert.equal(reopened.$('#countryGridOverlay').classList.contains('open'),true);}finally{reopened.dom.window.close();}
+    const reopened=app(a.state());
+    try{
+      reopened.$('#convertBtn').click();assert.notEqual(reopened.state().to,'mgrs');assert.equal(reopened.$('#toOutside').hidden,true);
+      reopened.change('#toSys','mgrs');assert.equal(reopened.state().to,'mgrs');assert.equal(reopened.$('#toOutside').hidden,false);
+    }finally{reopened.dom.window.close();}
   }finally{a.dom.window.close();}
 });
 
-test('country preset notice can enable a disabled preset and is absent outside preset coverage',()=>{
+test('a disabled country grid is neither picked nor flagged',()=>{
   const c=core(),settings=vm.runInContext('defaultSettings()',c);
   const a=app({settings,disabledPresets:['sg'],rows:[['','','']]});
   try{
-    a.paste('1.35,103.82');assert.equal(a.$('#countryGridOverlay').classList.contains('open'),true);
-    a.$('#countryGridSwitch').click();assert.equal(a.state().to,'sg');assert.ok(!a.state().disabledPresets.includes('sg'));
+    a.paste('1.35,103.82');assert.notEqual(a.state().to,'sg');assert.equal(a.$('#toOutside').hidden,true);
     assert.equal(a.$('#copyBtn').disabled,false);
     a.paste('48.8582,2.2945');a.change('#toSys','mgrs');
-    assert.equal(a.$('#countryGridOverlay').classList.contains('open'),false);
-    assert.equal(a.$('#copyBtn').disabled,false);
+    assert.equal(a.$('#toOutside').hidden,true);assert.equal(a.$('#copyBtn').disabled,false);
   }finally{a.dom.window.close();}
 });
 
-
-test('UTM input also offers the country preset when switching to global MGRS',()=>{
+test('UTM input in Singapore is written in Singapore MGR unless another grid is chosen',()=>{
   const a=app();
   try{
     a.paste('48N 368831.814 143329.716');assert.equal(a.state().from,'globalutm');
-    a.change('#toSys','mgrs');
-    assert.equal(a.$('#countryGridOverlay').classList.contains('open'),true);
-    assert.equal(a.$('#countryGridSwitch').textContent,'Change to Singapore MGR');
-    a.$('#countryGridSwitch').click();assert.equal(a.state().to,'sg');
+    a.change('#toSys','mgrs');assert.equal(a.state().to,'mgrs');assert.match(a.$('#toOutside').textContent,/Singapore MGR/);
+    a.change('#toSys','sg');assert.equal(a.state().to,'sg');assert.equal(a.$('#toOutside').hidden,true);
     assert.equal(a.$('#copyBtn').disabled,false);
   }finally{a.dom.window.close();}
 });
@@ -2013,9 +1999,9 @@ test('only actual active input setting changes require conversion again',async()
 });
 
 /* ---- v2 reference areas ---- */
-test('the app reports version 3.8.0',()=>{
+test('the app reports version 3.8.1',()=>{
   const a=app();
-  try{assert.equal(a.$('#appVersion').textContent,'v3.8.0');assert.match(read('version.js'),/APP_VERSION = "3\.8\.0"/);
+  try{assert.equal(a.$('#appVersion').textContent,'v3.8.1');assert.match(read('version.js'),/APP_VERSION = "3\.8\.1"/);
     const logo=a.$('header h1 .logo');assert.ok(logo,'the header shows the app icon');assert.equal(logo.getAttribute('src'),'icons/logo-64.png');assert.equal(logo.getAttribute('alt'),'');}
   finally{a.dom.window.close();}
 });
@@ -2025,7 +2011,6 @@ test('the output reference area follows point 1 and cannot be changed',()=>{
   try{
     a.paste('1.3521, 103.8198');
     a.change('#toSys','mgrs');
-    a.$('#countryGridContinue').click();
     assert.equal(a.state().to,'mgrs');
     assert.equal(a.state().settings.mgrs.ao,'48NUG','a saved area survived conversion');
     assert.equal(a.$('#regionChipTo').textContent,'Reference area: 48N UG');
@@ -2041,9 +2026,7 @@ test('output spanning reference areas lists them and shows which points each hol
   try{
     a.change('#fromSys','wgs84');
     a.paste('1.3521, 103.8198\n1.35, 104.9');
-    if(a.$('#countryGridOverlay').classList.contains('open'))a.$('#countryGridContinue').click();
     a.change('#toSys','mgrs');
-    if(a.$('#countryGridOverlay').classList.contains('open'))a.$('#countryGridContinue').click();
     if(a.$('#boundaryOverlay').classList.contains('open'))a.$('#boundaryContinue').click();
     assert.equal(a.state().to,'mgrs');
     const links=[...a.$('#regionChipTo').querySelectorAll('.area-link')];
@@ -2064,9 +2047,7 @@ test('the area view draws each area and its numbered points without offering a c
   try{
     a.change('#fromSys','wgs84');
     a.paste('1.3521, 103.8198\n1.35, 104.9');
-    if(a.$('#countryGridOverlay').classList.contains('open'))a.$('#countryGridContinue').click();
     a.change('#toSys','mgrs');
-    if(a.$('#countryGridOverlay').classList.contains('open'))a.$('#countryGridContinue').click();
     if(a.$('#boundaryOverlay').classList.contains('open'))a.$('#boundaryContinue').click();
     a.$('#regionChipTo .area-link').click();
     assert.ok(a.$('#aoOverlay').classList.contains('open'));
@@ -2218,7 +2199,6 @@ test('omitting the MGRS prefix drops the prefix column where every row is in the
   try{
     a.change('#fromSys','wgs84');a.paste('1.3521, 103.8198');
     a.change('#toSys','mgrs');
-    if(a.$('#countryGridOverlay').classList.contains('open'))a.$('#countryGridContinue').click();
     assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
     assert.equal(a.$('#toRows .prefix'),null,'the output kept an empty prefix column');
     assert.doesNotMatch(a.$('#toHead').textContent,/Prefix/);
@@ -2441,5 +2421,6 @@ test('grid appears at 1 km scale and refines to 100 m closest in',()=>{
   assert.equal(steps(13),'{"major":1000,"minor":0}');
   assert.equal(steps(16),'{"major":1000,"minor":100}');
   assert.equal(steps(18),'{"major":100,"minor":0}');
-  assert.ok(degreeStep(0,18)<degreeStep(0,13),'finer degree lines closer in');
+  assert.equal(degreeStep(0,13),null,'degree lines wait until they are about a kilometre apart');
+  assert.ok(degreeStep(0,18)<degreeStep(0,15),'finer degree lines closer in');
 });
