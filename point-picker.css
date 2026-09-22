@@ -38,3 +38,13 @@
 .map-region{max-width:100%;min-width:0;padding:7px;border:1px solid var(--line);border-radius:7px;background:var(--panel2);color:var(--text);font:inherit;font-size:12px}
 .dialog-heading{display:flex;justify-content:space-between;align-items:start;gap:12px}.dialog-heading h3{margin-top:0}.dialog-close{border:0;background:var(--panel2);border-radius:8px;font-size:24px;width:38px;height:38px;flex-shrink:0;cursor:pointer}
 #boundaryOverlay{z-index:2100}#boundaryDetail{font-size:14px;line-height:1.5}
+
+.point-toolbar label{font-size:12px;display:inline-flex;align-items:center;gap:4px}
+.point-modal.tap-mode .point-crosshair{display:none}
+.point-modal.tap-mode .point-actions{visibility:hidden;pointer-events:none}
+.overlay.viewing .point-tap-control{display:none}
+.point-footer{min-height:118px;box-sizing:border-box}
+#pointCoordinate{min-height:19px;font-family:ui-monospace,Menlo,monospace}
+#pointFormatPreview,#pointAdded,#pointDistance{min-height:16px}
+
+#pointDistance{height:30px;line-height:15px}

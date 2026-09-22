@@ -124,7 +124,8 @@ const server=http.createServer((req,res)=>{
    for(let step=1;step<=3;step++){
     const zoomAnchor=await page.evaluate(({x,y})=>{const r=testMap.getContainer().getBoundingClientRect();return testMap.containerPointToLatLng([x-r.left,y-r.top]);},{x,y});
     await page.mouse.dblclick(x,y,{delay:30});
-    assert.equal(await page.evaluate(()=>testMap.getZoom()),12+step,`${name}: repeated double click must apply immediately`);
+    await page.waitForFunction(z=>testMap.getZoom()===z&&!testMap._animatingZoom,12+step);
+    assert.equal(await page.evaluate(()=>testMap.getZoom()),12+step,`${name}: repeated double click must animate without waiting for tiles`);
     const zoomDrift=await page.evaluate(({zoomAnchor,x,y})=>{const r=testMap.getContainer().getBoundingClientRect();return testMap.latLngToContainerPoint(zoomAnchor).distanceTo(L.point(x-r.left,y-r.top));},{zoomAnchor,x,y});
     assert.ok(zoomDrift<3,`${name}: double click anchor drift ${zoomDrift}`);
    }

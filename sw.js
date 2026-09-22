@@ -9,7 +9,7 @@ const TILE_HOSTS = ["tile.openstreetmap.org","services.arcgisonline.com"];
 const TILE_DOMAINS = ["tile.opentopomap.org"];
 const isTileHost = host => TILE_HOSTS.includes(host) || TILE_DOMAINS.some(d => host === d || host.endsWith("." + d));
 const TILE_LIMIT = 1400;
-const ASSETS = ["./","./index.html","./route-tools.js","./field-map.js","./field-map.css","./version.js","./proj4.js","./map-context.js","./grid-core.js","./map-support.js","./map-picker.js","./map-picker.css","./point-picker.js","./point-picker.css","./vendor/countries.geojson","./vendor/shoalwater.geojson","./vendor/mgrs.js","./vendor/leaflet.js","./vendor/leaflet.css","./vendor/land.geojson","./manifest.webmanifest","./icons/favicon-32.png","./icons/logo-64.png"];
+const ASSETS = ["./","./index.html","./route-tools.js","./field-map.js","./field-map.css","./version.js","./proj4.js","./map-context.js","./grid-core.js","./map-support.js","./map-grid.js","./map-picker.js","./map-picker.css","./point-picker.js","./point-picker.css","./vendor/countries.geojson","./vendor/shoalwater.geojson","./vendor/mgrs.js","./vendor/leaflet.js","./vendor/leaflet.css","./vendor/land.geojson","./manifest.webmanifest","./icons/favicon-32.png","./icons/logo-64.png"];
 self.addEventListener("install", e => e.waitUntil(
   caches.open(CACHE)
     .then(c=>c.addAll(ASSETS.map(path=>new Request(new URL(path,self.location.href),{cache:"reload"}))))

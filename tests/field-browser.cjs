@@ -21,12 +21,12 @@ assert.equal(await page.locator('#fieldLayer').inputValue(),'street','Street is 
 assert.equal(await page.locator('#fieldLocalGrid').isVisible(),false);
 assert.equal(await page.locator('#fieldGridNote').count(),0,'no grid confirmation under the map');
 // The grid redraws on an animation frame, so wait for the labels instead of guessing a delay.
-await page.waitForFunction(()=>document.querySelectorAll('.km-label').length>0,{},{timeout:15000}).catch(()=>{throw new Error('kilometer labels rendered');});
+await page.waitForFunction(()=>[...document.querySelectorAll('#fieldMap .coordinate-grid-tile')].some(el=>Number(el.dataset.labels)>0),{},{timeout:15000}).catch(()=>{throw new Error('kilometer labels rendered');});
 // Coordinates read in degrees, so their grid is meridians and parallels, not kilometres.
 await page.selectOption('#fieldFormat','wgs84');
-await page.waitForFunction(()=>[...document.querySelectorAll('.km-label')].some(el=>/\u00b0/.test(el.textContent)),{},{timeout:15000}).catch(()=>{throw new Error('latitude/longitude labels rendered');});
+await page.waitForFunction(()=>[...document.querySelectorAll('#fieldMap .coordinate-grid-tile')].some(el=>el.dataset.system==='wgs84'&&Number(el.dataset.labels)>0),{},{timeout:15000}).catch(()=>{throw new Error('latitude/longitude labels rendered');});
 await page.selectOption('#fieldFormat','mgrs');
-await page.waitForFunction(()=>[...document.querySelectorAll('.km-label')].some(el=>/^\d\d$/.test(el.textContent.trim())),{},{timeout:15000}).catch(()=>{throw new Error('kilometre labels returned');});
+await page.waitForFunction(()=>[...document.querySelectorAll('#fieldMap .coordinate-grid-tile')].some(el=>el.dataset.system==='mgrs'&&Number(el.dataset.labels)>0),{},{timeout:15000}).catch(()=>{throw new Error('kilometre labels returned');});
 // With existing points the choice stays put, and a suggestion is offered instead.
 await page.click('#fieldAdd');
 assert.equal(await page.locator('#fieldFormat').inputValue(),'mgrs');
@@ -36,13 +36,15 @@ assert.equal(await page.locator('#fieldFormat').inputValue(),'sg');
 assert.equal(await page.locator('#fieldPoints .nm').getAttribute('placeholder'),'Optional');
 // Double-click a collected point as well as empty ground; neither may swallow zoom.
 await page.check('#fieldTap');
+await page.evaluate(()=>{window.fieldAnimated=false;fieldTestMap.on('zoomanim',()=>{window.fieldAnimated=true;});});
 for(const centered of [true,false]){
  await page.evaluate(()=>fieldTestMap.setView([1.35,103.82],14,{animate:false}));
  const box=await page.locator('#fieldMap').boundingBox(),x=box.x+box.width*(centered?.5:.7),y=box.y+box.height*.5;
  for(let step=1;step<=3;step++){
   const target=await page.evaluate(({x,y})=>{const r=fieldTestMap.getContainer().getBoundingClientRect();return fieldTestMap.containerPointToLatLng([x-r.left,y-r.top]);},{x,y});
   await page.mouse.dblclick(x,y,{delay:30});
-  assert.equal(await page.evaluate(()=>fieldTestMap.getZoom()),14+step,'double click applies immediately, including over a point');
+  await page.waitForFunction(z=>fieldTestMap.getZoom()===z&&!fieldTestMap._animatingZoom,14+step);
+  assert.equal(await page.evaluate(()=>fieldTestMap.getZoom()),14+step,'double click animates, including over a point');
   const drift=await page.evaluate(({x,y,target})=>{const r=fieldTestMap.getContainer().getBoundingClientRect();return fieldTestMap.latLngToContainerPoint(target).distanceTo(L.point(x-r.left,y-r.top));},{x,y,target});
   assert.ok(drift<3,'zoom remains anchored');
  }
@@ -57,6 +59,7 @@ for(const delay of [80,280,380]){
 }
 await page.waitForTimeout(450);
 assert.equal(await page.locator('#fieldPoints .trow').count(),1,'double-click does not add points');
+assert.equal(await page.evaluate(()=>window.fieldAnimated),true,'zoom uses a transition');
 await page.uncheck('#fieldTap');
 await page.click('#fieldClear');
 assert.equal(await page.locator('#fieldFormat').inputValue(),'sg');

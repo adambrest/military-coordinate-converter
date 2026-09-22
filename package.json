@@ -4,7 +4,8 @@
   "scripts": {
     "test": "node --test tests/*.test.cjs",
     "test:browser": "node tests/mobile-browser.cjs",
-    "test:field": "node tests/field-browser.cjs"
+    "test:field": "node tests/field-browser.cjs",
+    "test:controls": "node tests/picker-controls.cjs"
   },
   "devDependencies": {
     "jsdom": "26.1.0",

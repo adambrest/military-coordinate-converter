@@ -1,10 +1,10 @@
 /* Crosshair point selection. Only visible street/satellite tiles are requested. */
 (function(root){
   "use strict";
-  root.createPointPicker=function({preview,onConfirm,onViewChange}){
+  root.createPointPicker=function({preview,onConfirm,onViewChange,projection,contains,capture,retract}){
     const $=id=>document.getElementById(id),overlay=$("pointOverlay");
     const STREET_ZOOM=7;
-    let map,countries,labels,markers,streets,topo,satellite,options={},returnFocus,frame,stableCenter,limitCenter,pointAutoZoom;
+    let map,countries,labels,markers,streets,topo,satellite,options={},returnFocus,frame,stableCenter,limitCenter,pointAutoZoom,grid,target;
     // Beyond the imagery a provider actually holds for an area the tiles are only
     // enlarged, so stopping there keeps the crosshair from implying detail that
     // is not in the picture.
@@ -83,7 +83,7 @@
       if(!map||!overlay.classList.contains("open"))return;
       // Viewing results has no crosshair, so there is no candidate point to preview.
       if(options.readOnly){$("pointCoordinate").textContent="";$("pointFormatPreview").textContent="";$("pointFormatPreview").classList.remove("invalid");$("pointConfirm").disabled=true;$("pointContinue").disabled=true;return;}
-      const p=center(),result=preview(p,options);
+      const p=target?target.current():center(),result=preview(p,options);
       $("pointCoordinate").textContent=result.error?"":result.cells.join(" ");
       $("pointFormatPreview").textContent=result.error||result.area||"";
       $("pointFormatPreview").classList.toggle("invalid",!!result.error);
@@ -137,7 +137,15 @@
       }).catch(()=>{$("pointNetwork").hidden=false;$("pointNetwork").textContent="Country overview unavailable. Zoom in for street detail or choose Satellite.";});
       map.on("move zoom",()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(update);});
       map.on("moveend zoomend",()=>{const p=map.getCenter();stableCenter={lat:p.lat,lng:p.lng};checkCoverage();layers();update();});
-      cancelTap=MapSupport.pointGestures(map);
+      target=MapSupport.pointTarget(map,{tapMode:()=>$('pointTap').checked,onChange:update});
+      grid=root.createCoordinateGrid?.(map,{system:()=>options.presetId==='auto'?'mgrs':options.presetId||'mgrs',projection,contains,enabled:()=>$('pointGrid').checked});
+      cancelTap=MapSupport.pointGestures(map,{onTap:p=>{
+        if(!$('pointTap').checked||options.readOnly||busy)return;
+        target.clicked(p);
+        const saved=capture?.(),before=options;
+        confirm(true,{lat:p.lat,lon:MapSupport.longitude(p.lng)});
+        return ()=>{if(saved&&retract){retract(saved);options=before;drawPoints(options.points||[]);$('pointAdded').textContent='';update();}};
+      }});
       pointAutoZoom=MapSupport.autoZoom(map,()=>options.points||[]);
       MapSupport.locate(map,{position:"bottomright",onStatus:text=>{
         const note=$("pointNetwork");
@@ -159,14 +167,14 @@
       for(const [el,inert] of background)el.inert=inert;
       background=[];returnFocus?.focus();
     }
-    async function confirm(keepOpen){
+    async function confirm(keepOpen,chosen){
       if(options.readOnly)return;
       if(busy||!overlay.classList.contains("open")||$("pointConfirm").disabled)return;
       let failure;
       busy=true;update();
       try{
         map.stop();
-        const point=center();let result=onConfirm(point,{zoom:map.getZoom(),layer:mode,presetId:options.presetId});
+        const point=chosen||target.current();let result=onConfirm(point,{zoom:map.getZoom(),layer:mode,presetId:options.presetId});
         if(result?.then)result=await result;
         if(result?.canceled)return;
         if(result?.error){failure=result.error;return;}
@@ -175,6 +183,8 @@
       }catch(error){failure="Could not add this point. "+error.message;}
       finally{busy=false;if(overlay.classList.contains("open")){update();if(failure){$("pointFormatPreview").textContent=failure;$("pointFormatPreview").classList.add("invalid");}}}
     }
+    $('pointGrid').addEventListener('change',()=>grid?.refresh());
+    $('pointTap').addEventListener('change',()=>{overlay.querySelector('.point-modal').classList.toggle('tap-mode',$('pointTap').checked);target?.update();});
     $("pointClose").addEventListener("click",close);
     $("pointConfirm").addEventListener("click",()=>confirm(false));$("pointContinue").addEventListener("click",()=>confirm(true));
     $("pointTopo").addEventListener("click",()=>{mode="topo";checkCoverage();layers();});
@@ -184,7 +194,7 @@
       if(e.key==="Escape"&&!busy){e.preventDefault();close();}
       if(e.key==="Enter"&&e.target===$("pointMap")&&!options.readOnly){e.preventDefault();confirm(false);}
       if(e.key==="Tab"){
-        const nodes=[...overlay.querySelectorAll('button:not(:disabled),[tabindex="0"],a[href]')].filter(el=>el.getClientRects().length);
+        const nodes=[...overlay.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),[tabindex="0"],a[href]')].filter(el=>el.getClientRects().length&&getComputedStyle(el).visibility!=='hidden');
         if(e.shiftKey&&document.activeElement===nodes[0]){e.preventDefault();nodes.at(-1)?.focus();}
         else if(!e.shiftKey&&document.activeElement===nodes.at(-1)){e.preventDefault();nodes[0]?.focus();}
       }
@@ -211,6 +221,7 @@
        const bounds=L.latLngBounds(opts.points.map(p=>[p.lat,p.lon]));
        map.fitBounds(bounds,{padding:[40,40],maxZoom:Math.min(map.getMaxZoom(),16),animate:false});
       }
+      grid?.refresh();target.update();
       $("pointMap").focus();
     }};
   };

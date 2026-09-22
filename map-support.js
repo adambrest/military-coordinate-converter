@@ -167,12 +167,32 @@
   }
   // Safari can label touch-generated clicks as mouse clicks, so detect taps
   // from touch events directly. Mouse double-click stays a separate path.
-  function pointGestures(map){
+  function pointGestures(map,{onTap}={}){
     let first=null,active=null,lastTouch=0;
     const container=map.getContainer(),reset=()=>{first=null;active=null;};
-    // Commit each zoom immediately so subsequent gestures never wait for animation or tiles.
+    let rollback=null,clickTime=0,clickPoint=null;
+    const queue=[];let zooming=false;
+    function drain(){
+      if(zooming||!queue.length)return;
+      const {point,delta}=queue.shift(),target=Math.max(map.getMinZoom(),Math.min(map.getMaxZoom(),map.getZoom()+delta));
+      if(target===map.getZoom()){drain();return;}
+      zooming=true;
+      map.once('zoomend',()=>{zooming=false;requestAnimationFrame(drain);});
+      map.setZoomAround(point,target,{animate:!root.matchMedia?.('(prefers-reduced-motion: reduce)').matches});
+    }
+    function zoom(point,delta){
+      // The first tap is immediate; a second tap retracts that provisional point.
+      if(rollback&&Date.now()-clickTime<500){rollback();rollback=null;}
+      queue.push({point,delta});drain();
+    }
+    map.on('click',e=>{
+      if(!onTap||e.originalEvent?.detail>1)return;
+      const now=Date.now();
+      if(clickPoint&&now-clickTime<400&&e.containerPoint.distanceTo(clickPoint)<35)return;
+      clickTime=now;clickPoint=e.containerPoint;rollback=onTap(e.latlng)||null;
+    });
     map.doubleClickZoom.disable();
-    map.on('dblclick',e=>{if(Date.now()-lastTouch<700)return;map.setZoomAround(e.containerPoint,map.getZoom()+(e.originalEvent?.shiftKey?-1:1),{animate:false});});
+    map.on('dblclick',e=>{if(Date.now()-lastTouch<700)return;zoom(e.containerPoint,e.originalEvent?.shiftKey?-1:1);});
     container.addEventListener('touchstart',e=>{
       lastTouch=Date.now();
       if(e.touches.length!==1){reset();return;}
@@ -189,12 +209,23 @@
       const t=[...e.changedTouches].find(t=>t.identifier===start.id);
       if(!t||Math.hypot(t.clientX-start.x,t.clientY-start.y)>12){first=null;return;}
       if(first&&lastTouch-first.time<=400&&Math.hypot(t.clientX-first.x,t.clientY-first.y)<=35){
-        first=null;e.preventDefault();map.setZoomAround(map.mouseEventToContainerPoint(t),map.getZoom()+1,{animate:false});
+        first=null;e.preventDefault();zoom(map.mouseEventToContainerPoint(t),1);
       }else first={x:t.clientX,y:t.clientY,time:lastTouch};
     },{passive:false});
     container.addEventListener('touchcancel',reset,{passive:true});
     map.on('dragstart zoomstart',reset);
-    return reset;
+    return ()=>{reset();rollback=null;queue.length=0;};
+  }
+  function pointTarget(map,{tapMode,onChange}){
+    let mouse=null,last=null;
+    const coarse=()=>root.matchMedia?.('(pointer: coarse)').matches;
+    const point=p=>({lat:p.lat,lon:longitude(p.lng??p.lon)});
+    const current=()=>tapMode()?(mouse&&!coarse()?point(map.containerPointToLatLng(mouse)):last||point(map.getCenter())):point(map.getCenter());
+    const update=()=>onChange?.(current());
+    map.on('mousemove',e=>{if(!coarse()){mouse=e.containerPoint;if(tapMode())update();}});
+    map.on('mouseout',()=>{mouse=null;update();});
+    map.on('move',update);
+    return {current,update,clicked(p){last=point(p);update();}};
   }
   const imageryService='https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer';
   const tileAvailability=new Map();
@@ -388,5 +419,5 @@
       colors:BROAD
     };
   }
-  root.MapSupport={regions,baseView,approximateLocation,tileUrls,prefetchTiles,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,imageryZoom,imageryService,trainingArea,BASEMAPS,DEFAULT_BASEMAP,basemapIds,basemapId,basemap,locate,mapButton,autoZoom,clampLatitude,broadView,BROAD_COLORS:BROAD};
+  root.MapSupport={regions,baseView,approximateLocation,tileUrls,prefetchTiles,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,pointTarget,imageryZoom,imageryService,trainingArea,BASEMAPS,DEFAULT_BASEMAP,basemapIds,basemapId,basemap,locate,mapButton,autoZoom,clampLatitude,broadView,BROAD_COLORS:BROAD};
 })(globalThis);
