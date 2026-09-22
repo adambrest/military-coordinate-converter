@@ -2003,9 +2003,9 @@ test('only actual active input setting changes require conversion again',async()
 });
 
 /* ---- v2 reference areas ---- */
-test('the app reports version 3.11.0',()=>{
+test('the app reports version 3.12.0',()=>{
   const a=app();
-  try{assert.equal(a.$('#appVersion').textContent,'v3.11.0');assert.match(read('version.js'),/APP_VERSION = "3\.11\.0"/);
+  try{assert.equal(a.$('#appVersion').textContent,'v3.12.0');assert.match(read('version.js'),/APP_VERSION = "3\.12\.0"/);
     const logo=a.$('header h1 .logo');assert.ok(logo,'the header shows the app icon');assert.equal(logo.getAttribute('src'),'icons/logo-64.png');assert.equal(logo.getAttribute('alt'),'');}
   finally{a.dom.window.close();}
 });

@@ -251,6 +251,15 @@
   .exportbar button{padding:0 8px}
   .row-actions .histbtn{min-width:38px;min-height:38px;border-radius:9px}
   .cell.outside{color:var(--warn);font-weight:600}
+  /* Converting, after Detail IC: old results slide out left, new ones flash in. */
+  #toRows{position:relative}
+  .detail-ghosts{position:absolute;inset:0;z-index:2;pointer-events:none}
+  .detail-ghosts .trow{background:var(--panel)}
+  .trow.leaving{animation:detail-leave .22s ease-in forwards}
+  @keyframes detail-leave{to{transform:translateX(-40px);opacity:0}}
+  .trow.detailed{animation:detail-flash 1.4s ease-out backwards}
+  @keyframes detail-flash{0%{opacity:0;background:#bfdbfe}12%{opacity:1;background:#bfdbfe}100%{opacity:1}}
+  @media (prefers-reduced-motion:reduce){.trow.leaving,.trow.detailed{animation:none}}
   /* Input and output rows are one height, filled or not, so they line up across. */
   #fromRows .trow,#toRows .trow{min-height:46px}
   /* Phone: two buttons a row, so no label breaks across lines. */
@@ -2778,7 +2787,27 @@
     $("#convertBtn").addEventListener("pointerdown",e=>{
       if(document.activeElement?.matches("#fromRows .a"))e.preventDefault();
     });
-    $("#convertBtn").addEventListener("click",convert);
+    // Convert is detailed the way Detail IC redetails: the old results slide off to the
+    // left and fade, and the new ones land with a blue flash that settles back. The old
+    // rows leave as copies laid over the new, so the conversion itself never waits.
+    function convertPressed(){
+      const still=window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      const holder=$("#toRows"),old=[...holder.children].filter(r=>!r.classList.contains("placeholder"));
+      let ghosts=null;
+      if(!still&&old.length){
+        ghosts=document.createElement("div");ghosts.className="detail-ghosts";ghosts.setAttribute("aria-hidden","true");
+        for(const row of old){const copy=row.cloneNode(true);copy.classList.add("leaving");ghosts.append(copy);}
+      }
+      convert();
+      if(still)return;
+      const rows=[...holder.children].filter(r=>!r.classList.contains("placeholder"));
+      if(ghosts&&rows.length){holder.prepend(ghosts);setTimeout(()=>ghosts.remove(),260);}
+      // With old rows leaving, the new ones wait until they are gone, as Detail IC
+      // redraws only once its rows have left.
+      const wait=ghosts?200:0;
+      rows.forEach((row,i)=>{row.classList.remove("detailed");void row.offsetWidth;row.style.animationDelay=wait+Math.min(i,10)*30+"ms";row.classList.add("detailed");});
+    }
+    $("#convertBtn").addEventListener("click",convertPressed);
 
     /* ---- exports ---- */
     // Google Maps route links take a start, an end and up to 3 stops between in a mobile
