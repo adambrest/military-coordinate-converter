@@ -327,7 +327,7 @@
  <div class="pastehint" id="fieldHint"></div>
  <input class="field-import" id="fieldFile" type="file" accept=".gpx,application/gpx+xml">
  <div class="tbl"><div class="thead"><span>#</span><span id="fieldEastHead">Easting</span><span id="fieldNorthHead">Northing</span><span>Name</span><span></span></div><ol id="fieldPoints"></ol></div>
- <div class="row-actions"><button id="fieldImport" class="select-map" type="button">Import GPX</button><span class="history"><button class="histbtn danger" id="fieldClear" type="button" title="Clear all points" aria-label="Clear all points" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button><button class="histbtn" id="fieldUndo" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-5 5 5 5M4 10h10a6 6 0 0 1 6 6v3"/></svg></button><button class="histbtn" id="fieldRedo" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 5 5-5 5M20 10H10a6 6 0 0 0-6 6v3"/></svg></button></span></div>
+ <div class="row-actions"><button id="fieldImport" class="select-map" type="button">Import GPX</button><button class="addrow" id="fieldAddRow" type="button">+ Add row</button><span class="history"><button class="histbtn danger" id="fieldClear" type="button" title="Clear all points" aria-label="Clear all points" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button><button class="histbtn" id="fieldUndo" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-5 5 5 5M4 10h10a6 6 0 0 1 6 6v3"/></svg></button><button class="histbtn" id="fieldRedo" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 5 5-5 5M20 10H10a6 6 0 0 0-6 6v3"/></svg></button></span></div>
  <div class="route-distance-control"><label><input type="checkbox" id="fieldRoute"> Connect points in order</label><p id="fieldDistance" aria-live="polite"></p></div>
  <div class="exportbar"><button id="fieldConvert">Send to converter</button><button id="fieldExport">Download GPX</button><button id="fieldCopy">Copy</button></div>
  <p class="area-note" id="fieldAreaNote" role="status" hidden></p><p class="detect err" id="fieldStatus" role="status"></p>
@@ -1087,7 +1087,8 @@
           const filled=Array.isArray(j.rows)&&j.rows.some(r=>Array.isArray(r)&&r.some(v=>String(v??"").trim()));
           const usable=j.from!=="auto"&&PRESETS[j.from]&&(GLOBAL_FORMATS.includes(j.from)?j.militaryEnabled:!j.disabledPresets?.includes(j.from));
           if(!filled){j.from="auto";j.rows=[["","",""]];}else if(!usable)j.from="auto";
-          j.explicitInput=false;j.aoConfirmed=false;delete j.pendingGrid;
+          // A reload keeps everything the reader set; only Auto-detect starts unconfirmed.
+          j.explicitInput=false;if(j.from==="auto")j.aoConfirmed=false;delete j.pendingGrid;
           // One-time cleanup for AOs saved by the former Thailand auto-selection behavior.
           // Boundary notices used to switch prefix omission off for good. Crossing now only
           // changes how those results are shown, so put the setting back once.
@@ -1103,7 +1104,9 @@
           return j;
         }
       }catch(_){}
-      return { from:"auto", to:"wgs84", rows:[["","",""]], out:null, points:[], settings:defaultSettings(), basemapRevision:2, aoSelectionVersion:2, omitVersion:2 };
+      // A new install is already on the current military-grid scheme, so the one-time
+      // migration above never runs against a choice made after install.
+      return { from:"auto", to:"wgs84", rows:[["","",""]], out:null, points:[], settings:defaultSettings(), basemapRevision:2, aoSelectionVersion:2, omitVersion:2, militaryVersion:3 };
     }
     function save(){ try{ localStorage.setItem(STORAGE, JSON.stringify(state)); }catch(_){} }
 
@@ -1447,7 +1450,7 @@
       try{return (locationGuess||=MapSupport.approximateLocation({helper:MAP_HELPER})).current();}
       catch(_){return {lat:1.35,lon:103.82,zoom:10};}
     };
-    const pointPicker=createPointPicker({projection:projectionFor,contains:presetContains,preview:mapPointPreview,onConfirm:addMapPoint,onViewChange:view=>{state.pointMapView=view;save();},capture:()=>({state:snapshot(),lastLocation:state.lastLocation,pointMapView:state.pointMapView,past:[...history.past],future:[...history.future]}),retract:saved=>{history.past=saved.past;history.future=saved.future;restore(saved.state);state.lastLocation=saved.lastLocation;state.pointMapView=saved.pointMapView;save();pointOptions={...pointOptions,...existingMapPoints()};}});
+    const pointPicker=createPointPicker({projection:projectionFor,contains:presetContains,fine:id=>fineGrid(id==='globalutm'?'mgrs':id),preview:mapPointPreview,onConfirm:addMapPoint,onViewChange:view=>{state.pointMapView=view;save();},capture:()=>({state:snapshot(),lastLocation:state.lastLocation,pointMapView:state.pointMapView,past:[...history.past],future:[...history.future]}),retract:saved=>{history.past=saved.past;history.future=saved.future;restore(saved.state);state.lastLocation=saved.lastLocation;state.pointMapView=saved.pointMapView;save();pointOptions={...pointOptions,...existingMapPoints()};}});
     // Warm the guess before the click so the first open already has it.
     for(const event of ["pointerenter","focus"])$("#selectMap").addEventListener(event,guessLocation,{once:true,passive:true});
     // With a worker to cache them, fetch the tiles around the guessed area while
@@ -1831,6 +1834,7 @@
     }
     // Acknowledgment lasts for this session and country, never silently for every country.
     const boundaryAccepted=new Set();
+    let restoring=false;
     let boundaryReply;
     function reviewBoundary(changes,reply){
       const overlay=$("#boundaryOverlay"),focus=document.activeElement;
@@ -1877,6 +1881,13 @@
     // read, so the converter and the Point Picker share this one sentence.
     // A point a country grid cannot write is said to be outside it, with its
     // coordinates beside that, in the converter and the Point Picker alike.
+    // The map grid is only as fine as the references it helps write: kilometre lines
+    // for 10 m references, 100 m lines once references reach the metre.
+    function fineGrid(id){
+      const s=state.settings[id]||{};
+      if(id==="wgs84")return s.format!=="dd"||(s.decimals??6)>=5;
+      return (s.sgDigits||4)>=5;
+    }
     function outsidePreset(id,p){return COUNTRY_PRESETS.includes(id)&&!presetContains(id,p.lat,p.lon);}
     function outsideCells(id,p){return ["Outside "+PRESETS[id].name,p.lat.toFixed(5)+", "+p.lon.toFixed(5)];}
     function outsideNotice(id,points){
@@ -2067,10 +2078,9 @@
     // Two numbers too long to be a short reference: a full country-grid reference, or
     // projected meters that lost their zone. Only a grid that puts them inside its
     // country may claim them.
-    function countryPair(text){
+    function countryPair(text,ids=COUNTRY_PRESETS.includes(state.from)?[state.from]:COUNTRY_PRESETS.filter(presetEnabled)){
       const m=text.trim().match(/^(\d+)\s+(\d+)$/);
       if(!m||m[1].length===m[2].length&&m[1].length<=5)return null;
-      const ids=COUNTRY_PRESETS.includes(state.from)?[state.from]:COUNTRY_PRESETS.filter(presetEnabled);
       const fits=ids.filter(id=>{
         try{const r=parseCells(id,m[1],m[2],state.settings);return !r.error&&Number.isFinite(r.lat)&&presetContains(id,r.lat,r.lon);}catch(_){return false;}
       });
@@ -2195,8 +2205,26 @@
       if(!parsed.length)return;
       e.preventDefault();
       const occupied=(r,k)=>(insert?k!==i:(k<i||k>=i+parsed.length))&&(r[0].trim()||r[1].trim());
-      if(target!==state.from&&state.rows.some(occupied)){
-        setBottomError("These rows use a different input system. Clear them before pasting this format.");return;
+      // The input grid is settled by the first paste and then stays: whatever comes
+      // after is rewritten into it. Digits alone are already in it.
+      if(!short){
+        const pts=parsed.map(r=>pointOfParsed(r,target));
+        const started=state.rows.some(occupied);
+        if(pts.every(Boolean)){
+          const into=started?(state.from==="auto"?target:state.from):inputGridFor(state.from,target,pts);
+          if(into!==target){
+            const away=[];
+            for(let k=parsed.length-1;k>=0;k--){
+              if(outsidePreset(into,pts[k])){away.unshift(k+1);parsed.splice(k,1);lines.splice(k,1);pts.splice(k,1);continue;}
+              parsed[k]={cells:inputCells(into,pts[k]),point:pts[k]};
+            }
+            if(away.length)setBottomError((away.length===1?"Line "+away[0]+" is":"Lines "+away.join(", ")+" are")+" outside "+PRESETS[into].name+", so "+(away.length===1?"it was":"they were")+" not added. Change the input grid to Military grid or Coordinates to keep "+(away.length===1?"it":"them")+".");
+            if(!parsed.length){save();return;}
+            target=into;
+          }
+        }else if(started&&target!==state.from&&state.from!=="auto"){
+          setBottomError("These rows use a different input system. Clear them before pasting this format.");return;
+        }
       }
       if(!short)rememberRaw();
       if(target!==state.from&&COUNTRY_PRESETS.includes(target))pickOutput(target,[]);
@@ -2219,6 +2247,32 @@
       const pasted=[...new Set(parsed.map(r=>r.point&&r.point.warning).filter(Boolean))];
       if(pasted.length){const d=$("#detect");d.textContent=[d.textContent,...pasted].filter(Boolean).join(" ");d.className="detect warn";}
       save();
+    }
+    // A pasted line in another format, as a point, so it can be rewritten in the grid
+    // the table already uses.
+    function pointOfParsed(r,id){
+      if(r?.point&&Number.isFinite(r.point.lat)&&Number.isFinite(r.point.lon))return r.point;
+      if(!r?.cells)return null;
+      try{const q=parseCells(id,r.cells[0],r.cells[1],state.settings);return q&&!q.error&&Number.isFinite(q.lat)?q:null;}catch(_){return null;}
+    }
+    // The first paste keeps the grid already selected when it makes sense for what was
+    // pasted, and otherwise takes the grid the paste is written in. It does not make
+    // sense when it cannot hold every point, when it is Coordinates and a grid reference
+    // arrives, or when it is a global grid and a country's own reference arrives.
+    function inputGridFor(selected,target,points){
+      if(selected==="auto"||!PRESETS[selected]||!presetEnabled(selected))return target;
+      // MGRS and UTM are one choice, Military grid; the paste says which is meant.
+      if(GLOBAL_FORMATS.includes(selected)&&GLOBAL_FORMATS.includes(target))return target;
+      if(points.some(p=>outsidePreset(selected,p)))return target;
+      if(selected==="wgs84"&&target!=="wgs84")return target;
+      if(GLOBAL_FORMATS.includes(selected)&&COUNTRY_PRESETS.includes(target))return target;
+      return selected;
+    }
+    // Rewritten references are written in full, so no reference area has to be assumed.
+    function inputCells(id,p){
+      if(id==="wgs84")return llCells(p.lat,p.lon);
+      const key=GLOBAL_FORMATS.includes(id)?"mgrs":id,S={...state.settings,[key]:{...state.settings[key],sgOmit:false}};
+      return formatPoint(p.lat,p.lon,id,S);
     }
     // A paste fills the row it landed in and adds rows beneath for the rest, so nothing
     // already in the table is overwritten. That row keeps its name; new rows take any
@@ -2419,6 +2473,8 @@
         let changes=[];
         try{changes=[...new Set([state.from,state.to])].filter(id=>id!=="auto").map(id=>gridBoundary(pts.filter(p=>!outsidePreset(id,p)),id)).filter(Boolean);}
         catch(error){state.points=[];pts=[];setBottomError(error.message);}
+        // Restoring a page re-reads what was already accepted; it never asks again.
+        if(restoring)for(const c of changes)boundaryAccepted.add(c.key);
         const pending=changes.filter(c=>!boundaryAccepted.has(c.key));
         if(pending.length&&!boundaryReply){
           const savedPoints=pts;state.points=[];pts=[];
@@ -2553,6 +2609,16 @@
       // Leave the browser's own text undo alone while a field is being edited.
       if(el&&/^(INPUT|TEXTAREA)$/.test(el.tagName)&&!el.readOnly)return;
       e.preventDefault();(e.shiftKey?redo:undo)();
+    });
+    // Enter outside any field does the page's main thing: Convert here, Add point on the
+    // Point Picker. In a field, Enter belongs to the field (a new row in the tables).
+    document.addEventListener("keydown",e=>{
+      if(e.key!=="Enter"||e.defaultPrevented||e.metaKey||e.ctrlKey||e.altKey||e.shiftKey||e.isComposing)return;
+      if(document.querySelector(".overlay.open"))return;
+      const el=document.activeElement;
+      if(el&&(/^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(el.tagName)||el.isContentEditable))return;
+      if($("#view-conv").classList.contains("on")){e.preventDefault();$("#convertBtn").click();}
+      else if($("#view-field").classList.contains("on")&&!$("#fieldTap").checked){e.preventDefault();$("#fieldAdd").click();}
     });
     // The work is always grid to coordinates or coordinates to grid, so the two
     // sides hold opposite kinds and never point a system at itself.
@@ -2732,9 +2798,58 @@
         toast("Imported "+result.points.length+" GPX points");
       }catch(e){setBottomError(e.message);}
     });
-    const field=globalThis.createFieldMap?.({helper:MAP_HELPER,presets:["mgrs","wgs84",...COUNTRY_PRESETS],projection:projectionFor,
+    // The Point Picker reads what is pasted or typed with the converter's own readers:
+    // links, batches, spreadsheet columns, mixed formats. Only the place is kept, since
+    // the picker writes every point in its own grid.
+    async function readForPicker(text,{system,anchor}={}){
+      text=normalizeMapText(text||"");
+      if(!text.trim())return [];
+      const links=shortMapLinks(text);
+      if(links.length&&LINK_RESOLVER&&typeof fetch==="function"){
+        const results=await Promise.all(links.map(link=>followLink(link).then(url=>({link,url}),()=>({link}))));
+        for(const r of results)if(r.url)text=text.split(r.link).join(r.url);
+      }
+      const place=p=>({lat:p.lat,lon:p.lon});
+      const readLine=line=>{
+        try{
+          if(fullMGR(line)){const r=GlobalGrid.parse(line);return r.error?{error:r.error}:{point:place(r)};}
+          const projected=parseProjected(line);
+          if(projected)return projected.error?{error:projected.error}:{point:place(projected.point)};
+          if(/^[\d\s]+$/.test(line)){
+            const g=splitGrid(line);
+            if(!g.error&&g.d>=3&&g.e.length===g.n.length)return {digits:g};
+            const pair=countryPair(line,COUNTRY_PRESETS.includes(system)?[system]:COUNTRY_PRESETS.filter(presetEnabled));
+            if(pair&&!pair.error){const r=parseCells(pair.id,pair.cells[0],pair.cells[1],state.settings);return r.error?{error:r.error}:{point:place(r)};}
+            if(pair?.error)return {error:pair.error};
+          }
+          const r=parseLatLon(line,state.settings.wgs84.order);
+          return r.error?{error:r.error}:{point:place(r)};
+        }catch(error){return {error:error.message};}
+      };
+      const lines=inheritPrefix(splitBatch(text));
+      const read=lines.map(({text:line,name})=>({name:name||"",...readLine(line)}));
+      // Digits alone are a reference in the picker's grid, in the area of the points
+      // pasted with them or else of point 1.
+      const known=read.find(r=>r.point)?.point||anchor;
+      for(const r of read){
+        if(!r.digits)continue;
+        const id=system&&system!=="wgs84"?system:(known&&enabledGrid([known]))||"mgrs";
+        try{
+          const S={...state.settings,[id]:{...state.settings[id]}};
+          if(!PRESETS[id].lead){
+            if(!known){r.error="Digits alone need an area. Paste a full reference, or add a point on the map first.";continue;}
+            const key=areaKeyAt(id,known.lat,known.lon);
+            if(id==="mgrs")S.mgrs={...S.mgrs,ao:key,sgOmit:true};else S[id]={...S[id],square:key.split("/").map(Number),sgOmit:true};
+          }
+          const q=parseCells(id,r.digits.e,r.digits.n,S);
+          if(q.error)r.error=q.error;else r.point=place(q);
+        }catch(error){r.error=error.message;}
+      }
+      return read.map(r=>r.point?{point:{lat:r.point.lat,lon:MapSupport.longitude(r.point.lon)},name:r.name}:{error:explain(r.error||"Could not read this line.")});
+    }
+    const field=globalThis.createFieldMap?.({readInput:readForPicker,helper:MAP_HELPER,presets:["mgrs","wgs84",...COUNTRY_PRESETS],projection:projectionFor,
       countryPresets:COUNTRY_PRESETS,presetName:id=>PRESETS[id].name,
-      homeGrid:points=>points.length?enabledGrid(points):null,otherGridNotice,
+      homeGrid:points=>points.length?enabledGrid(points):null,otherGridNotice,fineGrid:id=>fineGrid(id==='globalutm'?'mgrs':id),
       localGrid:(lat,lon)=>COUNTRY_PRESETS.find(id=>presetLikely(id,lat,lon))||null,
       presetHolds:(id,lat,lon)=>{try{return presetContains(id,lat,lon);}catch(_){return false;}},
       // The picker is the converter's output by another route, so it writes references
@@ -2886,7 +3001,7 @@
       el.innerHTML=html;
       el.querySelectorAll("[data-toggle]").forEach(button=>button.onclick=()=>{
         readRows();const current=existingMapPoints(),id=button.dataset.toggle,enabled=!presetEnabled(id);
-        if(id==="mgrs")state.militaryEnabled=enabled;
+        if(id==="mgrs"){state.militaryEnabled=enabled;state.militaryVersion=3;}
         else state.disabledPresets=enabled?(state.disabledPresets||[]).filter(p=>p!==id):[...(state.disabledPresets||[]),id];
         const matches=value=>id==="mgrs"?GLOBAL_FORMATS.includes(value):value===id;
         if(!enabled&&(matches(state.from)||matches(state.to))){
@@ -2969,6 +3084,8 @@
 
     // initial render
     renderFrom(); updatePairState(); renderTo(); settleAutoRows();
+    // Output is recomputed rather than stored, so the page reopens as it was left.
+    if(state.from!=="auto"&&rowsHaveContent()){restoring=true;try{convert();}catch(_){}finally{restoring=false;}}
   })();
   </script>
 <!-- Cloudflare Web Analytics -->

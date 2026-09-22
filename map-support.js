@@ -339,12 +339,24 @@
       return tile;
     }
   }));
+  // Tiles are placed at fractional offsets while zooming and on high-density screens,
+  // and the browser can leave a hairline between neighbours that reads as a faint grid
+  // even with the grid off. Each tile is drawn one pixel larger so neighbours overlap.
+  function seamless(layer){
+    const init=layer._initTile;
+    layer._initTile=function(tile){
+      init.call(this,tile);
+      const size=this.getTileSize();
+      tile.style.width=size.x+1+"px";tile.style.height=size.y+1+"px";
+    };
+    return layer;
+  }
   function basemap(id,options){
     const spec=BASEMAPS[basemapId(id)];
     const settings={maxNativeZoom:spec.maxNativeZoom,attribution:spec.attribution,...options};
     if(spec.subdomains)settings.subdomains=spec.subdomains;
     if(spec.className)settings.className=[spec.className,options&&options.className].filter(Boolean).join(" ");
-    return spec.toned?new (tonedTiles())(spec.url,settings):L.tileLayer(spec.url,settings);
+    return seamless(spec.toned?new (tonedTiles())(spec.url,settings):L.tileLayer(spec.url,settings));
   }
   // A button that asks the device where it is and goes there. The opening view still
   // uses the coarse IP/timezone estimate, so the permission prompt only ever appears
@@ -474,5 +486,5 @@
       colors:BROAD
     };
   }
-  root.MapSupport={regions,baseView,approximateLocation,tileUrls,prefetchTiles,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,pointTarget,imageryZoom,imageryService,trainingArea,BASEMAPS,DEFAULT_BASEMAP,basemapIds,basemapId,basemap,locate,mapButton,autoZoom,clampLatitude,broadView,BROAD_COLORS:BROAD,softenTopo};
+  root.MapSupport={regions,baseView,approximateLocation,tileUrls,prefetchTiles,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,pointTarget,imageryZoom,imageryService,trainingArea,BASEMAPS,DEFAULT_BASEMAP,basemapIds,basemapId,basemap,locate,mapButton,autoZoom,clampLatitude,broadView,BROAD_COLORS:BROAD,softenTopo,seamless};
 })(globalThis);

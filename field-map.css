@@ -18,7 +18,7 @@
 .field-output{min-width:0}
 .lbl-count{margin-left:6px;font-weight:600;letter-spacing:0;text-transform:none}
 #fieldPoints{max-height:40vh;overflow:auto;list-style:none;padding:0;margin:0}
-.field-point .cell.a,.field-point .cell.b{background:transparent;border-color:transparent}
+.field-point .cell.outside{background:transparent;border-color:transparent}
 .field-output .exportbar button{min-width:0}
 #fieldStatus:empty{display:none}
 .field-import{display:none}

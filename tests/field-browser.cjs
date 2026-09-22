@@ -157,7 +157,7 @@ await page.evaluate(()=>{fieldTestMap.setView([1.35,103.82],14,{animate:false});
 
 await page.click('#fieldAdd');await page.evaluate(()=>{fieldTestMap.panTo([1.36,103.83],{animate:false});});await page.click('#fieldAdd');await page.check('#fieldRoute');assert.match(await page.locator('#fieldDistance').innerText(),/1\.57 km/);
 await page.locator('#fieldPoints .nm').first().fill('HQ <test>');await page.locator('#fieldPoints .nm').first().blur();
-await page.click('#fieldClear');assert.equal(await page.locator('#fieldPoints li').count(),0);await page.click('#fieldUndo');assert.equal(await page.locator('#fieldPoints .nm').first().inputValue(),'HQ <test>');
+await page.click('#fieldClear');assert.equal(await page.locator('#fieldPoints li:not(.blank)').count(),0);await page.click('#fieldUndo');assert.equal(await page.locator('#fieldPoints .nm').first().inputValue(),'HQ <test>');
 await page.reload();await page.click('#tab-field');assert.equal(await page.locator('#fieldPoints li').count(),2);await page.click('#fieldClear');
 await page.setInputFiles('#fieldFile',{name:'segments.gpx',mimeType:'application/gpx+xml',buffer:Buffer.from(gpx)});await page.waitForFunction(()=>document.getElementById('fieldTotal').textContent==='4 points');assert.match(await page.locator('#fieldDistance').innerText(),/3\.14 km/);
 await page.click('#fieldConvert');assert.match(await page.locator('#routeDistance').innerText(),/3\.14 km/);assert.equal(await page.locator('#toRows .trow').count(),4);

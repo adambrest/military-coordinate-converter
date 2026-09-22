@@ -161,7 +161,7 @@ test('reload reopens entries in their detected system and keeps names',()=>{
     assert.equal(a.$('#fromSys option[value="auto"]'),null,'filled input must not offer Auto-detect as its system');
     assert.equal(a.$('#fromRows .nm').value,'Keep me');assert.equal(a.$('#fromRows .nm').hidden,false);
     assert.equal(a.$('#fromRows .prefix').value,'48N');assert.equal(a.$('#fromRows .a').value,'366000');
-    assert.equal(a.$('#copyBtn').disabled,true,'results are recomputed, not restored');
+    assert.equal(a.$('#copyBtn').disabled,false,'results are recomputed on reload, so nothing is lost');assert.equal(a.$('#toRows .trow:not(.placeholder)')!==null,true);
     a.$('#convertBtn').click();assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
   }finally{a.dom.window.close();}
   // Military grid entries come back as Military grid, however many rows.
@@ -1927,18 +1927,17 @@ test('the flag names the chosen global format and follows the points',()=>{
   }finally{a.dom.window.close();}
 });
 
-test('after a reload the points go back to their country grid until another is chosen',()=>{
+test('a reload keeps a hand-picked output grid, its flag and the results',()=>{
   const a=app();
   try{
     a.paste('1.35,103.82');a.change('#toSys','mgrs');
     const reopened=app(a.state());
     try{
-      reopened.$('#convertBtn').click();assert.notEqual(reopened.state().to,'mgrs');assert.equal(reopened.$('#toOutside').hidden,true);
-      reopened.change('#toSys','mgrs');assert.equal(reopened.state().to,'mgrs');assert.equal(reopened.$('#toOutside').hidden,false);
+      assert.equal(reopened.state().to,'mgrs');assert.equal(reopened.$('#copyBtn').disabled,false);assert.equal(reopened.$('#toOutside').hidden,false);
+      reopened.$('#convertBtn').click();assert.equal(reopened.state().to,'mgrs');
     }finally{reopened.dom.window.close();}
   }finally{a.dom.window.close();}
 });
-
 test('a disabled country grid is neither picked nor flagged',()=>{
   const c=core(),settings=vm.runInContext('defaultSettings()',c);
   const a=app({settings,disabledPresets:['sg'],rows:[['','','']]});
@@ -1999,9 +1998,9 @@ test('only actual active input setting changes require conversion again',async()
 });
 
 /* ---- v2 reference areas ---- */
-test('the app reports version 3.8.1',()=>{
+test('the app reports version 3.9.0',()=>{
   const a=app();
-  try{assert.equal(a.$('#appVersion').textContent,'v3.8.1');assert.match(read('version.js'),/APP_VERSION = "3\.8\.1"/);
+  try{assert.equal(a.$('#appVersion').textContent,'v3.9.0');assert.match(read('version.js'),/APP_VERSION = "3\.9\.0"/);
     const logo=a.$('header h1 .logo');assert.ok(logo,'the header shows the app icon');assert.equal(logo.getAttribute('src'),'icons/logo-64.png');assert.equal(logo.getAttribute('alt'),'');}
   finally{a.dom.window.close();}
 });
@@ -2417,10 +2416,52 @@ test('grid appears at 1 km scale and refines to 100 m closest in',()=>{
   assert.equal(metricSteps(0,11),null,'no grid while the scale reads more than 1 km');
   assert.equal(metricSteps(0,12),null);
   assert.equal(degreeStep(0,12),null);
-  const steps=z=>JSON.stringify(metricSteps(0,z));
+  const steps=(z,fine)=>JSON.stringify(metricSteps(0,z,fine));
   assert.equal(steps(13),'{"major":1000,"minor":0}');
-  assert.equal(steps(16),'{"major":1000,"minor":100}');
-  assert.equal(steps(18),'{"major":100,"minor":0}');
+  assert.equal(steps(18),'{"major":1000,"minor":0}','10 m references never get 100 m lines');
+  assert.equal(steps(16,true),'{"major":1000,"minor":100}','5+5 references do');
+  assert.equal(steps(18,true),'{"major":100,"minor":0}');
   assert.equal(degreeStep(0,13),null,'degree lines wait until they are about a kilometre apart');
-  assert.ok(degreeStep(0,18)<degreeStep(0,15),'finer degree lines closer in');
+  assert.equal(degreeStep(0,18),.01,'0.01 degrees at most without five decimal places');
+  assert.equal(degreeStep(0,18,true),.001);
+});
+test('the first paste keeps a selected grid that makes sense and converts into it',()=>{
+  const a=app();
+  try{
+    a.change('#fromSys','sg');a.paste('1.352083,103.819836');
+    assert.equal(a.state().from,'sg','coordinates in Singapore are written into the selected Singapore MGR');
+    assert.match(a.$('#fromRows .a').value,/^\d+$/);
+  }finally{a.dom.window.close();}
+  const b=app();
+  try{
+    b.change('#fromSys','wgs84');b.paste('48N UG 6883 4332');
+    assert.equal(b.state().from,'mgrs','a grid reference under Coordinates takes its own grid');
+  }finally{b.dom.window.close();}
+  const c=app();
+  try{
+    c.change('#fromSys','brunei');c.paste('1.352083,103.819836');
+    assert.equal(c.state().from,'wgs84','Brunei MGR cannot hold a Singapore point, so the paste keeps its own format');
+  }finally{c.dom.window.close();}
+});
+test('once the input grid is set, later pastes are rewritten into it',()=>{
+  const a=app();
+  try{
+    a.paste('1.352083,103.819836');assert.equal(a.state().from,'wgs84');
+    a.$('#addRow').click();a.paste('48N UG 6883 4332',1);
+    assert.equal(a.state().from,'wgs84','the first grid stays');
+    assert.equal(a.state().rows.length,2);assert.match(a.state().rows[1][0],/^1\.\d+/);
+    assert.equal(a.state().points.length,2);
+  }finally{a.dom.window.close();}
+});
+test('Enter outside a field converts; inside a row it opens the next row',()=>{
+  const a=app();
+  try{
+    a.paste('1.352083,103.819836');const rows=a.state().rows.length;
+    a.$('#fromRows .b').dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+    assert.equal(a.state().rows.length,rows+1,'Enter in a row opens a new row');
+    a.w.document.activeElement?.blur?.();
+    let converted=0;a.$('#convertBtn').addEventListener('click',()=>converted++);
+    a.w.document.body.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+    assert.equal(converted,1,'Enter elsewhere converts');
+  }finally{a.dom.window.close();}
 });

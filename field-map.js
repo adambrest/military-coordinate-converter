@@ -1,7 +1,7 @@
 /* Independent map-first point collection. Uses the existing local coordinate engine. */
 (function(root){
 'use strict';
-root.createFieldMap=function({formatter,projection,presets,onConvert,helper,countryPresets=[],presetName=id=>id,localGrid=()=>null,presetHolds=()=>true,homeGrid=()=>null,otherGridNotice=()=>''}){
+root.createFieldMap=function({formatter,projection,presets,onConvert,helper,countryPresets=[],presetName=id=>id,localGrid=()=>null,presetHolds=()=>true,homeGrid=()=>null,otherGridNotice=()=>'',fineGrid=()=>false,readInput=async()=>[]}){
  const $=id=>document.getElementById(id),key='mike-golf-romeo-field-v1';
  // `preferred` is a global grid someone chose by hand; `area` is the country grid the
  // view was last over, so a grid only changes on the way into or out of a country.
@@ -37,14 +37,52 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   const list=$('fieldPoints');list.replaceChildren();
   const headings=writer().columns||['Easting','Northing'];
   $('fieldEastHead').textContent=headings[0];$('fieldNorthHead').textContent=headings[1];
-  // Large GPX tracks remain complete for calculations/export; bound DOM work.
-  points.slice(0,300).forEach((p,i)=>{
-   const li=document.createElement('li');li.className='trow field-point';
-   const number=document.createElement('span');number.className='n';number.textContent=i+1;
-   const input=document.createElement('input');input.className='cell nm';input.value=p.name||'';input.placeholder='Optional';input.setAttribute('aria-label','Point '+(i+1)+' name');input.addEventListener('change',()=>{remember();p.name=input.value;save();draw();});
-   const remove=document.createElement('button');remove.className='del';remove.textContent='×';remove.setAttribute('aria-label','Remove point '+(i+1));remove.onclick=()=>{remember();if(p.breakBefore&&points[i+1])points[i+1].breakBefore=true;points.splice(i,1);refresh();};
-   const values=writer().cells(p);
-   const cells=values.map((value,j)=>{const cell=document.createElement('input');cell.className='cell '+(j?'b':'a');cell.readOnly=true;cell.value=value;cell.setAttribute('aria-label',headings[j]);return cell;});
+  // The same table as the converter's input: every cell takes typing or a paste in
+  // any format, rows can be added and dragged, and whatever arrives is written in
+  // this list's grid. An empty list keeps one blank row to paste into.
+  const examples=system==='wgs84'?['1.35° N','103.82° E']:system==='mgrs'?['48N UG 1234','5678']:['1234','5678'];
+  const blanks=Math.max(drafts,points.length?0:1);
+  const shown=points.slice(0,300);
+  [...shown,...Array(blanks).fill(null)].forEach((p,i)=>{
+   const li=document.createElement('li');li.className='trow field-point'+(p?'':' blank');
+   let number;
+   if(p&&points.length>1){
+    number=document.createElement('button');number.type='button';number.className='n grip';number.title='Drag to reorder';
+    number.setAttribute('aria-label','Point '+(i+1)+': drag, or press the up and down arrow keys, to reorder');
+    number.innerHTML='<svg viewBox="0 0 12 10" aria-hidden="true"><path d="M1 1.5h10M1 5h10M1 8.5h10"/></svg><span>'+(i+1)+'</span>';
+    number.addEventListener('pointerdown',e=>dragRow(e,i,number));
+    number.addEventListener('keydown',e=>{const to=e.key==='ArrowUp'?i-1:e.key==='ArrowDown'?i+1:null;if(to===null||to<0||to>=points.length)return;e.preventDefault();moveRow(i,to);list.children[to]?.querySelector('.grip')?.focus();});
+   }else{number=document.createElement('span');number.className='n';number.textContent=i+1;}
+   const values=p?writer().cells(p):['',''];
+   const outside=p&&/^Outside /.test(values[0]);
+   const cells=values.map((value,j)=>{
+    const cell=document.createElement('input');cell.className='cell '+(j?'b':'a')+(outside&&!j?' outside':'');
+    cell.value=value;cell.placeholder=p?'':examples[j];cell.readOnly=!!outside;cell.setAttribute('aria-label',headings[j]);
+    cell.addEventListener('paste',e=>{const text=(e.clipboardData||root.clipboardData)?.getData('text');if(!text)return;e.preventDefault();take(text,i,input.value);});
+    return cell;
+   });
+   const input=document.createElement('input');input.className='cell nm';input.value=p?.name||'';input.placeholder='Optional';input.setAttribute('aria-label','Point '+(i+1)+' name');
+   if(p)input.addEventListener('change',()=>{remember();p.name=input.value;save();draw();});
+   // A finished row is read like a paste of it, so it may be typed in any format too.
+   // It is finished when focus leaves the row, or on Enter, never between its cells.
+   const commit=()=>{
+    if(outside)return Promise.resolve(!!p);
+    const text=(cells[0].value+' '+cells[1].value).trim();
+    if(!text)return Promise.resolve(!!p);
+    if(p&&cells.every((c,j)=>c.value===values[j]))return Promise.resolve(true);
+    return take(text,i,input.value);
+   };
+   li.addEventListener('focusout',e=>{if(!li.contains(e.relatedTarget))commit();});
+   // Enter finishes the row and starts a new one beneath, as in the converter.
+   for(const field of [...cells,input])field.addEventListener('keydown',async e=>{
+    if(e.key!=='Enter')return;
+    e.preventDefault();e.stopPropagation();
+    if(!await commit())return;
+    drafts++;render();
+    const rows=$('fieldPoints').children;rows[rows.length-1]?.querySelector('.cell.a')?.focus();
+   });
+   const remove=document.createElement('button');remove.className='del';remove.textContent='×';remove.setAttribute('aria-label',p?'Remove point '+(i+1):'Remove row');
+   remove.onclick=p?()=>{remember();if(p.breakBefore&&points[i+1])points[i+1].breakBefore=true;points.splice(i,1);refresh();}:()=>{drafts=Math.max(0,drafts-1);render();};
    li.append(number,...cells,input,remove);list.append(li);
   });
   if(points.length>300){const li=document.createElement('li');li.className='trow';li.textContent=`Showing first 300 of ${points.length} points. All points are included in distance, copy and GPX.`;list.append(li);}
@@ -99,6 +137,73 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   const p=map.getCenter();
   if(enterArea(localAt(p.lat,p.lng)))refresh();else{save();offerGrids();if(!points.length)render();}
  }
+
+ // ---- the table: typed, pasted and reordered rows ----
+ let drafts=0;
+ // Whatever arrives is read with the converter's readers and written in this list's
+ // grid. A row with points replaces that row; a blank row adds to the end.
+ async function take(text,index,name){
+  let read;
+  try{read=await readInput(text,{system,anchor:points[0]});}catch(e){status(e.message);return false;}
+  if(!read.length)return false;
+  const bad=read.findIndex(r=>r.error);
+  if(bad>=0){
+   status(read.length>1?'Line '+(bad+1)+': '+read[bad].error:read[bad].error);
+   $('fieldPoints').children[index]?.querySelectorAll('.cell.a,.cell.b').forEach(c=>c.classList.add('bad'));
+   return false;
+  }
+  status('');
+  const incoming=read.map((r,k)=>({...r.point,name:r.name||(k===0?name||'':'')}));
+  const replacing=index<points.length;
+  admit(incoming,()=>{
+   remember();
+   if(replacing){
+    const old=points[index];
+    points.splice(index,1,...incoming.map((p,k)=>({...p,name:p.name||(k===0?old.name:''),breakBefore:k===0?old.breakBefore:false})));
+   }else{
+    drafts=Math.max(0,drafts-1);
+    points.push(...incoming.map((p,k)=>({...p,breakBefore:points.length===0&&k===0})));
+   }
+   refresh();
+  });
+  return !pending;
+ }
+ function moveRow(from,to){
+  remember();
+  const [p]=points.splice(from,1);points.splice(to,0,p);
+  points.forEach((q,k)=>{if(k===0)q.breakBefore=true;});
+  refresh();
+ }
+ function dragRow(e,i,grip){
+  if(e.button>0)return;
+  e.preventDefault();
+  const rows=[...$('fieldPoints').children].slice(0,points.length),row=rows[i];
+  const boxes=rows.map(r=>r.getBoundingClientRect()),height=boxes[i].height,startY=e.clientY;
+  let to=i,moved=false;
+  row.classList.add('dragging');
+  try{grip.setPointerCapture(e.pointerId);}catch(_){}
+  const move=ev=>{
+   const dy=ev.clientY-startY;if(Math.abs(dy)>3)moved=true;
+   row.style.transform=`translateY(${dy}px)`;
+   const center=boxes[i].top+height/2+dy;
+   to=boxes.filter((b,k)=>k!==i&&b.top+b.height/2<center).length;
+   rows.forEach((r,k)=>{if(k===i)return;const shift=k>i&&k<=to?-height:k<i&&k>=to?height:0;r.style.transform=shift?`translateY(${shift}px)`:'';});
+  };
+  const end=()=>{
+   grip.removeEventListener('pointermove',move);grip.removeEventListener('pointerup',end);grip.removeEventListener('pointercancel',end);
+   rows.forEach(r=>{r.style.transform='';r.classList.remove('dragging');});
+   if(moved&&to!==i){moveRow(i,to);$('fieldPoints').children[to]?.querySelector('.grip')?.focus();}
+  };
+  grip.addEventListener('pointermove',move);grip.addEventListener('pointerup',end);grip.addEventListener('pointercancel',end);
+ }
+ $('fieldAddRow').onclick=()=>{drafts++;render();const rows=$('fieldPoints').children;rows[rows.length-1]?.querySelector('.cell.a')?.focus();};
+ // A paste anywhere on the tab that is not into a field adds to the end of the list.
+ document.addEventListener('paste',e=>{
+  if(e.defaultPrevented||!$('view-field').classList.contains('on')||document.querySelector('.overlay.open'))return;
+  for(const el of [e.target,document.activeElement])if(el&&/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))return;
+  const text=(e.clipboardData||root.clipboardData)?.getData('text');if(!text)return;
+  e.preventDefault();take(text,points.length,'');
+ });
 
  // ---- adding points, with the grid held once the first is down ----
  let pending=null;
@@ -197,7 +302,7 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
    map.removeLayer(bases[layer]);layer=next;layerButtons();
    detail();save();
   };
-  markers=L.layerGroup().addTo(map);route=L.layerGroup().addTo(map);grid=createCoordinateGrid(map,{system:()=>system,projection,contains:presetHolds,enabled:()=>$('fieldGrid').checked});
+  markers=L.layerGroup().addTo(map);route=L.layerGroup().addTo(map);grid=createCoordinateGrid(map,{system:()=>system,projection,contains:presetHolds,enabled:()=>$('fieldGrid').checked,fine:fineGrid});
   MapSupport.navigation(map,$('fieldRegion'),null,{snap:false});
   let touched=false;map.on('movestart',()=>{touched=true;});
   guess.ready.then(p=>{if(!touched&&!view&&!points.length)map.setView([p.lat,p.lon],p.zoom);});

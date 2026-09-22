@@ -8,7 +8,7 @@ A coordinate and military grid tool for field use. It runs in your browser, work
 
 **Converter** — paste or type coordinates in any supported format and read them back in another. Rows can be named, reordered, cleared and undone, then copied or exported as GPX.
 
-**Point Picker** — the same output, gathered from a map instead of a keyboard. Move the crosshair or tap to add points, name them, measure the distance along them, and send them across. Points move between the two modes without retyping, and both write references the same way.
+**Point Picker** — the same output, gathered from a map instead of a keyboard. Move the crosshair or tap to add points, or paste and type them into its table exactly as in the converter; whatever arrives is written in the picker's grid. Name them, measure the distance along them, and send them across. Points move between the two modes without retyping, and both write references the same way.
 
 ## What it reads
 
@@ -19,6 +19,8 @@ Paste a single point or a whole batch. Formats can be mixed in one paste.
 - **Country grid references** — Singapore, Brunei, Taiwan, Thailand and Australia, short or full.
 - **Google and Apple Maps links**, including short links, which are followed online. A whole list is followed in one pass, and a label pasted with a link becomes that point's name.
 - **Batches** — one per line, or split by commas, semicolons or tabs. Spreadsheet columns and header rows are handled.
+
+The first paste sets the input grid (it keeps the grid you chose when that can hold the points, and otherwise takes the one the paste is written in); everything pasted after that is rewritten into it.
 
 ## Output
 

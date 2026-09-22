@@ -44,7 +44,7 @@ for(const [engine,mobile] of [[chromium,false],[webkit,true]]){
  await page.locator('#fieldPoints .nm').fill('Alpha');await page.locator('#fieldPoints .nm').blur();
  await page.click('#fieldUndo');assert.equal(await page.locator('#fieldPoints .nm').inputValue(),'');
  await page.click('#fieldRedo');assert.equal(await page.locator('#fieldPoints .nm').inputValue(),'Alpha');
- await page.click('#fieldClear');assert.equal(await page.locator('#fieldPoints .trow').count(),0);await page.click('#fieldUndo');assert.equal(await page.locator('#fieldPoints .nm').inputValue(),'Alpha');
+ await page.click('#fieldClear');assert.equal(await page.locator('#fieldPoints .trow:not(.blank)').count(),0);await page.click('#fieldUndo');assert.equal(await page.locator('#fieldPoints .nm').inputValue(),'Alpha');
  await page.uncheck('#fieldTap');await page.click('#fieldAdd');
  // Rapid gestures queue smooth zooms rather than cutting off an active transition.
  if(!mobile){
