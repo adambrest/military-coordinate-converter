@@ -3,7 +3,7 @@
   "use strict";
   root.createAOPicker=function({presets,contains,projection,plausible,presetEnabled=()=>true,onSelect,onCancel}){
     const $=id=>document.getElementById(id);
-    let map,grid,selectionLayer,pointLayer,selection,options={},returnFocus,frame,stableCenter,limitCenter,cancelTap;
+    let fullScreen,map,grid,selectionLayer,pointLayer,selection,options={},returnFocus,frame,stableCenter,limitCenter,cancelTap;
     const landmarks=[];
     const ids=["sg","taiwan","thailand","australia","brunei"];
     function gridId(){return options.system||options.preset||"mgrs";}
@@ -149,10 +149,12 @@
       if(!candidates.length)$("aoSelection").textContent=selection?$("aoSelection").textContent:zoom<6?"Zoom in to select a grid square":"No matching grid squares in view";
     }
     function init(){
-      map=L.map("aoMap",{minZoom:1,maxZoom:10,worldCopyJump:true,maxBoundsViscosity:1,preferCanvas:true,zoomControl:true,trackResize:false});
+      map=L.map("aoMap",{minZoom:1,maxZoom:10,worldCopyJump:true,maxBoundsViscosity:1,preferCanvas:true,fadeAnimation:false,zoomControl:true,trackResize:false});
       map.setView([12,95],3);
       cancelTap=MapSupport.pointGestures(map);
       map.attributionControl.setPrefix(false);
+      fullScreen=MapSupport.fullscreen(map);
+      MapSupport.saveImage(map,{onStatus:text=>{$("aoNetwork").hidden=!text;$("aoNetwork").textContent=text;}});
       L.control.scale({imperial:false}).addTo(map);
       map.createPane("offlineLand").style.zIndex="150";
       const land=L.layerGroup().addTo(map);
@@ -164,14 +166,6 @@
       tiles.on("tileerror",()=>{$("aoNetwork").hidden=false;});
       tiles.on("load",()=>{if(navigator.onLine)$("aoNetwork").hidden=true;});
       grid=L.layerGroup().addTo(map);selectionLayer=L.layerGroup().addTo(map);pointLayer=L.layerGroup().addTo(map);
-      MapSupport.navigation(map,$("aoRegion"),r=>{
-        if(gridId()!=="mgrs"){
-          options={...options,system:r.id,preset:r.id};
-          $("aoTitle").textContent=presets[r.id].name+" · reference area";
-          $("aoSystemLabel").textContent=presets[r.id].zoneCode?"Zone "+presets[r.id].zoneCode:"";
-        }
-        selection=null;selectionLayer.clearLayers();pointLayer.clearLayers();$("aoApply").disabled=true;$("aoSelection").textContent="No area selected";$("aoWarning").hidden=true;
-      });
       for(const id of ids){
         const p=presets[id];
         const context=p.context||{};
@@ -184,9 +178,9 @@
       limitCenter=MapSupport.limitCenter(map);
       map.on("moveend zoomend",()=>{const p=map.getCenter();stableCenter={lat:p.lat,lng:p.lng};cancelAnimationFrame(frame);frame=requestAnimationFrame(draw);});
       const resize=()=>{if(!$("aoOverlay").classList.contains("open"))return;const p=stableCenter||map.getCenter(),z=map.getZoom();map.invalidateSize({pan:false,animate:false});if(!options.view)limitZoom();map.setView(p,Math.min(z,map.getMaxZoom()),{animate:false,reset:true});};
-      if(root.ResizeObserver)new ResizeObserver(resize).observe($("aoMap"));else root.addEventListener("resize",resize);
+      if(root.ResizeObserver)new ResizeObserver(()=>requestAnimationFrame(resize)).observe($("aoMap"));else root.addEventListener("resize",resize);
     }
-    function close(){ cancelTap?.();$("aoOverlay").classList.remove("open","viewing");returnFocus?.focus(); }
+    function close(){ fullScreen?.exit();cancelTap?.();$("aoOverlay").classList.remove("open","viewing");returnFocus?.focus(); }
     $("aoClose").addEventListener("click",close);
     $("aoApply").addEventListener("click",()=>{if(!selection||$("aoApply").disabled)return;const chosen=selection;close();onSelect(chosen,options);});
     $("aoOverlay").addEventListener("keydown",e=>{
@@ -239,7 +233,7 @@
       $("aoOverlay").classList.remove("viewing");$("aoOverlay").classList.add("open");if(!map)init();
       $("aoApply").hidden=false;$("aoApply").disabled=true;$("aoSelection").textContent="No area selected";$("aoWarning").hidden=true;
       const id=gridId(),raw=id==="mgrs";
-      $("aoRegion").hidden=!raw;
+
       $("aoScope").textContent="";
       $("aoTitle").textContent=opts.title||(raw?"Military grid · reference area":presets[id].name+" · reference area");
       $("aoSystemLabel").textContent=raw?"MGRS":presets[id].zoneCode?"Zone "+presets[id].zoneCode:"";
@@ -269,7 +263,7 @@
       returnFocus=document.activeElement;
       options={...opts,view:true};selection=null;
       $("aoOverlay").classList.add("open","viewing");if(!map)init();
-      $("aoApply").hidden=true;$("aoBack").hidden=true;$("aoRegion").hidden=true;$("aoWarning").hidden=true;$("aoScope").textContent="";
+      $("aoApply").hidden=true;$("aoBack").hidden=true;$("aoWarning").hidden=true;$("aoScope").textContent="";
       $("aoTitle").textContent=opts.title||"Reference areas";
       $("aoInstruction").textContent="Each point is colored by the reference area it falls in.";
       $("aoSystemLabel").textContent=opts.system||"";

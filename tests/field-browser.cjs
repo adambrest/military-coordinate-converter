@@ -180,10 +180,10 @@ await page.click('#tab-field');await pickGrid('wgs84');assert.match(await page.l
 await page.setInputFiles('#fieldFile',{name:'bad.gpx',mimeType:'application/gpx+xml',buffer:Buffer.from('<gpx><wpt lat="999" lon="0"/></gpx>')});await page.waitForFunction(()=>document.getElementById('fieldStatus').textContent.includes('Invalid coordinate'));assert.equal(await page.locator('#fieldPoints li').count(),4);
 await page.evaluate(()=>{navigator.clipboard.writeText=async text=>{window.copiedPoints=text;};});await page.click('#fieldCopy');const copied=(await page.evaluate(()=>window.copiedPoints)).split('\n');assert.equal(copied.length,4);assert.equal(copied[0].split('\t').length,2,'unnamed points copy only coordinate columns, just like converter');
 // Export to Maps is on the Point Picker too, with the converter's dialog.
-const popup=page.waitForEvent('popup').catch(()=>null);await page.click('#fieldMaps');
+const popup=page.waitForEvent('popup').catch(()=>null);await page.click('#fieldExportMenu summary');await page.click('#fieldMaps');
 assert.ok((await popup)||await page.locator('#mapsOverlay').isVisible(),'Export to Maps opens Google Maps or its parts');
 if(await page.locator('#mapsOverlay').isVisible())await page.click('#mapsCancel');
-const download=page.waitForEvent('download');await page.click('#fieldExport');const d=await download;assert.equal(d.suggestedFilename(),'mike-golf-romeo.gpx');
+const download=page.waitForEvent('download');await page.click('#fieldExportMenu summary');await page.click('#fieldExport');const d=await download;assert.equal(d.suggestedFilename(),'mike-golf-romeo.gpx');
 await page.click('.field-tools [data-layer="satellite"]');await context.setOffline(true);await page.click('#fieldAdd');assert.equal(await page.locator('#fieldPoints li').count(),5,'adding coordinates works without tiles');await context.setOffline(false);
 // Upgrading an old saved picker changes the basemap, never its collected points/grid.
 await page.evaluate(()=>{const key='mike-golf-romeo-field-v1',s=JSON.parse(localStorage.getItem(key));s.layer='topo';s.system='wgs84';delete s.basemapRevision;localStorage.setItem(key,JSON.stringify(s));});

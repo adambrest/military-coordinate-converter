@@ -61,8 +61,8 @@ for(const [engine,mobile] of [[chromium,false],[webkit,true]]){
  assert.equal(await page.evaluate(()=>document.activeElement.classList.contains('a')&&document.activeElement.closest('.trow').classList.contains('blank')),true);
  await page.locator('#fieldPoints .trow.blank .del').click();await page.evaluate(()=>document.activeElement.blur());await page.keyboard.press('Enter');await settle();
  assert.equal((await refs()).length,before+1,'Enter with nothing focused adds the crosshair point');
- // With the grid off no seams remain: tiles sit on whole device pixels, unscaled.
- assert.equal(await page.evaluate(()=>{const t=document.querySelector('#fieldMap .leaflet-tile-pane .leaflet-tile');return t&&[t.style.width,t.style.willChange].join();}),'256px,transform');
+ // With the grid off no seams remain: tiles overlap to cover fractional gaps without per-tile GPU layers.
+ assert.equal(await page.evaluate(()=>{const t=document.querySelector('#fieldMap .leaflet-tile-pane .leaflet-tile');return t&&[t.style.width,t.style.willChange].join();}),'257px,');
  assert.deepEqual(errors,[]);console.log(`${mobile?'Mobile WebKit':'Desktop Chromium'}: picker table paste, batch, typing, replace, reorder, outside-grid warning, errors and page paste passed`);
  }finally{await browser.close();}
 }

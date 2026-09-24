@@ -594,7 +594,7 @@ test('offline and failed connectivity disable map entry, recovery restores it',a
   Object.defineProperty(a.w.navigator,'onLine',{configurable:true,value:false});a.w.dispatchEvent(new a.w.Event('offline'));a.change('#fromSys','taiwan');a.$('#regionChip').click();assert.equal(a.w.mapOptions.preset,'taiwan');a.dom.window.close();
 });
 
-test('the point map never snaps to a region; only the dropdown moves the camera',async()=>{
+test('the point map never snaps to a region and has no separate jump menu',async()=>{
   const a=app(undefined,true);a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));const map=a.w.pointTestMap;
   map.setView([14.02,99.3],6,{animate:false});assert.equal(map.getCenter().lng,99.3);
   // Releasing a drag beside a landmark must leave the camera where the hand left it.
@@ -603,14 +603,14 @@ test('the point map never snaps to a region; only the dropdown moves the camera'
   map.fire('dragstart');map.setView([14.03,99.31],6,{animate:false,reset:true});
   assert.ok(Math.abs(map.getCenter().lng-99.31)<0.03,'the map pulled itself towards a region');
   map.fire('dragstart');map.setView([1.351,103.821],15,{animate:false});assert.equal(map.getCenter().lng,103.821);
-  a.change('#pointRegion','brunei');assert.equal(map.getCenter().lng,114.75);assert.equal(map.getZoom(),9);
+  assert.equal(a.$('#pointRegion'),null,'region navigation uses input/output presets');
   assert.equal(map.getMinZoom(),1);map.setZoom(22,{animate:false});assert.equal(map.getZoom(),19);a.dom.window.close();
 });
 
 test('regional AO maps stay regional and converter selection always uses squares',async()=>{
   const a=app(undefined,true);a.change('#fromSys','taiwan');a.$('#regionChip').click();const map=a.w.testMap;
-  assert.ok(map.getMinZoom()>1);assert.equal(a.$('#aoRegion').hidden,true);map.setView([14,99],4,{animate:false});assert.ok(map.getCenter().lng>119);map.setZoom(22,{animate:false});assert.ok(map.getZoom()<=9);
-  a.$('#aoClose').click();a.change('#fromSys','mgrs');a.$('#regionChip').click();assert.equal(a.$('#aoRegion').hidden,false);
+  assert.ok(map.getMinZoom()>1);assert.equal(a.$('#aoRegion'),null);map.setView([14,99],4,{animate:false});assert.ok(map.getCenter().lng>119);map.setZoom(22,{animate:false});assert.ok(map.getZoom()<=9);
+  a.$('#aoClose').click();a.change('#fromSys','mgrs');a.$('#regionChip').click();assert.equal(a.$('#aoRegion'),null);
   a.w.testMap.setView([48,2],6,{animate:false});await new Promise(r=>setTimeout(r,30));
   assert.match(a.$('#aoInstruction').textContent,/100 km grid square/);assert.match(a.$('#aoScope').textContent,/100 km square/);
   a.w.testMap.setView([48,2],5,{animate:false});await new Promise(r=>setTimeout(r,30));
@@ -665,8 +665,8 @@ test('empty Auto-detect ignores hidden names and guards dispatched clear events'
 
 test('regional point map constrains navigation and global reopening restores world panning',async()=>{
   const a=app(undefined,true);a.change('#fromSys','sg');a.$('#selectMap').click();await new Promise(r=>setTimeout(r,20));const map=a.w.pointTestMap;
-  assert.equal(a.$('#pointRegion').hidden,true);assert.ok(map.getMinZoom()>1);map.setView([48,2],2,{animate:false,reset:true});assert.ok(map.getCenter().lat<2);assert.ok(map.getCenter().lng>103);
-  a.$('#pointClose').click();a.change('#fromSys','wgs84');a.$('#selectMap').click();assert.equal(a.$('#pointRegion').hidden,false);assert.equal(map.getMinZoom(),1);
+  assert.equal(a.$('#pointRegion'),null);assert.ok(map.getMinZoom()>1);map.setView([48,2],2,{animate:false,reset:true});assert.ok(map.getCenter().lat<2);assert.ok(map.getCenter().lng>103);
+  a.$('#pointClose').click();a.change('#fromSys','wgs84');a.$('#selectMap').click();assert.equal(a.$('#pointRegion'),null);assert.equal(map.getMinZoom(),1);
   // Longitude wraps, so sideways panning stays free across world copies; latitude does
   // not wrap, so the view stops at the edge of the projection instead of running off it.
   const world=map.options.maxBounds;
@@ -2013,9 +2013,9 @@ test('only actual active input setting changes require conversion again',async()
 });
 
 /* ---- v2 reference areas ---- */
-test('the app reports version 3.13.0',()=>{
+test('the app reports version 3.14.0',()=>{
   const a=app();
-  try{assert.equal(a.$('#appVersion').textContent,'v3.13.0');assert.match(read('version.js'),/APP_VERSION = "3\.13\.0"/);
+  try{assert.equal(a.$('#appVersion').textContent,'v3.14.0');assert.match(read('version.js'),/APP_VERSION = "3\.14\.0"/);
     const logo=a.$('header h1 .logo');assert.ok(logo,'the header shows the app icon');assert.equal(logo.getAttribute('src'),'icons/logo-64.png');assert.equal(logo.getAttribute('alt'),'');}
   finally{a.dom.window.close();}
 });
@@ -2536,5 +2536,32 @@ test('new input greys the results as out of date until Convert or Enter',()=>{
     a.w.document.body.dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
     assert.equal(a.$('#toRows').closest('.tbl').classList.contains('stale'),false);
     assert.equal(a.$('#toRows').querySelectorAll('.trow').length,2);assert.equal(a.$('#copyBtn').disabled,false);
+  }finally{a.dom.window.close();}
+});
+
+
+test('Singapore rows keep both presets when a map link is appended',async()=>{
+  const a=app(undefined,false,false);
+  try{
+    a.change('#fromSys','sg');a.paste('3000 3000\n3100 3100\n3200 3200');
+    const before=a.state();a.$('#addRow').click();a.paste('https://maps.google.com/?q=1.35,103.82',3);
+    assert.equal(a.state().from,'sg');assert.equal(a.state().to,before.to);assert.equal(a.state().points.length,4);
+    assert.deepEqual(a.state().rows.slice(0,3),before.rows);
+    a.$('#addRow').click();a.w.fetch=async()=>({ok:true,json:async()=>({url:'https://maps.google.com/?q=1.36,103.83'})});
+    a.paste('https://maps.app.goo.gl/feedback',4);await a.settleLinks();
+    assert.equal(a.state().from,'sg');assert.equal(a.state().to,before.to);assert.equal(a.state().points.length,5);
+  }finally{a.dom.window.close();}
+});
+
+
+test('country input and output changes navigate their next map opening',()=>{
+  const a=app(undefined,false,false);
+  try{
+    a.paste('1.30,103.80');a.change('#fromSys','sg');a.$('#selectMap').click();
+    assert.equal(a.w.pointOptions.regionView,true);assert.equal(a.w.pointOptions.center.lon,103.82);assert.equal(a.w.pointOptions.zoom,11);
+    a.$('#selectMap').click();assert.equal(a.w.pointOptions.regionView,undefined,'subsequent opens return to points or the saved view');
+    a.change('#fromSys','wgs84');a.change('#toSys','sg');a.$('#viewBtn').click();
+    assert.equal(a.w.pointOptions.regionView,true);assert.equal(a.w.pointOptions.center.lon,103.82);assert.equal(a.w.pointOptions.zoom,11);
+    a.$('#viewBtn').click();assert.equal(a.w.pointOptions.regionView,false);
   }finally{a.dom.window.close();}
 });

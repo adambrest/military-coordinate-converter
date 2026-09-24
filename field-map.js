@@ -5,7 +5,7 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
  const $=id=>document.getElementById(id),key='mike-golf-romeo-field-v1';
  // `preferred` is a global grid someone chose by hand; `area` is the country grid the
  // view was last over, so a grid only changes on the way into or out of a country.
- let points=[],connected=false,system='mgrs',layer=MapSupport.DEFAULT_BASEMAP,map,markers,route,grid,view,undo=[],redo=[],bases,autoZoom,written=null,broad,target,preferred=null,area,choices={},mapHistory,labels;
+ let fullScreen,imageExport,points=[],connected=false,system='mgrs',layer=MapSupport.DEFAULT_BASEMAP,map,markers,route,grid,view,undo=[],redo=[],bases,autoZoom,written=null,broad,target,preferred=null,area,choices={},mapHistory,labels;
  try{const s=JSON.parse(localStorage.getItem(key));if(s&&Array.isArray(s.points)){points=s.points.filter(RouteTools.valid).slice(0,20000);connected=!!s.connected;system=presets.includes(s.system)?s.system:'mgrs';layer=MapSupport.basemapId(s.basemapRevision===2?s.layer:(s.layer==='topo'?'street':s.layer));view=s.view;preferred=['mgrs','wgs84'].includes(s.preferred)?s.preferred:null;area=s.area;if(s.choices&&typeof s.choices==='object')choices=s.choices;}}catch(_){}
  const status=t=>{$('fieldStatus').textContent=t;};
  function save(){try{localStorage.setItem(key,JSON.stringify({points,connected,system,layer,view,preferred,area,choices,basemapRevision:2}));}catch(_){status('Device storage is full. Export your points before closing.');}}
@@ -256,7 +256,7 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
  function layerButtons(){for(const b of document.querySelectorAll('.field-tools [data-layer]'))b.setAttribute('aria-pressed',String(b.dataset.layer===layer));}
  function init(){
   const guess=MapSupport.approximateLocation({helper});const initial=RouteTools.valid(view)?view:guess.current();
-  map=L.map('fieldMap',{preferCanvas:true,worldCopyJump:true,maxZoom:19,zoomControl:false}).setView([initial.lat,initial.lon],initial.zoom||10);
+  map=L.map('fieldMap',{preferCanvas:true,fadeAnimation:false,worldCopyJump:true,maxZoom:19,zoomControl:false}).setView([initial.lat,initial.lon],initial.zoom||10);
   MapSupport.clampLatitude(map);
   map.attributionControl.setPrefix(false);
   map.createPane('broadLand').style.zIndex='160';
@@ -309,12 +309,13 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
    detail();save();
   };
   markers=L.layerGroup().addTo(map);route=L.layerGroup().addTo(map);grid=createCoordinateGrid(map,{system:()=>system,projection,contains:presetHolds,enabled:()=>$('fieldGrid').checked,fine:fineGrid});
-  MapSupport.navigation(map,$('fieldRegion'),null,{snap:false});
+  fullScreen=MapSupport.fullscreen(map);
+  imageExport=MapSupport.saveImage(map,{onStatus:status});
   let touched=false;map.on('movestart',()=>{touched=true;});
   guess.ready.then(p=>{if(!touched&&!view&&!points.length)map.setView([p.lat,p.lon],p.zoom);});
   map.on('moveend',()=>{const p=map.getCenter();view={lat:p.lat,lon:MapSupport.longitude(p.lng),zoom:map.getZoom()};moved();});
   $('fieldAdd').onclick=()=>{const p=map.getCenter();add({lat:p.lat,lon:MapSupport.longitude(p.lng)});};
-  new ResizeObserver(()=>{map.invalidateSize({pan:false});grid.refresh();}).observe($('fieldMap'));
+  new ResizeObserver(()=>requestAnimationFrame(()=>{map.invalidateSize({pan:false});grid.refresh();})).observe($('fieldMap'));
   historyButtons();draw();if(points.length)fit();moved();target.update();offerGrids();detail();grid.refresh();
  }
  $('fieldFormat').value=system;
@@ -330,14 +331,15 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   system=next;preferred=isCountry(system)?null:system;written=null;
   if(home&&next==='mgrs'&&!known&&gridChoiceAlert)ask(gridChoiceAlert(home,next)).then(answer=>{if(answer==='alt'){$('fieldFormat').value=home;$('fieldFormat').onchange();}});
   const region=MapSupport.regions.find(r=>r.id===system);
-  // A country grid chosen from elsewhere goes to that country, since it cannot be read
-  // anywhere else; nothing moves when points are already down.
-  if(!points.length&&map&&region&&!presetHolds(system,map.getCenter().lat,MapSupport.longitude(map.getCenter().lng)))map.setView([region.lat,region.lon],region.zoom,{animate:false});
+  // Choosing a country grid also navigates there; Auto-Zoom returns to the points.
+  if(map&&region)map.setView([region.lat,region.lon],region.zoom,{animate:false});
   if(map){const c=map.getCenter();area=localAt(c.lat,c.lng);}
   refresh();
  };
  $('fieldRoute').onchange=()=>{remember();connected=$('fieldRoute').checked;if(connected&&points.every(p=>p.breakBefore))points.forEach((p,i)=>p.breakBefore=i===0);drawRoute();$('fieldDistance').textContent=connected?RouteTools.summary(points):'';save();};
  const gridChoice=MapSupport.gridToggle($('fieldGrid'),()=>grid?.refresh());
+ $('fieldSnapshot').onclick=()=>imageExport?.save();
+ $('fieldDone').onclick=()=>{fullScreen?.exit();$('fieldTap').checked=false;$('fieldTap').onchange();$('fieldTap').focus();};
  $('fieldTap').onchange=()=>{$('view-field').classList.toggle('tap-mode',$('fieldTap').checked);render();target?.update();};
  // With the list empty again, the grid is free to follow the map once more.
  const unlocked=()=>{if(!points.length&&map){area=undefined;moved();}};

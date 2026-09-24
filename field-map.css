@@ -43,3 +43,23 @@
 .grid-label-edge{position:absolute;left:0;top:0;font:600 11px/1 ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;color:#1e3a5f;background:rgba(255,255,255,.9);border-radius:4px;padding:2px 4px;white-space:nowrap;box-shadow:0 0 0 1px rgba(30,58,95,.14);transition:opacity .15s}
 .grid-label-edge.off{display:none}
 .grid-labels.zooming .grid-label-edge{opacity:0;transition:none}
+
+/* Viewport fallback also works in iOS browsers without the Fullscreen API. */
+.map-fullscreen-active{position:fixed!important;inset:0!important;z-index:10000!important;width:100vw!important;height:100dvh!important;background:#d9e2e8}
+.map-fullscreen-active #fieldMap,.map-fullscreen-active #pointMap,.map-fullscreen-active #aoMap{height:100%!important;min-height:0!important}
+body:has(.map-fullscreen-active) .field-map-panel,body:has(.map-fullscreen-active) .point-modal,body:has(.map-fullscreen-active) .ao-modal{overflow:visible}
+.map-fullscreen a{font-size:24px}
+.map-save-image svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7}
+.map-location-status,.map-export-status{max-width:min(260px,55vw);padding:5px 8px;border-radius:5px;background:#fff;color:#334155;font:12px/1.4 system-ui;box-shadow:0 1px 4px #0003}
+.map-location-status:empty,.map-export-status:empty{display:none}
+/* Leaflet's additive blending brightens overlapping imagery edges. Normal
+   compositing lets the shared one-pixel overlap cover fractional zoom seams. */
+.leaflet-container img.leaflet-tile{mix-blend-mode:normal}
+
+.map-done{display:none;position:absolute;left:50%;bottom:64px;transform:translateX(-50%);z-index:800;min-width:100px;min-height:44px;padding:0 22px;border:0;border-radius:9px;background:#2563eb;color:#fff;font:600 15px system-ui;cursor:pointer;box-shadow:0 2px 8px #0003}
+.tap-mode .map-done{display:block}
+.overlay.viewing .map-done{display:none}
+.map-done:disabled{opacity:.5;cursor:default}
+/* Keep location/export messages clear of the provider credit on narrow maps. */
+.leaflet-container:has(.map-location-status:not(:empty),.map-export-status:not(:empty)) .leaflet-bottom.leaflet-left{bottom:36px}
+.field-map-wrap:has(.map-location-status:not(:empty),.map-export-status:not(:empty)) .map-done,.point-map-wrap:has(.map-location-status:not(:empty),.map-export-status:not(:empty)) .map-done{bottom:104px}

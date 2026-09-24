@@ -246,10 +246,16 @@
   @media (max-width:420px){.cell,.cell.nm,.trow.out .cell{font-size:11px;padding-left:5px;padding-right:5px}}
   /* One button shape under every table, on both tabs. The colours still say what a
      button does; the height, type and corners are the same everywhere. */
-  .row-actions .select-map,.row-actions .addrow,.exportbar button{min-height:38px;padding:0 14px;border-radius:9px;font-family:inherit;font-size:13px;font-weight:600;line-height:1.2;margin:0}
+  .row-actions .select-map,.row-actions .addrow,.exportbar button{height:44px;min-height:44px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0 14px;border-radius:9px;font-family:inherit;font-size:13px;font-weight:600;line-height:1.2;margin:0}
   .exportbar{gap:8px}
+  .export-menu{position:relative;flex:1 1 0;min-width:0}
+  .export-menu summary{height:44px;display:flex;align-items:center;justify-content:center;gap:8px;list-style:none;border:1px solid var(--accent);border-radius:9px;background:var(--accent);color:white;font-family:inherit;font-size:13px;font-weight:600;line-height:1.2;cursor:pointer}
+  .export-menu summary::-webkit-details-marker{display:none}
+  .export-options{position:absolute;bottom:calc(100% + 8px);left:0;z-index:30;min-width:190px;padding:5px;border:1px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 6px 24px #0002}
+  .exportbar .export-options button{display:flex;width:100%;justify-content:flex-start;padding:0 12px;border:0;background:transparent;white-space:nowrap}
+  .exportbar .export-options button:hover{background:var(--panel2)}
   .exportbar button{padding:0 8px}
-  .row-actions .histbtn{min-width:38px;min-height:38px;border-radius:9px}
+  .row-actions .histbtn{min-width:44px;min-height:44px;border-radius:9px}
   .cell.outside{color:var(--warn);font-weight:600}
   /* Converting, after Detail IC: old results slide out left, new ones flash in. */
   #toRows{position:relative}
@@ -321,9 +327,10 @@
           <div class="tbl"><div class="thead" id="toHead"></div><div id="toRows"></div></div>
           <p class="area-note" id="toOutside" role="status" hidden></p>
           <div class="exportbar">
-            <button class="maps" id="mapsBtn" disabled>Export to Maps</button>
+            <details class="export-menu" id="converterExport"><summary>Export <span aria-hidden="true">▾</span></summary><div class="export-options">
+              <button id="gpxBtn" disabled>Export as GPX</button><button id="snapshotBtn" disabled>Map snapshot</button><button id="mapsBtn" disabled>Google Maps</button>
+            </div></details>
             <button id="viewBtn" disabled>View on map</button>
-            <button id="gpxBtn" disabled>Download GPX</button>
             <button id="copyBtn" disabled>Copy</button>
           </div>
         </div>
@@ -333,8 +340,8 @@
 
 <section class="view on" id="view-field">
  <div class="field-layout"><div class="field-map-panel">
- <div class="field-tools"><div class="point-layers" role="group" aria-label="Map layer"><button type="button" data-layer="street" aria-pressed="true">Street</button><button type="button" data-layer="topo" aria-pressed="false">Topo</button><button type="button" data-layer="satellite" aria-pressed="false">Satellite</button></div><select id="fieldRegion" class="map-region" aria-label="Jump to region"></select><label><input type="checkbox" id="fieldGrid"> Grid</label><label><input type="checkbox" id="fieldLabels" checked> Labels</label><label><input type="checkbox" id="fieldTap"> Tap to add</label></div>
- <div class="field-map-wrap"><div id="fieldMap" aria-label="Point Picker map"></div><svg class="field-crosshair" aria-hidden="true" viewBox="0 0 32 32"><path class="crosshair-edge" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/><path class="crosshair-core" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/></svg></div>
+ <div class="field-tools"><div class="point-layers" role="group" aria-label="Map layer"><button type="button" data-layer="street" aria-pressed="true">Street</button><button type="button" data-layer="topo" aria-pressed="false">Topo</button><button type="button" data-layer="satellite" aria-pressed="false">Satellite</button></div><label><input type="checkbox" id="fieldGrid"> Grid</label><label><input type="checkbox" id="fieldLabels" checked> Labels</label><label><input type="checkbox" id="fieldTap"> Tap to add</label></div>
+ <div class="field-map-wrap"><button type="button" id="fieldDone" class="map-done">Done</button><div id="fieldMap" aria-label="Point Picker map"></div><svg class="field-crosshair" aria-hidden="true" viewBox="0 0 32 32"><path class="crosshair-edge" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/><path class="crosshair-core" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/></svg></div>
  <div class="field-readout"><div class="readout-text"><span id="fieldReadoutGrid" class="readout-grid"></span><output id="fieldCoordinate"></output></div><button id="fieldAdd" class="convert">Add point</button></div>
  </div><aside class="field-output side">
  <div class="lbl">Output <span id="fieldTotal" class="lbl-count">0 points</span></div>
@@ -344,7 +351,7 @@
  <div class="tbl"><div class="thead"><span>#</span><span id="fieldEastHead">Easting</span><span id="fieldNorthHead">Northing</span><span>Name</span><span></span></div><ol id="fieldPoints"></ol></div>
  <div class="row-actions"><button id="fieldImport" class="select-map" type="button">Import GPX</button><button class="addrow" id="fieldAddRow" type="button">+ Add row</button><span class="history"><button class="histbtn danger" id="fieldClear" type="button" title="Clear all points" aria-label="Clear all points" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button><button class="histbtn" id="fieldUndo" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-5 5 5 5M4 10h10a6 6 0 0 1 6 6v3"/></svg></button><button class="histbtn" id="fieldRedo" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 5 5-5 5M20 10H10a6 6 0 0 0-6 6v3"/></svg></button></span></div>
  <div class="route-distance-control"><label><input type="checkbox" id="fieldRoute"> Connect points in order</label><p id="fieldDistance" aria-live="polite"></p></div>
- <div class="exportbar"><button id="fieldMaps" class="maps">Export to Maps</button><button id="fieldConvert">Send to converter</button><button id="fieldExport">Download GPX</button><button id="fieldCopy">Copy</button></div>
+ <div class="exportbar"><details class="export-menu" id="fieldExportMenu"><summary>Export <span aria-hidden="true">▾</span></summary><div class="export-options"><button id="fieldExport">Export as GPX</button><button id="fieldSnapshot">Map snapshot</button><button id="fieldMaps">Google Maps</button></div></details><button id="fieldConvert">Send to converter</button><button id="fieldCopy">Copy</button></div>
  <p class="area-note" id="fieldAreaNote" role="status" hidden></p><p class="detect err" id="fieldStatus" role="status"></p>
  </aside></div></section>
     <!-- SETTINGS -->
@@ -385,7 +392,7 @@
   <div class="overlay" id="aoOverlay" role="dialog" aria-modal="true" aria-labelledby="aoTitle">
     <div class="modal ao-modal">
       <div class="ao-heading"><div><h3 id="aoTitle">Select your area</h3><p id="aoInstruction">Zoom in, then click your area to select its grid square.</p></div><button id="aoClose" aria-label="Close map">×</button></div>
-      <div class="ao-toolbar"><button id="aoBack" class="setting-action">Change country</button><select id="aoRegion" class="map-region" aria-label="Jump to"></select><span id="aoSystemLabel"></span><span id="aoScope" class="ao-scope" aria-live="polite"></span></div>
+      <div class="ao-toolbar"><button id="aoBack" class="setting-action">Change country</button><span id="aoSystemLabel"></span><span id="aoScope" class="ao-scope" aria-live="polite"></span></div>
       <div class="ao-map-wrap"><div id="aoMap" aria-label="AO map. Arrow keys pan, plus and minus zoom. Click a grid square to select it." tabindex="0"></div></div>
       <div class="ao-footer">
         <div id="aoSelection" aria-live="polite">No area selected</div>
@@ -399,8 +406,8 @@
   <div class="overlay" id="pointOverlay" role="dialog" aria-modal="true" aria-labelledby="pointTitle">
     <div class="modal point-modal">
       <div class="point-heading"><h3 id="pointTitle">Select a point</h3><button id="pointClose" aria-label="Close point map">×</button></div>
-      <div class="point-toolbar"><div class="point-layers" role="group" aria-label="Map layer"><button id="pointStreet" aria-pressed="true">Street</button><button id="pointTopo" aria-pressed="false">Topo</button><button id="pointSatellite" aria-pressed="false">Satellite</button></div><select id="pointRegion" class="map-region" aria-label="Jump to"></select><label class="point-grid-control"><input type="checkbox" id="pointGrid"> Grid</label><label class="point-grid-control"><input type="checkbox" id="pointLabels" checked> Labels</label><label class="point-tap-control"><input type="checkbox" id="pointTap"> Tap to add</label><span id="pointPreset"></span><span id="pointCount"></span></div>
-      <div class="point-map-wrap"><div id="pointMap" tabindex="0" aria-label="Point map. Arrow keys move the crosshair location; plus and minus zoom; Enter adds the point."></div><svg class="point-crosshair" aria-hidden="true" viewBox="0 0 32 32"><path class="crosshair-edge" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/><path class="crosshair-core" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/></svg></div>
+      <div class="point-toolbar"><div class="point-layers" role="group" aria-label="Map layer"><button id="pointStreet" aria-pressed="true">Street</button><button id="pointTopo" aria-pressed="false">Topo</button><button id="pointSatellite" aria-pressed="false">Satellite</button></div><label class="point-grid-control"><input type="checkbox" id="pointGrid"> Grid</label><label class="point-grid-control"><input type="checkbox" id="pointLabels" checked> Labels</label><label class="point-tap-control"><input type="checkbox" id="pointTap"> Tap to add</label><span id="pointPreset"></span><span id="pointCount"></span></div>
+      <div class="point-map-wrap"><button type="button" id="pointDone" class="map-done">Done</button><div id="pointMap" tabindex="0" aria-label="Point map. Arrow keys move the crosshair location; plus and minus zoom; Enter adds the point."></div><svg class="point-crosshair" aria-hidden="true" viewBox="0 0 32 32"><path class="crosshair-edge" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/><path class="crosshair-core" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/></svg></div>
       <div class="point-footer"><div class="point-readout"><div class="readout-text"><span class="readout-grid" id="pointReadoutGrid"></span><div id="pointCoordinate"></div><div id="pointFormatPreview" aria-live="polite"></div></div><div class="point-actions"><button class="setting-action" id="pointContinue">Add point</button><button class="setting-action primary" id="pointConfirm">Add point and close</button></div></div><p id="pointDistance" aria-live="polite"></p><p class="point-status" id="pointUnresolved" hidden></p><p class="point-status" id="pointNetwork" hidden></p><p class="point-status" id="pointAdded" role="status"></p></div>
     </div>
   </div>
@@ -418,6 +425,7 @@
   <script src="vendor/leaflet.js"></script>
   <script src="grid-core.js"></script>
   <script src="map-support.js"></script>
+  <script src="vendor/html2canvas.min.js"></script>
   <script src="map-grid.js"></script>
   <script src="map-picker.js"></script>
   <script src="point-picker.js"></script>
@@ -1471,14 +1479,13 @@
     const pointPicker=createPointPicker({history:{undo:()=>{undo();return existingMapPoints();},redo:()=>{redo();return existingMapPoints();}},projection:projectionFor,contains:presetContains,fine:id=>fineGrid(id==='globalutm'?'mgrs':id),preview:mapPointPreview,onConfirm:addMapPoint,onViewChange:view=>{state.pointMapView=view;save();},capture:()=>({state:snapshot(),lastLocation:state.lastLocation,pointMapView:state.pointMapView,past:[...history.past],future:[...history.future]}),retract:saved=>{history.past=saved.past;history.future=saved.future;restore(saved.state);state.lastLocation=saved.lastLocation;state.pointMapView=saved.pointMapView;save();pointOptions={...pointOptions,...existingMapPoints()};}});
     // Warm the guess before the click so the first open already has it.
     for(const event of ["pointerenter","focus"])$("#selectMap").addEventListener(event,guessLocation,{once:true,passive:true});
-    // With a worker to cache them, fetch the tiles around the guessed area while
-    // the page is idle, so the first map open draws from disk rather than the net.
+    // Check satellite coverage while idle; map tiles load only when viewed.
     if("serviceWorker" in navigator){
       const whenIdle=globalThis.requestIdleCallback||(run=>setTimeout(run,1500));
       whenIdle(()=>{
-        // Warming the cache is only worth it on a link that answered quickly.
+        // Coverage checks are only worth it on a responsive connection.
         tileProbe().then(answer=>answer==="ok"&&!dataSaver()?(locationGuess||=MapSupport.approximateLocation({helper:MAP_HELPER})).ready:Promise.reject()).then(point=>{
-          MapSupport.prefetchTiles(point);
+          // Bulk tile warming is not allowed by the public street tile service.
           // Knowing the ceiling up front stops the first satellite switch stalling.
           MapSupport.imageryZoom(point.lat,point.lon,800,480).catch(()=>{});
         }).catch(()=>{});
@@ -1492,7 +1499,8 @@
       const fallback=p.anchor?{lat:p.anchor[0],lon:p.anchor[1]}:p.bbox?{lat:(p.bbox[0]+p.bbox[1])/2,lon:(p.bbox[2]+p.bbox[3])/2}:guessLocation();
       const nav=p.browseBbox||p.bbox;
       pointOptions={...current,connected:$("#measureRoute").checked,autoDetect:state.from==="auto",presetId:id,presetLabel:p.name,bounds:nav?[[nav[0],nav[2]],[nav[1],nav[3]]]:null,detailZoom:DETAIL_ZOOM,center:previous||fallback,zoom:(previous?state.pointMapView?.zoom:0)||(previous?15:COUNTRY_PRESETS.includes(id)?9:fallback.zoom||4),layer:state.pointMapView?.layer||MapSupport.DEFAULT_BASEMAP};
-      pointPicker.open(pointOptions);
+      if(state.mapInputRegion===id){const r=MapSupport.regions.find(r=>r.id===id);if(r)pointOptions={...pointOptions,center:{lat:r.lat,lon:r.lon},zoom:r.zoom,regionView:true};}
+      pointPicker.open(pointOptions);delete state.mapInputRegion;save();
     });
 
     // Check the app endpoint through the network, bypassing the offline shell.
@@ -2294,7 +2302,7 @@
       state.from=target;$("#fromSys").value=target;
       delete state.pendingGrid;
       const points=parsed.map(p=>p.point).filter(Boolean);
-      if(points.length&&!state.explicitOutput){
+      if(points.length&&!state.explicitOutput&&!state.rows.some(occupied)){
         // Falling back to a global grid must not switch military grids on behind
         // the reader; coordinates are the safe output when no country fits.
         state.to=target==="mgrs"?"wgs84":enabledGrid(points)||(presetEnabled("mgrs")?"mgrs":"wgs84");
@@ -2564,7 +2572,7 @@
       table.classList.toggle("stale",stale);$("#toStale").hidden=!stale;
       if(stale){
         rowsEl.replaceChildren(...lastOutput.rows.map(r=>r.cloneNode(true)));$("#toHead").innerHTML=lastOutput.head;
-        for(const id of ["#mapsBtn","#viewBtn","#gpxBtn","#copyBtn"])$(id).disabled=true;
+        for(const id of ["#mapsBtn","#viewBtn","#gpxBtn","#snapshotBtn","#copyBtn"])$(id).disabled=true;
         updateRegionChips();return;
       }
       rowsEl.innerHTML="";
@@ -2629,7 +2637,7 @@
       const has=pts.length>0;
       if(has)lastOutput={rows:[...rowsEl.children].map(r=>r.cloneNode(true)),head:$("#toHead").innerHTML};
       else if(!rowsHaveContent())lastOutput=null;
-      $("#mapsBtn").disabled=!has; $("#viewBtn").disabled=!has; $("#gpxBtn").disabled=!has; $("#copyBtn").disabled=!has;
+      $("#snapshotBtn").disabled=!has; $("#mapsBtn").disabled=!has; $("#viewBtn").disabled=!has; $("#gpxBtn").disabled=!has; $("#copyBtn").disabled=!has;
       if(globalThis.RouteTools){
         const signature=JSON.stringify(pts.map(p=>[Number(p.lat.toFixed(8)),Number(p.lon.toFixed(8))]));
         const source=state.importedRoute?.signature===signature?state.importedRoute.points:pts;
@@ -2753,6 +2761,7 @@
       readRows();
       const previous=state.from,chosen=$("#fromSys").value;
       const target=chosen==="mgrs"?(state.settings.mgrs.format||"mgrs"):chosen;
+      state.mapInputRegion=COUNTRY_PRESETS.includes(target)?target:null;
       if(target===previous){syncFormat("from");return;}
       const hadInput=state.rows.some(r=>r.some(v=>String(v).trim()));
       if(hadInput)remember();
@@ -2774,7 +2783,7 @@
       detect(away.length?(away.length===1?"Point "+away[0]+" is":"Points "+away.join(", ")+" are")+" outside "+PRESETS[target].name+", so "+(away.length===1?"it was":"they were")+" left as entered.":"",away.length?"warn":"");
       if(showing&&current.points.length&&!current.unresolved)convert();
     });
-    $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value;if(state.to==="mgrs")state.to=state.settings.mgrs.format||"mgrs";state.explicitOutput=true;
+    $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value;if(state.to==="mgrs")state.to=state.settings.mgrs.format||"mgrs";state.explicitOutput=true;state.mapOutputRegion=COUNTRY_PRESETS.includes(state.to)?state.to:null;
       readRows();const shown=state.points?.length?state.points:existingMapPoints().points;
       const home=shown.length&&GLOBAL_FORMATS.includes(state.to)?enabledGrid(shown):null,known=keptGrid(home)===state.to;
       noteChoice(shown,state.to);
@@ -2838,7 +2847,7 @@
       for(let start=0;start<count-1;){const end=Math.min(count,start+limit);parts.push([start,end]);start=end-1;}
       return parts;
     }
-    function closeMaps(){$("#mapsOverlay").classList.remove("open");$("#mapsBtn").focus();}
+    function closeMaps(){$("#mapsOverlay").classList.remove("open");$(mapsFromPicker?"#fieldExportMenu summary":"#converterExport summary").focus();}
     let mapsFromPicker=false;
     $("#mapsBtn").addEventListener("click",()=>{mapsFromPicker=false;exportToMaps(state.points||[]);});
     function exportToMaps(pts){
@@ -2855,16 +2864,26 @@
       }
       $("#mapsOverlay").classList.add("open");holder.firstChild.focus();
     }
-    $("#viewBtn").addEventListener("click",()=>{
+    function viewOutput(snapshot=false){
+      if(snapshot)$("#converterExport summary").focus();
       const pts=state.points||[];if(!pts.length)return;
       // Numbered here because the output rows carry no number of their own, and the
       // shared marker falls back to one for any point that was never named.
       const points=pts.map((p,i)=>({lat:p.lat,lon:p.lon,name:p.name,number:i+1}));
-      const middle=points[Math.floor(points.length/2)];
-      pointPicker.open({points,readOnly:true,connected:$("#measureRoute").checked,title:"Output points",unresolved:0,
+      const middle=points[Math.floor(points.length/2)],region=state.mapOutputRegion===state.to?MapSupport.regions.find(r=>r.id===state.to):null;
+      pointPicker.open({points,snapshot,readOnly:true,connected:$("#measureRoute").checked,title:"Output points",unresolved:0,
         presetId:state.to==="auto"?"wgs84":state.to,presetLabel:"",
-        center:{lat:middle.lat,lon:middle.lon},zoom:14,layer:state.pointMapView?.layer||MapSupport.DEFAULT_BASEMAP});
-    });
+        center:region||middle,regionView:!!region,zoom:region?.zoom||14,layer:state.pointMapView?.layer||MapSupport.DEFAULT_BASEMAP});
+      delete state.mapOutputRegion;save();
+    }
+    $("#viewBtn").addEventListener("click",()=>viewOutput());
+    $("#snapshotBtn").addEventListener("click",()=>viewOutput(true));
+    for(const menu of document.querySelectorAll('.export-menu')){
+      menu.addEventListener('click',event=>{if(event.target.closest('button')){menu.open=false;if(menu.contains(document.activeElement))menu.querySelector('summary').focus();}});
+      menu.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();menu.open=false;menu.querySelector('summary').focus();}});
+      menu.addEventListener('toggle',()=>{if(menu.open)for(const other of document.querySelectorAll('.export-menu'))if(other!==menu)other.open=false;});
+    }
+    document.addEventListener('click',event=>{for(const menu of document.querySelectorAll('.export-menu'))if(!menu.contains(event.target))menu.open=false;});
     $("#mapsCancel").addEventListener("click",closeMaps);
     $("#mapsGpx").addEventListener("click",()=>{closeMaps();if(mapsFromPicker)$("#fieldExport").click();else openGpx();});
     $("#mapsOverlay").addEventListener("keydown",e=>{
@@ -2885,7 +2904,7 @@
 
     /* ---- GPX modal ---- */
     function openGpx(){ if(!state.points||!state.points.length)return; $("#gpxName").value=""; updateGpxNote(); $("#gpxOverlay").classList.add("open"); $("#gpxName").focus(); }
-    function closeGpx(){ $("#gpxOverlay").classList.remove("open"); $("#gpxBtn").focus(); }
+    function closeGpx(){ $("#gpxOverlay").classList.remove("open"); $("#converterExport summary").focus(); }
     $("#gpxOverlay").addEventListener("keydown",e=>{
       if(e.key==="Escape"){e.preventDefault();closeGpx();}
       if(e.key==="Tab"){

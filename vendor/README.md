@@ -13,3 +13,5 @@ The point picker also requests [Esri World Imagery](https://services.arcgisonlin
 Shared landmark positions in `map-context.js` are approximate orientation aids. Brunei additions use public map listings for [Jalan Aman](https://mapcarta.com/W1029646988) (OpenStreetMap-derived) and [Lakiun](https://brunei.worldplaces.me/military-bases/52929146-lakiun-camp.html). They are not surveyed camp boundaries.
 
 - `shoalwater.geojson` — public [Queensland landmark-area data](https://spatial-gis.information.qld.gov.au/arcgis/rest/services/Location/Places/FeatureServer/17), filtered to Shoalwater Bay Training Area and requested in latitude/longitude. © State of Queensland (Department of Natural Resources and Mines, Manufacturing, and Regional and Rural Development). Simplified for map context; it is separate from the converter preset’s supported bounds.
+
+- `html2canvas.min.js`: html2canvas 1.4.1, vendored from https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js for local/offline map image export. MIT license in `html2canvas.LICENSE`. Configuration reference: https://html2canvas.hertzen.com/configuration.

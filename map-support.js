@@ -194,22 +194,6 @@
     const update=()=>{if(map.getZoom()>=8){if(!map.hasLayer(pins))pins.addTo(map);}else if(map.hasLayer(pins))map.removeLayer(pins);};
     map.on('zoomend',update);return {update};
   }
-  function navigation(map,select,onRegion,{snap=true}={}){
-    select.replaceChildren(new Option('Jump to…',''),...regions.map(r=>new Option(r.name,r.id)));
-    const snapped=new Set();let dragged=false;
-    select.addEventListener('change',()=>{const r=regions.find(r=>r.id===select.value);if(r){snapped.add(r.id);onRegion?.(r);map.setView([r.lat,r.lon],r.zoom,{animate:false,reset:true});}select.value='';});
-    // Only a completed human drag at country scale can snap, once per region.
-    // A second drag always wins; programmatic moves and close zoom never snap.
-    map.on('dragstart',()=>{map.stop();dragged=true;});
-    map.on('zoomstart',()=>{dragged=false;});
-    map.on('moveend',()=>{
-      if(!dragged)return;dragged=false;if(!snap)return;if(select.hidden)return;
-      const z=map.getZoom();if(z<4||z>8)return;
-      const center=map.latLngToContainerPoint(map.getCenter());
-      const r=regions.filter(r=>!snapped.has(r.id)).map(r=>({r,d:map.latLngToContainerPoint([r.lat,r.lon]).distanceTo(center)})).sort((a,b)=>a.d-b.d)[0];
-      if(r&&r.d<55){snapped.add(r.r.id);map.setView([r.r.lat,r.r.lon],z,{animate:false,reset:true});}
-    });
-  }
   // Leaflet's maxBounds keeps the whole viewport inside the box, so a zoomed-in
   // crosshair stops well short of a country's edge. Expanding the box by half a
   // screen in every direction limits the map center - the crosshair - instead.
@@ -417,13 +401,11 @@
       return tile;
     }
   }));
-  // On a high-density screen a map that sits at a fractional pixel leaves a hairline
-  // between tile rows, which on imagery reads as a faint grid with the grid off.
-  // Giving each tile its own compositing layer places it on whole device pixels.
-  // (Enlarging tiles to overlap instead blurs their edges into brighter lines.)
+  // A one-CSS-pixel overlap covers subpixel gaps during pinch zoom without
+  // giving hundreds of tiles separate GPU compositing layers on mobile.
   function seamless(layer){
     const init=layer._initTile;
-    layer._initTile=function(tile){init.call(this,tile);tile.style.willChange="transform";};
+    layer._initTile=function(tile){init.call(this,tile);const size=this.getTileSize();tile.style.width=(size.x+1)+"px";tile.style.height=(size.y+1)+"px";};
     return layer;
   }
   function basemap(id,options){
@@ -473,34 +455,93 @@
     const sync=()=>button.disable(!((getPoints()||[]).length));
     sync();return {sync,go:()=>button.node()&&button.node().click()};
   }
-  function locate(map,{position="bottomright",onStatus,maxZoom=16}={}){
-    let layer,busy=false;
-    const say=text=>{try{onStatus&&onStatus(text);}catch(_){}};
-    const button=mapButton(map,{position,className:"map-locate",title:"Go to my location",
-      label:"Go to my location",
-      icon:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3 3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/></svg>',
-      onClick(){go();}});
+  function locate(map,{position="bottomright",onStatus,maxZoom=16,beforeCenter}={}){
+    let layer,watch=null,timer,best=null,busy=false;
+    const status=L.control({position:"bottomleft"});let note;
+    status.onAdd=()=>{note=L.DomUtil.create("div","map-location-status");note.setAttribute("role","status");return note;};status.addTo(map);
+    const say=text=>{note.textContent=text;try{onStatus?.(text);}catch(_){}};
+    const stop=()=>{busy=false;button.busy(false);clearTimeout(timer);if(watch!==null)navigator.geolocation.clearWatch(watch);watch=null;};
+    const button=mapButton(map,{position,className:"map-locate",title:"Find my location (tap again to cancel)",label:"Go to my location",
+      icon:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3 3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/></svg>',onClick:go});
     function go(){
-      if(busy)return;
-      if(!(globalThis.navigator&&navigator.geolocation)){say("This device cannot report a location.");return;}
-      busy=true;button.busy(true);say("Finding your location…");
-      navigator.geolocation.getCurrentPosition(p=>{
-        busy=false;button.busy(false);
-        const lat=p.coords.latitude,lon=p.coords.longitude;
-        if(!Number.isFinite(lat)||!Number.isFinite(lon)){say(LOCATE_MESSAGES[2]);return;}
-        if(layer)layer.remove();
+      if(busy){stop();say(best?"Location search stopped · accuracy ±"+Math.ceil(best.coords.accuracy)+" m":"Location search canceled");return;}
+      if(!navigator.geolocation){say("This device cannot report a location.");return;}
+      busy=true;best=null;button.busy(true);say("Finding a fresh GPS fix…");
+      timer=setTimeout(()=>{stop();say(best?"Approximate location · accuracy ±"+Math.ceil(best.coords.accuracy)+" m. Try again in the open with Precise Location enabled.":LOCATE_MESSAGES[3]);},25000);
+      watch=navigator.geolocation.watchPosition(p=>{
+        if(!busy)return;
+        const {latitude:lat,longitude:lon,accuracy}=p.coords;
+        if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180||!Number.isFinite(accuracy)||accuracy<=0||Date.now()-p.timestamp>10000)return;
+        if(best&&accuracy>=best.coords.accuracy)return;
+        best=p;if(layer)layer.remove();
         layer=L.layerGroup([
-          L.circle([lat,lon],{radius:Math.max(p.coords.accuracy||0,10),color:"#1a73e8",weight:1,opacity:.35,fillColor:"#1a73e8",fillOpacity:.12,interactive:false}),
+          L.circle([lat,lon],{radius:accuracy,color:"#1a73e8",weight:1,opacity:.5,fillColor:"#1a73e8",fillOpacity:.12,interactive:false}),
           L.circleMarker([lat,lon],{radius:6,color:"#fff",weight:3,fillColor:"#1a73e8",fillOpacity:1,interactive:false})
         ]).addTo(map);
-        map.setView([lat,lon],Math.min(maxZoom,map.getMaxZoom()),{animate:false});
-        say("");
-      },error=>{
-        busy=false;button.busy(false);
-        say(LOCATE_MESSAGES[error&&error.code]||LOCATE_MESSAGES[2]);
-      },{enableHighAccuracy:true,timeout:10000,maximumAge:30000});
+        beforeCenter?.();
+        map.fitBounds(L.latLng(lat,lon).toBounds(Math.max(accuracy*2,40)),{padding:[30,30],maxZoom:Math.min(maxZoom,map.getMaxZoom()),animate:false});
+        say((accuracy<=50?"Location fix":"Approximate location")+" · accuracy ±"+Math.ceil(accuracy)+" m"+(accuracy>50?" · improving…":""));
+        if(accuracy<=50)stop();
+      },error=>{if(!busy)return;if(error.code===1||!best){stop();say(LOCATE_MESSAGES[error.code]||LOCATE_MESSAGES[2]);}},
+      {enableHighAccuracy:true,timeout:25000,maximumAge:0});
     }
-    return {go,clear(){if(layer){layer.remove();layer=null;}}};
+    map.on("unload",stop);
+    return {go,clear(){stop();if(layer){layer.remove();layer=null;}say("");}};
+  }
+  function fullscreen(map){
+    const container=map.getContainer(),host=container.parentElement;
+    let previousOverflow="",active=false;
+    // A grid warning or other dialog must stay reachable when a map tap opens it.
+    const dialogs=new MutationObserver(()=>{if(active&&[...document.querySelectorAll('.overlay.open')].some(el=>!el.contains(host)))set(false,false);});
+    const button=mapButton(map,{position:"topleft",className:"map-fullscreen",title:"Full screen",icon:'⛶',onClick:()=>set(!active)});
+    function set(on,focus=true){
+      if(on===active)return;active=on;
+      if(on){previousOverflow=document.body.style.overflow;document.body.style.overflow="hidden";dialogs.observe(document.body,{subtree:true,attributes:true,attributeFilter:["class"]});}
+      else{document.body.style.overflow=previousOverflow;dialogs.disconnect();}
+      host.classList.toggle("map-fullscreen-active",on);
+      button.node().setAttribute("aria-label",on?"Exit full screen":"Full screen");button.node().title=on?"Exit full screen":"Full screen";button.node().setAttribute("aria-pressed",String(on));
+      map.invalidateSize({pan:false});if(focus)button.node().focus();
+    }
+    document.addEventListener("keydown",e=>{
+      if(!active)return;
+      if(e.key==="Escape"){e.preventDefault();e.stopImmediatePropagation();set(false);}
+      if(e.key==="Tab"){
+        const nodes=[...host.querySelectorAll('button:not(:disabled),a[href],[tabindex="0"]')].filter(node=>node.getClientRects().length&&!node.classList.contains('off'));
+        if(nodes.length){e.preventDefault();e.stopImmediatePropagation();const i=nodes.indexOf(document.activeElement);nodes[(i+(e.shiftKey?-1:1)+nodes.length)%nodes.length].focus();}
+      }
+    },true);
+    map.on("unload",()=>set(false));return {exit:()=>set(false)};
+  }
+  function saveImage(map,{onStatus=()=>{}}={}){
+    let busy=false,note;
+    const status=L.control({position:"bottomleft"});
+    status.onAdd=()=>{note=L.DomUtil.create("div","map-export-status");note.setAttribute("role","status");return note;};status.addTo(map);
+    const say=text=>{note.textContent=text;onStatus(text);};
+    const button=mapButton(map,{position:"topleft",className:"map-save-image",title:"Save map snapshot",icon:'<svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 16l5-5 4 4 3-3 4 4"/><circle cx="16" cy="8" r="1"/></svg>',onClick:()=>save()});
+    async function save({waitForTiles=false,isActive=()=>true}={}){
+      if(busy)return;busy=true;button.busy(true);
+      try{
+        map.stop();
+        if(waitForTiles){
+          say("Preparing map snapshot…");
+          const deadline=Date.now()+15000;
+          let loading;
+          do{if(!isActive())return;loading=false;map.eachLayer(layer=>{if(layer.isLoading?.())loading=true;});if(loading)await new Promise(resolve=>setTimeout(resolve,100));}while(loading&&Date.now()<deadline);
+        }
+        if(!isActive())return;
+        let incomplete=false;map.eachLayer(layer=>{if(layer.isLoading?.())incomplete=true;});
+        const el=map.getContainer();
+        if(incomplete||[...el.querySelectorAll('img.leaflet-tile')].some(t=>!t.complete||!t.naturalWidth))throw Error("Wait for the map tiles to finish loading, then try again.");
+        for(const tile of el.querySelectorAll("canvas")){try{tile.toDataURL();}catch(_){throw Error("This map layer cannot be saved as an image. Try another layer or take a screenshot.");}}
+        say("Preparing map image…");
+        // Preflight images so CORS failures cannot silently produce a blank basemap.
+        await Promise.all([...el.querySelectorAll('img.leaflet-tile')].map(tile=>new Promise((resolve,reject)=>{const img=new Image(),timer=setTimeout(()=>reject(Error("Image download timed out. Check your connection and try again.")),15000);img.crossOrigin="anonymous";img.onload=()=>{clearTimeout(timer);resolve();};img.onerror=()=>{clearTimeout(timer);reject(Error("This map provider could not be included in an image. Try another layer or take a screenshot."));};img.src=tile.src;})));
+        const canvas=await root.html2canvas(el,{useCORS:true,allowTaint:false,logging:false,scale:Math.min(devicePixelRatio||1,2),ignoreElements:node=>node.classList?.contains('leaflet-control')&&!node.classList.contains('leaflet-control-attribution')&&!node.classList.contains('leaflet-control-scale')&&!node.classList.contains('map-location-status')});
+        const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/png"));if(!blob)throw Error("Could not create the image.");
+        const url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="mike-golf-romeo-map.png";link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);say("Map image saved with attribution.");
+      }catch(error){say(error.message||"Could not save this map. Try a screenshot.");}finally{busy=false;button.busy(false);}
+    }
+    return {...button,save};
   }
   // Far enough out, a street map is a whole country's worth of roads and names on a
   // screen where none of it can be acted on. The bundled outlines say where you are
@@ -561,5 +602,5 @@
       colors:BROAD
     };
   }
-  root.MapSupport={regions,baseView,approximateLocation,tileUrls,prefetchTiles,marker,context,navigation,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,pointTarget,imageryZoom,imageryService,trainingArea,BASEMAPS,DEFAULT_BASEMAP,basemapIds,basemapId,basemap,locate,mapButton,autoZoom,clampLatitude,broadView,BROAD_COLORS:BROAD,softenTopo,seamless,labelLayout,historyButtons,gridToggle};
+  root.MapSupport={regions,baseView,approximateLocation,tileUrls,prefetchTiles,marker,context,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,pointTarget,imageryZoom,imageryService,trainingArea,BASEMAPS,DEFAULT_BASEMAP,basemapIds,basemapId,basemap,locate,fullscreen,saveImage,mapButton,autoZoom,clampLatitude,broadView,BROAD_COLORS:BROAD,softenTopo,seamless,labelLayout,historyButtons,gridToggle};
 })(globalThis);

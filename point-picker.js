@@ -4,7 +4,7 @@
   root.createPointPicker=function({preview,onConfirm,onViewChange,projection,contains,capture,retract,fine,history}){
     const $=id=>document.getElementById(id),overlay=$("pointOverlay");
     const STREET_ZOOM=7;
-    let route,picks=0,redos=0,mapHistory,pointLabels,map,countries,labels,markers,streets,topo,satellite,options={},returnFocus,frame,stableCenter,limitCenter,pointAutoZoom,grid,target;
+    let imageExport,fullScreen,gps,route,picks=0,redos=0,mapHistory,pointLabels,map,countries,labels,markers,streets,topo,satellite,options={},returnFocus,frame,stableCenter,limitCenter,pointAutoZoom,grid,target;
     // Beyond the imagery a provider actually holds for an area the tiles are only
     // enlarged, so stopping there keeps the crosshair from implying detail that
     // is not in the picture.
@@ -80,6 +80,7 @@
       networkStatus();
     }
     function update(){
+      $("pointDone").disabled=busy;
       if(!map||!overlay.classList.contains("open"))return;
       // Viewing results has no crosshair, so there is no candidate point to preview.
       if(options.readOnly){$("pointCoordinate").textContent="";$("pointFormatPreview").textContent="";$("pointFormatPreview").classList.remove("invalid");$("pointConfirm").disabled=true;$("pointContinue").disabled=true;return;}
@@ -107,13 +108,14 @@
       $("pointUnresolved").textContent=options.unresolved+" incomplete or unresolved row"+(options.unresolved===1?" is":"s are")+" not shown on the map.";
     }
     function init(){
-      map=L.map("pointMap",{minZoom:1,maxZoom:22,worldCopyJump:true,maxBoundsViscosity:1,preferCanvas:true,zoomControl:false,keyboard:true,trackResize:false});
+      map=L.map("pointMap",{minZoom:1,maxZoom:22,worldCopyJump:true,maxBoundsViscosity:1,preferCanvas:true,fadeAnimation:false,zoomControl:false,keyboard:true,trackResize:false});
       map.attributionControl.setPrefix(false);L.control.scale({imperial:false}).addTo(map);
       map.createPane("pointCountries").style.zIndex="150";
       map.createPane("offlineLand").style.zIndex="160";
       MapSupport.context(map);
       MapSupport.trainingArea(map);
-      MapSupport.navigation(map,$("pointRegion"),null,{snap:false});
+      fullScreen=MapSupport.fullscreen(map);
+      imageExport=MapSupport.saveImage(map,{onStatus:text=>{$("pointAdded").textContent=text;}});
       limitCenter=MapSupport.limitCenter(map);
       countries=L.geoJSON(null,{pane:"pointCountries",interactive:false,style:{color:"#90a5b5",weight:.8,fillColor:"#f2f0e9",fillOpacity:1}}).addTo(map);
       map.attributionControl.addAttribution('<a href="https://www.naturalearthdata.com/">Natural Earth</a>');
@@ -150,7 +152,7 @@
         return ()=>{if(saved&&retract){retract(saved);picks=Math.max(0,picks-1);options=before;drawPoints(options.points||[]);$('pointAdded').textContent='';update();}};
       }});
       // The same button stack as the Point Picker, in the same order.
-      MapSupport.locate(map,{position:"bottomright",onStatus:text=>{
+      gps=MapSupport.locate(map,{position:"bottomright",beforeCenter:()=>{limitCenter(null);map.setMinZoom(1);},onStatus:text=>{
         const note=$("pointNetwork");
         if(text){note.hidden=false;note.textContent=text;}else networkStatus();
       }});
@@ -181,9 +183,10 @@
         if(options.bounds){map.setMinZoom(1);map.setMinZoom(Math.max(1,Math.min(map.getMaxZoom(),map.getBoundsZoom(L.latLngBounds(options.bounds)))));}
         map.setView(p,Math.min(map.getMaxZoom(),Math.max(map.getMinZoom(),zoom)),{animate:false,reset:true});
       };
-      if(root.ResizeObserver)new ResizeObserver(resize).observe($("pointMap"));else root.addEventListener("resize",resize);
+      if(root.ResizeObserver)new ResizeObserver(()=>requestAnimationFrame(resize)).observe($("pointMap"));else root.addEventListener("resize",resize);
     }
     function close(){
+      fullScreen?.exit();gps?.clear();
       if(map&&!options.readOnly)onViewChange?.({...center(),zoom:map.getZoom(),layer:mode,presetId:options.presetId});
       cancelTap?.();clearTimeout(coverageTimer);coverageToken++;coverageKey="";map?.stop();overlay.classList.remove("open","viewing");cancelAnimationFrame(frame);
       for(const [el,inert] of background)el.inert=inert;
@@ -209,13 +212,14 @@
     const gridChoice=MapSupport.gridToggle($('pointGrid'),()=>grid?.refresh());
     $('pointTap').addEventListener('change',()=>{overlay.querySelector('.point-modal').classList.toggle('tap-mode',$('pointTap').checked);target?.update();});
     $("pointClose").addEventListener("click",close);
+    $("pointDone").addEventListener("click",()=>{if(!busy)close();});
     $("pointConfirm").addEventListener("click",()=>confirm(false));$("pointContinue").addEventListener("click",()=>confirm(true));
     $("pointTopo").addEventListener("click",()=>{mode="topo";checkCoverage();layers();});
     $("pointStreet").addEventListener("click",()=>{mode="street";checkCoverage();layers();});
     $("pointSatellite").addEventListener("click",()=>{mode="satellite";checkCoverage();layers();});
     overlay.addEventListener("keydown",e=>{
       if(e.key==="Escape"&&!busy){e.preventDefault();close();}
-      if(e.key==="Enter"&&e.target===$("pointMap")&&!options.readOnly){e.preventDefault();confirm(false);}
+      if(e.key==="Enter"&&e.target===$("pointMap")&&!options.readOnly){e.preventDefault();if($("pointTap").checked){if(!busy)close();}else confirm(false);}
       if(e.key==="Tab"){
         const nodes=[...overlay.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),[tabindex="0"],a[href]')].filter(el=>el.getClientRects().length&&getComputedStyle(el).visibility!=='hidden');
         if(e.shiftKey&&document.activeElement===nodes[0]){e.preventDefault();nodes.at(-1)?.focus();}
@@ -232,7 +236,7 @@
       background=[...document.querySelectorAll("body > header, body > main")].map(el=>{const previous=el.inert;el.inert=true;return [el,previous];});
       if(!map)init();
       limitCenter(null);map.setMinZoom(1);map.setMaxZoom(opts.detailZoom||DETAIL_ZOOM);map.invalidateSize({pan:false});
-      $("pointRegion").hidden=!!opts.bounds;
+
       map.invalidateSize({pan:false});
       // The crosshair, not the whole viewport, is what has to stay in the area.
       if(opts.bounds){const b=L.latLngBounds(opts.bounds);map.setMinZoom(Math.max(1,Math.min(map.getMaxZoom(),map.getBoundsZoom(b))));limitCenter(b);}
@@ -242,13 +246,14 @@
       map.invalidateSize();map.setView([opts.center.lat,opts.center.lon],Math.min(map.getMaxZoom(),Math.max(map.getMinZoom(),opts.zoom||12)),{animate:false});
       drawPoints(opts.points||[]);checkCoverage();layers();update();
       map.invalidateSize({pan:false,animate:false});map.setView([opts.center.lat,opts.center.lon],Math.min(map.getMaxZoom(),Math.max(map.getMinZoom(),opts.zoom||map.getZoom())),{animate:false,reset:true});
-      // Opening the map shows every point there is, whether picking or viewing.
-      if(opts.points?.length){
+      // Fit the points unless a newly chosen country preset requested its region.
+      if(opts.points?.length&&!opts.regionView){
        const bounds=L.latLngBounds(opts.points.map(p=>[p.lat,p.lon]));
        map.fitBounds(bounds,{padding:[40,40],maxZoom:Math.min(map.getMaxZoom(),16),animate:false});
       }
       grid?.refresh();target.update();
       $("pointMap").focus();
+      if(opts.snapshot)imageExport.save({waitForTiles:true,isActive:()=>overlay.classList.contains("open")&&options===opts});
     }};
   };
 })(globalThis);

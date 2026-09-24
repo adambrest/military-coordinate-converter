@@ -31,3 +31,15 @@ Street maps from OpenStreetMap are the default. OpenTopoMap (CC-BY-SA) and Esri 
 ## License
 
 [MIT](LICENSE.md)
+
+## Field map controls
+
+Choose an input/output country preset to move the corresponding map to that country; the separate “Jump to” menu has been removed. Converter preset changes apply on the next map opening. Auto-Zoom still fits all collected points.
+
+Every map has full-screen and Save map snapshot controls. Full screen uses the browser viewport, including on iOS; press Escape or the same control to exit. The Export menu groups Export as GPX, Map snapshot, and Google Maps. PNG exports retain map attribution, points and overlays. Wait for tiles to load first. If a provider prevents image export, choose another layer or use a device screenshot.
+
+Tap-to-add mode shows a blue Done button, including in full screen. Done finishes picking without adding another point.
+
+Location requests seek a fresh high-accuracy fix for up to 25 seconds, show the device-reported accuracy and uncertainty circle, and stop early at 50 m or better. Tap again to cancel. This is a one-time fix, not continuous tracking; accuracy still depends on device settings, reception and the location provider. Country camera bounds no longer displace the location fix.
+
+See [Singapore offline map feasibility and size estimates](docs/offline-maps.md) for coverage assumptions, provider requirements and storage estimates.
