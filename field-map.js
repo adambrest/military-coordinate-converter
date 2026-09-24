@@ -5,7 +5,7 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
  const $=id=>document.getElementById(id),key='mike-golf-romeo-field-v1';
  // `preferred` is a global grid someone chose by hand; `area` is the country grid the
  // view was last over, so a grid only changes on the way into or out of a country.
- let fullScreen,imageExport,points=[],connected=false,system='mgrs',layer=MapSupport.DEFAULT_BASEMAP,map,markers,route,grid,view,undo=[],redo=[],bases,autoZoom,written=null,broad,target,preferred=null,area,choices={},mapHistory,labels;
+ let gps,fullScreen,imageExport,points=[],connected=false,system='mgrs',layer=MapSupport.DEFAULT_BASEMAP,map,markers,route,grid,view,undo=[],redo=[],bases,autoZoom,written=null,broad,target,preferred=null,area,choices={},mapHistory,labels;
  try{const s=JSON.parse(localStorage.getItem(key));if(s&&Array.isArray(s.points)){points=s.points.filter(RouteTools.valid).slice(0,20000);connected=!!s.connected;system=presets.includes(s.system)?s.system:'mgrs';layer=MapSupport.basemapId(s.basemapRevision===2?s.layer:(s.layer==='topo'?'street':s.layer));view=s.view;preferred=['mgrs','wgs84'].includes(s.preferred)?s.preferred:null;area=s.area;if(s.choices&&typeof s.choices==='object')choices=s.choices;}}catch(_){}
  const status=t=>{$('fieldStatus').textContent=t;};
  function save(){try{localStorage.setItem(key,JSON.stringify({points,connected,system,layer,view,preferred,area,choices,basemapRevision:2}));}catch(_){status('Device storage is full. Export your points before closing.');}}
@@ -261,7 +261,7 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   map.attributionControl.setPrefix(false);
   map.createPane('broadLand').style.zIndex='160';
   // Every map button in one stack, in the corner a thumb reaches.
-  MapSupport.locate(map,{position:'bottomright',onStatus:text=>{if(text||!$('fieldStatus').textContent.startsWith('Finding'))status(text);}});
+  gps=MapSupport.locate(map,{position:'bottomright'});
   autoZoom=MapSupport.autoZoom(map,()=>points);
   L.control.zoom({position:'bottomright'}).addTo(map);
   mapHistory=MapSupport.historyButtons(map,{onUndo:()=>$('fieldUndo').click(),onRedo:()=>$('fieldRedo').click()});
@@ -338,8 +338,7 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
  };
  $('fieldRoute').onchange=()=>{remember();connected=$('fieldRoute').checked;if(connected&&points.every(p=>p.breakBefore))points.forEach((p,i)=>p.breakBefore=i===0);drawRoute();$('fieldDistance').textContent=connected?RouteTools.summary(points):'';save();};
  const gridChoice=MapSupport.gridToggle($('fieldGrid'),()=>grid?.refresh());
- $('fieldSnapshot').onclick=()=>imageExport?.save();
- $('fieldDone').onclick=()=>{fullScreen?.exit();$('fieldTap').checked=false;$('fieldTap').onchange();$('fieldTap').focus();};
+ $('fieldSnapshot').onclick=()=>imageExport?.save({points});
  $('fieldTap').onchange=()=>{$('view-field').classList.toggle('tap-mode',$('fieldTap').checked);render();target?.update();};
  // With the list empty again, the grid is free to follow the map once more.
  const unlocked=()=>{if(!points.length&&map){area=undefined;moved();}};
@@ -367,6 +366,6 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   // Opening the map always shows every point collected.
   gridChoice.sync();
   if(!map)init();else if(points.length)fit();
-  written=null;render();target.update();requestAnimationFrame(()=>{map.invalidateSize({pan:false});grid.refresh();});},getPoints:()=>points.map(p=>({...p}))};
+  written=null;render();target.update();requestAnimationFrame(()=>{map.invalidateSize({pan:false});grid.refresh();});},close(){gps?.clear();},getPoints:()=>points.map(p=>({...p}))};
 };
 })(globalThis);

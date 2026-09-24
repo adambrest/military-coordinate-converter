@@ -45,21 +45,24 @@
 .grid-labels.zooming .grid-label-edge{opacity:0;transition:none}
 
 /* Viewport fallback also works in iOS browsers without the Fullscreen API. */
-.map-fullscreen-active{position:fixed!important;inset:0!important;z-index:10000!important;width:100vw!important;height:100dvh!important;background:#d9e2e8}
+.map-fullscreen-active{position:fixed!important;inset:0!important;z-index:10000!important;width:100vw!important;max-width:none!important;height:100dvh!important;max-height:none!important;background:#d9e2e8}
 .map-fullscreen-active #fieldMap,.map-fullscreen-active #pointMap,.map-fullscreen-active #aoMap{height:100%!important;min-height:0!important}
 body:has(.map-fullscreen-active) .field-map-panel,body:has(.map-fullscreen-active) .point-modal,body:has(.map-fullscreen-active) .ao-modal{overflow:visible}
 .map-fullscreen a{font-size:24px}
-.map-save-image svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7}
-.map-location-status,.map-export-status{max-width:min(260px,55vw);padding:5px 8px;border-radius:5px;background:#fff;color:#334155;font:12px/1.4 system-ui;box-shadow:0 1px 4px #0003}
-.map-location-status:empty,.map-export-status:empty{display:none}
 /* Leaflet's additive blending brightens overlapping imagery edges. Normal
    compositing lets the shared one-pixel overlap cover fractional zoom seams. */
 .leaflet-container img.leaflet-tile{mix-blend-mode:normal}
 
-.map-done{display:none;position:absolute;left:50%;bottom:64px;transform:translateX(-50%);z-index:800;min-width:100px;min-height:44px;padding:0 22px;border:0;border-radius:9px;background:#2563eb;color:#fff;font:600 15px system-ui;cursor:pointer;box-shadow:0 2px 8px #0003}
-.tap-mode .map-done{display:block}
-.overlay.viewing .map-done{display:none}
-.map-done:disabled{opacity:.5;cursor:default}
-/* Keep location/export messages clear of the provider credit on narrow maps. */
-.leaflet-container:has(.map-location-status:not(:empty),.map-export-status:not(:empty)) .leaflet-bottom.leaflet-left{bottom:36px}
-.field-map-wrap:has(.map-location-status:not(:empty),.map-export-status:not(:empty)) .map-done,.point-map-wrap:has(.map-location-status:not(:empty),.map-export-status:not(:empty)) .map-done{bottom:104px}
+.map-location-status{display:flex;align-items:center;gap:7px;background:#fff;color:#334155;border:1px solid #e2e8f0;border-radius:7px;padding:5px 8px;font:11px/1.3 system-ui;box-shadow:0 1px 4px #0001;max-width:calc(100vw - 90px)}
+.map-location-status[hidden]{display:none}
+.map-location-status::before{content:"";width:6px;height:6px;flex:0 0 6px;border-radius:50%;background:#2563eb}
+.map-location-status.stale::before{background:#d97706}
+.map-location-status button{border:0;background:transparent;color:#2563eb;font:600 11px system-ui;padding:2px 3px;cursor:pointer}
+.map-locate a[aria-pressed="true"]{background:#2563eb;color:white}
+.map-export-status{padding:4px 8px;background:white;color:#334155;border-radius:7px;font:11px/1.4 system-ui;max-width:260px}
+.map-export-status:empty{display:none}
+/* The status sits above provider credits, never on top of them. */
+.leaflet-container:has(.map-location-status:not([hidden]),.map-export-status:not(:empty)) .leaflet-bottom.leaflet-left{bottom:34px}
+.snapshot-stage{position:fixed;left:-20000px;top:0;pointer-events:none;z-index:-1;background:#d9e2e8}
+
+.map-save-image svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7}

@@ -249,9 +249,11 @@
   .row-actions .select-map,.row-actions .addrow,.exportbar button{height:44px;min-height:44px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0 14px;border-radius:9px;font-family:inherit;font-size:13px;font-weight:600;line-height:1.2;margin:0}
   .exportbar{gap:8px}
   .export-menu{position:relative;flex:1 1 0;min-width:0}
-  .export-menu summary{height:44px;display:flex;align-items:center;justify-content:center;gap:8px;list-style:none;border:1px solid var(--accent);border-radius:9px;background:var(--accent);color:white;font-family:inherit;font-size:13px;font-weight:600;line-height:1.2;cursor:pointer}
+  .export-menu summary{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;gap:16px;list-style:none;border:1px solid var(--accent);border-radius:9px;background:var(--accent);color:white;font-family:inherit;font-size:13px;font-weight:600;line-height:1.2;cursor:pointer}
   .export-menu summary::-webkit-details-marker{display:none}
-  .export-options{position:absolute;bottom:calc(100% + 8px);left:0;z-index:30;min-width:190px;padding:5px;border:1px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 6px 24px #0002}
+  .export-menu summary::after{content:"▸";margin-left:auto;font-size:13px;transition:transform .15s}
+  .export-menu[open] summary::after{transform:rotate(90deg)}
+  .export-options{position:absolute;bottom:calc(100% + 8px);left:0;z-index:30;min-width:180px;padding:4px;border:1px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 4px 12px #0f172a14}
   .exportbar .export-options button{display:flex;width:100%;justify-content:flex-start;padding:0 12px;border:0;background:transparent;white-space:nowrap}
   .exportbar .export-options button:hover{background:var(--panel2)}
   .exportbar button{padding:0 8px}
@@ -327,7 +329,7 @@
           <div class="tbl"><div class="thead" id="toHead"></div><div id="toRows"></div></div>
           <p class="area-note" id="toOutside" role="status" hidden></p>
           <div class="exportbar">
-            <details class="export-menu" id="converterExport"><summary>Export <span aria-hidden="true">▾</span></summary><div class="export-options">
+            <details class="export-menu" id="converterExport"><summary>Export</summary><div class="export-options">
               <button id="gpxBtn" disabled>Export as GPX</button><button id="snapshotBtn" disabled>Map snapshot</button><button id="mapsBtn" disabled>Google Maps</button>
             </div></details>
             <button id="viewBtn" disabled>View on map</button>
@@ -341,7 +343,7 @@
 <section class="view on" id="view-field">
  <div class="field-layout"><div class="field-map-panel">
  <div class="field-tools"><div class="point-layers" role="group" aria-label="Map layer"><button type="button" data-layer="street" aria-pressed="true">Street</button><button type="button" data-layer="topo" aria-pressed="false">Topo</button><button type="button" data-layer="satellite" aria-pressed="false">Satellite</button></div><label><input type="checkbox" id="fieldGrid"> Grid</label><label><input type="checkbox" id="fieldLabels" checked> Labels</label><label><input type="checkbox" id="fieldTap"> Tap to add</label></div>
- <div class="field-map-wrap"><button type="button" id="fieldDone" class="map-done">Done</button><div id="fieldMap" aria-label="Point Picker map"></div><svg class="field-crosshair" aria-hidden="true" viewBox="0 0 32 32"><path class="crosshair-edge" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/><path class="crosshair-core" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/></svg></div>
+ <div class="field-map-wrap"><div id="fieldMap" aria-label="Point Picker map"></div><svg class="field-crosshair" aria-hidden="true" viewBox="0 0 32 32"><path class="crosshair-edge" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/><path class="crosshair-core" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/></svg></div>
  <div class="field-readout"><div class="readout-text"><span id="fieldReadoutGrid" class="readout-grid"></span><output id="fieldCoordinate"></output></div><button id="fieldAdd" class="convert">Add point</button></div>
  </div><aside class="field-output side">
  <div class="lbl">Output <span id="fieldTotal" class="lbl-count">0 points</span></div>
@@ -351,7 +353,7 @@
  <div class="tbl"><div class="thead"><span>#</span><span id="fieldEastHead">Easting</span><span id="fieldNorthHead">Northing</span><span>Name</span><span></span></div><ol id="fieldPoints"></ol></div>
  <div class="row-actions"><button id="fieldImport" class="select-map" type="button">Import GPX</button><button class="addrow" id="fieldAddRow" type="button">+ Add row</button><span class="history"><button class="histbtn danger" id="fieldClear" type="button" title="Clear all points" aria-label="Clear all points" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button><button class="histbtn" id="fieldUndo" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-5 5 5 5M4 10h10a6 6 0 0 1 6 6v3"/></svg></button><button class="histbtn" id="fieldRedo" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 5 5-5 5M20 10H10a6 6 0 0 0-6 6v3"/></svg></button></span></div>
  <div class="route-distance-control"><label><input type="checkbox" id="fieldRoute"> Connect points in order</label><p id="fieldDistance" aria-live="polite"></p></div>
- <div class="exportbar"><details class="export-menu" id="fieldExportMenu"><summary>Export <span aria-hidden="true">▾</span></summary><div class="export-options"><button id="fieldExport">Export as GPX</button><button id="fieldSnapshot">Map snapshot</button><button id="fieldMaps">Google Maps</button></div></details><button id="fieldConvert">Send to converter</button><button id="fieldCopy">Copy</button></div>
+ <div class="exportbar"><details class="export-menu" id="fieldExportMenu"><summary>Export</summary><div class="export-options"><button id="fieldExport">Export as GPX</button><button id="fieldSnapshot">Map snapshot</button><button id="fieldMaps">Google Maps</button></div></details><button id="fieldConvert">Send to converter</button><button id="fieldCopy">Copy</button></div>
  <p class="area-note" id="fieldAreaNote" role="status" hidden></p><p class="detect err" id="fieldStatus" role="status"></p>
  </aside></div></section>
     <!-- SETTINGS -->
@@ -407,8 +409,8 @@
     <div class="modal point-modal">
       <div class="point-heading"><h3 id="pointTitle">Select a point</h3><button id="pointClose" aria-label="Close point map">×</button></div>
       <div class="point-toolbar"><div class="point-layers" role="group" aria-label="Map layer"><button id="pointStreet" aria-pressed="true">Street</button><button id="pointTopo" aria-pressed="false">Topo</button><button id="pointSatellite" aria-pressed="false">Satellite</button></div><label class="point-grid-control"><input type="checkbox" id="pointGrid"> Grid</label><label class="point-grid-control"><input type="checkbox" id="pointLabels" checked> Labels</label><label class="point-tap-control"><input type="checkbox" id="pointTap"> Tap to add</label><span id="pointPreset"></span><span id="pointCount"></span></div>
-      <div class="point-map-wrap"><button type="button" id="pointDone" class="map-done">Done</button><div id="pointMap" tabindex="0" aria-label="Point map. Arrow keys move the crosshair location; plus and minus zoom; Enter adds the point."></div><svg class="point-crosshair" aria-hidden="true" viewBox="0 0 32 32"><path class="crosshair-edge" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/><path class="crosshair-core" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/></svg></div>
-      <div class="point-footer"><div class="point-readout"><div class="readout-text"><span class="readout-grid" id="pointReadoutGrid"></span><div id="pointCoordinate"></div><div id="pointFormatPreview" aria-live="polite"></div></div><div class="point-actions"><button class="setting-action" id="pointContinue">Add point</button><button class="setting-action primary" id="pointConfirm">Add point and close</button></div></div><p id="pointDistance" aria-live="polite"></p><p class="point-status" id="pointUnresolved" hidden></p><p class="point-status" id="pointNetwork" hidden></p><p class="point-status" id="pointAdded" role="status"></p></div>
+      <div class="point-map-wrap"><div id="pointMap" tabindex="0" aria-label="Point map. Arrow keys move the crosshair location; plus and minus zoom; Enter adds the point."></div><svg class="point-crosshair" aria-hidden="true" viewBox="0 0 32 32"><path class="crosshair-edge" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/><path class="crosshair-core" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/></svg></div>
+      <div class="point-footer"><div class="point-readout"><div class="readout-text"><span class="readout-grid" id="pointReadoutGrid"></span><div id="pointCoordinate"></div><div id="pointFormatPreview" aria-live="polite"></div></div><div class="point-actions"><button class="setting-action primary" id="pointDone">Done</button><button class="setting-action" id="pointContinue">Add point</button><button class="setting-action primary" id="pointConfirm">Add point and close</button></div></div><p id="pointDistance" aria-live="polite"></p><p class="point-status" id="pointUnresolved" hidden></p><p class="point-status" id="pointNetwork" hidden></p><p class="point-status" id="pointAdded" role="status"></p></div>
     </div>
   </div>
 
@@ -425,6 +427,7 @@
   <script src="vendor/leaflet.js"></script>
   <script src="grid-core.js"></script>
   <script src="map-support.js"></script>
+  <script src="map-export.js"></script>
   <script src="vendor/html2canvas.min.js"></script>
   <script src="map-grid.js"></script>
   <script src="map-picker.js"></script>
@@ -2873,7 +2876,7 @@
       const middle=points[Math.floor(points.length/2)],region=state.mapOutputRegion===state.to?MapSupport.regions.find(r=>r.id===state.to):null;
       pointPicker.open({points,snapshot,readOnly:true,connected:$("#measureRoute").checked,title:"Output points",unresolved:0,
         presetId:state.to==="auto"?"wgs84":state.to,presetLabel:"",
-        center:region||middle,regionView:!!region,zoom:region?.zoom||14,layer:state.pointMapView?.layer||MapSupport.DEFAULT_BASEMAP});
+        center:region||middle,regionView:!!region&&!snapshot,zoom:region?.zoom||14,layer:state.pointMapView?.layer||MapSupport.DEFAULT_BASEMAP});
       delete state.mapOutputRegion;save();
     }
     $("#viewBtn").addEventListener("click",()=>viewOutput());
@@ -3086,7 +3089,7 @@
       $("#tab-conv").classList.toggle("on",t==="conv"); $("#tab-set").classList.toggle("on",t==="set");
       $("#view-conv").classList.toggle("on",t==="conv"); $("#view-set").classList.toggle("on",t==="set");
       $("#tab-field").classList.toggle("on",t==="field");$("#view-field").classList.toggle("on",t==="field");
-      if(t==="field")field?.open();
+      if(t==="field")field?.open();else field?.close?.();
       if(t==="set") renderSettings();
     }
 

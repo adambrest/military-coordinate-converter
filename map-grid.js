@@ -192,6 +192,7 @@
    place();
   }
   map.on('moveend',refresh);
+  layer.snapshotFactory=target=>{const grid=root.createCoordinateGrid(target,{system,projection,contains,enabled,fine});grid.refresh();return grid;};
   return {refresh,layer};
  };
  root.createCoordinateGrid.steps={metricSteps,degreeStep};

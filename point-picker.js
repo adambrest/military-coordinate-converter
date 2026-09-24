@@ -152,10 +152,7 @@
         return ()=>{if(saved&&retract){retract(saved);picks=Math.max(0,picks-1);options=before;drawPoints(options.points||[]);$('pointAdded').textContent='';update();}};
       }});
       // The same button stack as the Point Picker, in the same order.
-      gps=MapSupport.locate(map,{position:"bottomright",beforeCenter:()=>{limitCenter(null);map.setMinZoom(1);},onStatus:text=>{
-        const note=$("pointNetwork");
-        if(text){note.hidden=false;note.textContent=text;}else networkStatus();
-      }});
+      gps=MapSupport.locate(map,{position:"bottomright",beforeCenter:()=>{limitCenter(null);map.setMinZoom(1);}});
       pointAutoZoom=MapSupport.autoZoom(map,()=>options.points||[]);
       L.control.zoom({position:"bottomright"}).addTo(map);
       // Undo and redo step through the picks made since this map was opened, and with
@@ -253,7 +250,7 @@
       }
       grid?.refresh();target.update();
       $("pointMap").focus();
-      if(opts.snapshot)imageExport.save({waitForTiles:true,isActive:()=>overlay.classList.contains("open")&&options===opts});
+      if(opts.snapshot)imageExport.save();
     }};
   };
 })(globalThis);

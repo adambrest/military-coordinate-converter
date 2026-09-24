@@ -42,7 +42,9 @@
 
 .point-toolbar label{font-size:12px;display:inline-flex;align-items:center;gap:4px}
 .point-modal.tap-mode .point-crosshair{display:none}
-.point-modal.tap-mode .point-actions{visibility:hidden;pointer-events:none}
+#pointDone{display:none}
+.point-modal.tap-mode #pointDone{display:inline-flex}
+.point-modal.tap-mode #pointContinue,.point-modal.tap-mode #pointConfirm{display:none}
 .overlay.viewing .point-tap-control{display:none}
 .point-footer{min-height:118px;box-sizing:border-box}
 #pointCoordinate{min-height:19px}

@@ -291,15 +291,16 @@
   }
   const imageryService='https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer';
   const tileAvailability=new Map();
-  async function imageryZoom(lat,lon,width,height,request=fetch){
+  async function imageryZoom(lat,lon,width,height,request=fetch,viewZoom=null){
     // Check every tile needed by the viewport at each candidate detail level.
     // Requests cannot cross Esri's 128-tile bundle boundaries.
-    for(let z=19;z>=1;z--){
+    for(let z=viewZoom===null?19:Math.min(19,Math.ceil(viewZoom));z>=1;z--){
       const count=2**z,x=(longitude(lon)+180)/360*count;
       const radians=Math.max(-85,Math.min(85,lat))*Math.PI/180;
       const y=(1-Math.asinh(Math.tan(radians))/Math.PI)/2*count;
-      const left=Math.floor(x-width/512),right=Math.floor(x+width/512);
-      const top=Math.max(0,Math.floor(y-height/512)),bottom=Math.min(count-1,Math.floor(y+height/512));
+      const factor=viewZoom===null?1:2**(z-viewZoom);
+      const left=Math.floor(x-width*factor/512),right=Math.floor(x+width*factor/512);
+      const top=Math.max(0,Math.floor(y-height*factor/512)),bottom=Math.min(count-1,Math.floor(y+height*factor/512));
       const checks=[];
       for(let row=top;row<=bottom;){
         const h=Math.min(bottom-row+1,128-row%128);
@@ -455,41 +456,73 @@
     const sync=()=>button.disable(!((getPoints()||[]).length));
     sync();return {sync,go:()=>button.node()&&button.node().click()};
   }
-  function locate(map,{position="bottomright",onStatus,maxZoom=16,beforeCenter}={}){
-    let layer,watch=null,timer,best=null,busy=false;
-    const status=L.control({position:"bottomleft"});let note;
-    status.onAdd=()=>{note=L.DomUtil.create("div","map-location-status");note.setAttribute("role","status");return note;};status.addTo(map);
-    const say=text=>{note.textContent=text;try{onStatus?.(text);}catch(_){}};
-    const stop=()=>{busy=false;button.busy(false);clearTimeout(timer);if(watch!==null)navigator.geolocation.clearWatch(watch);watch=null;};
-    const button=mapButton(map,{position,className:"map-locate",title:"Find my location (tap again to cancel)",label:"Go to my location",
-      icon:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3 3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/></svg>',onClick:go});
-    function go(){
-      if(busy){stop();say(best?"Location search stopped · accuracy ±"+Math.ceil(best.coords.accuracy)+" m":"Location search canceled");return;}
-      if(!navigator.geolocation){say("This device cannot report a location.");return;}
-      busy=true;best=null;button.busy(true);say("Finding a fresh GPS fix…");
-      timer=setTimeout(()=>{stop();say(best?"Approximate location · accuracy ±"+Math.ceil(best.coords.accuracy)+" m. Try again in the open with Precise Location enabled.":LOCATE_MESSAGES[3]);},25000);
-      watch=navigator.geolocation.watchPosition(p=>{
-        if(!busy)return;
-        const {latitude:lat,longitude:lon,accuracy}=p.coords;
-        if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180||!Number.isFinite(accuracy)||accuracy<=0||Date.now()-p.timestamp>10000)return;
-        if(best&&accuracy>=best.coords.accuracy)return;
-        best=p;if(layer)layer.remove();
-        layer=L.layerGroup([
-          L.circle([lat,lon],{radius:accuracy,color:"#1a73e8",weight:1,opacity:.5,fillColor:"#1a73e8",fillOpacity:.12,interactive:false}),
-          L.circleMarker([lat,lon],{radius:6,color:"#fff",weight:3,fillColor:"#1a73e8",fillOpacity:1,interactive:false})
-        ]).addTo(map);
-        beforeCenter?.();
-        map.fitBounds(L.latLng(lat,lon).toBounds(Math.max(accuracy*2,40)),{padding:[30,30],maxZoom:Math.min(maxZoom,map.getMaxZoom()),animate:false});
-        say((accuracy<=50?"Location fix":"Approximate location")+" · accuracy ±"+Math.ceil(accuracy)+" m"+(accuracy>50?" · improving…":""));
-        if(accuracy<=50)stop();
-      },error=>{if(!busy)return;if(error.code===1||!best){stop();say(LOCATE_MESSAGES[error.code]||LOCATE_MESSAGES[2]);}},
-      {enableHighAccuracy:true,timeout:25000,maximumAge:0});
+  // Tracking is explicit. Fresh fixes replace older ones even when accuracy worsens;
+  // retaining only the best fix would leave a moving user behind.
+  function locate(map,{position="bottomright",maxZoom=16,beforeCenter}={}){
+    let layer,watch=null,timer,expiry,active=false,following=false,last=null,note,text,recenter,errorText='',generation=0;
+    const status=L.control({position:"bottomleft"});
+    status.onAdd=()=>{
+      note=L.DomUtil.create("div","map-location-status");note.hidden=true;
+      text=L.DomUtil.create("span","",note);text.setAttribute("role","status");
+      recenter=L.DomUtil.create("button","",note);recenter.type="button";recenter.textContent="Follow";recenter.hidden=true;
+      L.DomEvent.disableClickPropagation(note);recenter.onclick=()=>{if(last){following=true;center(last,true);render();}};
+      return note;
+    };status.addTo(map);
+    const button=mapButton(map,{position,className:"map-locate",title:"Turn location tracking on",label:"Turn location tracking on",
+      icon:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3 3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/></svg>',onClick:()=>active?stop():go()});
+    button.node().setAttribute('aria-pressed','false');
+    function render(){
+      note.hidden=!active&&!errorText;
+      if(errorText){text.textContent=errorText+(last?' · '+Math.max(0,Math.floor((Date.now()-last.timestamp)/1000))+'s ago':'');note.classList.add('stale');recenter.hidden=true;return;}
+      if(!active)return;
+      const age=last?Math.max(0,Math.floor((Date.now()-last.timestamp)/1000)):null;
+      note.classList.toggle('stale',!last||age>15||last.coords.accuracy>50);
+      text.textContent=last?(age>15?'Last fix':'Tracking')+' · ±'+Math.ceil(last.coords.accuracy)+' m · '+(age===0?'now':age+'s ago'):'Finding location…';
+      recenter.hidden=!last||following;
     }
-    map.on("unload",stop);
-    return {go,clear(){stop();if(layer){layer.remove();layer=null;}say("");}};
+    function stop(message=''){
+      active=false;following=false;generation++;clearInterval(timer);clearTimeout(expiry);
+      if(watch!==null)navigator.geolocation.clearWatch(watch);watch=null;
+      if(layer){layer.remove();layer=null;}last=null;errorText=message;
+      button.busy(false);button.node().setAttribute('aria-pressed','false');button.node().title='Turn location tracking on';button.node().setAttribute('aria-label','Turn location tracking on');render();
+      if(message)expiry=setTimeout(()=>{errorText='';render();},10000);
+    }
+    function center(p,initial){
+      beforeCenter?.();
+      if(initial)map.fitBounds(L.latLng(p.coords.latitude,p.coords.longitude).toBounds(Math.max(p.coords.accuracy*2,40)),{padding:[30,30],maxZoom:Math.min(maxZoom,map.getMaxZoom()),animate:false});
+      else map.panTo([p.coords.latitude,p.coords.longitude],{animate:false});
+    }
+    function go(){
+      if(active)return;
+      if(!navigator.geolocation){stop('Location is unavailable on this device.');return;}
+      active=true;following=true;last=null;errorText='';clearTimeout(expiry);button.busy(true);
+      button.node().setAttribute('aria-pressed','true');button.node().title='Turn location tracking off';button.node().setAttribute('aria-label','Turn location tracking off');render();
+      timer=setInterval(render,1000);
+      const token=++generation;
+      watch=navigator.geolocation.watchPosition(p=>{
+        if(!active||token!==generation)return;
+        const {latitude:lat,longitude:lon,accuracy}=p.coords;
+        if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180||!Number.isFinite(accuracy)||accuracy<=0||!Number.isFinite(p.timestamp)||Date.now()-p.timestamp>10000||last&&p.timestamp<last.timestamp)return;
+        const initial=!last;last=p;errorText='';button.busy(false);
+        if(layer)layer.remove();
+        layer=L.layerGroup([
+          L.circle([lat,lon],{radius:accuracy,color:'#2563eb',weight:1,opacity:.5,fillColor:'#2563eb',fillOpacity:.1,interactive:false}),
+          L.circleMarker([lat,lon],{radius:6,color:'#fff',weight:3,fillColor:'#2563eb',fillOpacity:1,interactive:false})
+        ]).addTo(map);
+        if(following)center(p,initial);render();
+      },error=>{
+        if(!active||token!==generation)return;
+        if(error.code===1){stop(LOCATE_MESSAGES[1]);return;}
+        errorText=last?'Signal lost · last fix ±'+Math.ceil(last.coords.accuracy)+' m':LOCATE_MESSAGES[error.code]||LOCATE_MESSAGES[2];button.busy(false);render();
+      },{enableHighAccuracy:true,timeout:25000,maximumAge:0});
+    }
+    map.on('dragstart',()=>{if(active){following=false;render();}});
+    const visibility=()=>{if(document.hidden)stop();};document.addEventListener('visibilitychange',visibility);
+    map.on('unload',()=>{stop();document.removeEventListener('visibilitychange',visibility);});
+    return {go,clear:()=>stop()};
   }
   function fullscreen(map){
-    const container=map.getContainer(),host=container.parentElement;
+    const container=map.getContainer(),host=container.id==='pointMap'?container.closest('.point-modal'):container.parentElement;
     let previousOverflow="",active=false;
     // A grid warning or other dialog must stay reachable when a map tap opens it.
     const dialogs=new MutationObserver(()=>{if(active&&[...document.querySelectorAll('.overlay.open')].some(el=>!el.contains(host)))set(false,false);});
@@ -512,37 +545,7 @@
     },true);
     map.on("unload",()=>set(false));return {exit:()=>set(false)};
   }
-  function saveImage(map,{onStatus=()=>{}}={}){
-    let busy=false,note;
-    const status=L.control({position:"bottomleft"});
-    status.onAdd=()=>{note=L.DomUtil.create("div","map-export-status");note.setAttribute("role","status");return note;};status.addTo(map);
-    const say=text=>{note.textContent=text;onStatus(text);};
-    const button=mapButton(map,{position:"topleft",className:"map-save-image",title:"Save map snapshot",icon:'<svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 16l5-5 4 4 3-3 4 4"/><circle cx="16" cy="8" r="1"/></svg>',onClick:()=>save()});
-    async function save({waitForTiles=false,isActive=()=>true}={}){
-      if(busy)return;busy=true;button.busy(true);
-      try{
-        map.stop();
-        if(waitForTiles){
-          say("Preparing map snapshot…");
-          const deadline=Date.now()+15000;
-          let loading;
-          do{if(!isActive())return;loading=false;map.eachLayer(layer=>{if(layer.isLoading?.())loading=true;});if(loading)await new Promise(resolve=>setTimeout(resolve,100));}while(loading&&Date.now()<deadline);
-        }
-        if(!isActive())return;
-        let incomplete=false;map.eachLayer(layer=>{if(layer.isLoading?.())incomplete=true;});
-        const el=map.getContainer();
-        if(incomplete||[...el.querySelectorAll('img.leaflet-tile')].some(t=>!t.complete||!t.naturalWidth))throw Error("Wait for the map tiles to finish loading, then try again.");
-        for(const tile of el.querySelectorAll("canvas")){try{tile.toDataURL();}catch(_){throw Error("This map layer cannot be saved as an image. Try another layer or take a screenshot.");}}
-        say("Preparing map image…");
-        // Preflight images so CORS failures cannot silently produce a blank basemap.
-        await Promise.all([...el.querySelectorAll('img.leaflet-tile')].map(tile=>new Promise((resolve,reject)=>{const img=new Image(),timer=setTimeout(()=>reject(Error("Image download timed out. Check your connection and try again.")),15000);img.crossOrigin="anonymous";img.onload=()=>{clearTimeout(timer);resolve();};img.onerror=()=>{clearTimeout(timer);reject(Error("This map provider could not be included in an image. Try another layer or take a screenshot."));};img.src=tile.src;})));
-        const canvas=await root.html2canvas(el,{useCORS:true,allowTaint:false,logging:false,scale:Math.min(devicePixelRatio||1,2),ignoreElements:node=>node.classList?.contains('leaflet-control')&&!node.classList.contains('leaflet-control-attribution')&&!node.classList.contains('leaflet-control-scale')&&!node.classList.contains('map-location-status')});
-        const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/png"));if(!blob)throw Error("Could not create the image.");
-        const url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="mike-golf-romeo-map.png";link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);say("Map image saved with attribution.");
-      }catch(error){say(error.message||"Could not save this map. Try a screenshot.");}finally{busy=false;button.busy(false);}
-    }
-    return {...button,save};
-  }
+  function saveImage(map,options){return root.createMapSnapshot(map,options);}
   // Far enough out, a street map is a whole country's worth of roads and names on a
   // screen where none of it can be acted on. The bundled outlines say where you are
   // with none of the clutter and ask nothing of the network. Cool greys and a soft

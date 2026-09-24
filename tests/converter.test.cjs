@@ -22,7 +22,7 @@ function app(saved,realMap=false,militaryEnabled=true,helper){
   const dom=new JSDOM(page.replace(/<script[\s\S]*?<\/script>/g,''),{url:'https://example.test/',runScripts:'outside-only',pretendToBeVisual:true});
   const w=dom.window;
   if(saved)w.localStorage.setItem('mgrconv-v1',JSON.stringify(saved));
-  for(const f of ['version.js','proj4.js','vendor/mgrs.js','grid-core.js','map-context.js','map-support.js','map-grid.js'])w.eval(read(f));
+  for(const f of ['version.js','proj4.js','vendor/mgrs.js','grid-core.js','map-context.js','map-support.js','map-export.js','map-grid.js'])w.eval(read(f));
   if(realMap){
     const ctx=new Proxy({measureText:s=>({width:String(s).length*6})},{get:(obj,key)=>key in obj?obj[key]:()=>{}});
     w.HTMLCanvasElement.prototype.getContext=()=>ctx;
@@ -1235,7 +1235,7 @@ test('a short map link resolves through the endpoint when one is configured',asy
   const withResolver=withHelper('https://resolver.test/go');
   const dom=new JSDOM(withResolver.replace(/<script[\s\S]*?<\/script>/g,''),{url:'https://example.test/',runScripts:'outside-only',pretendToBeVisual:true});
   const w=dom.window;
-  for(const f of ['version.js','proj4.js','vendor/mgrs.js','grid-core.js','map-context.js','map-support.js','map-grid.js'])w.eval(read(f));
+  for(const f of ['version.js','proj4.js','vendor/mgrs.js','grid-core.js','map-context.js','map-support.js','map-export.js','map-grid.js'])w.eval(read(f));
   w.createAOPicker=o=>({open:()=>{}});w.createPointPicker=o=>({open:()=>{}});
   let asked=null;
   w.fetch=async(url)=>{
@@ -2013,9 +2013,9 @@ test('only actual active input setting changes require conversion again',async()
 });
 
 /* ---- v2 reference areas ---- */
-test('the app reports version 3.14.0',()=>{
+test('the app reports version 3.15.0',()=>{
   const a=app();
-  try{assert.equal(a.$('#appVersion').textContent,'v3.14.0');assert.match(read('version.js'),/APP_VERSION = "3\.14\.0"/);
+  try{assert.equal(a.$('#appVersion').textContent,'v3.15.0');assert.match(read('version.js'),/APP_VERSION = "3\.15\.0"/);
     const logo=a.$('header h1 .logo');assert.ok(logo,'the header shows the app icon');assert.equal(logo.getAttribute('src'),'icons/logo-64.png');assert.equal(logo.getAttribute('alt'),'');}
   finally{a.dom.window.close();}
 });
@@ -2563,5 +2563,6 @@ test('country input and output changes navigate their next map opening',()=>{
     a.change('#fromSys','wgs84');a.change('#toSys','sg');a.$('#viewBtn').click();
     assert.equal(a.w.pointOptions.regionView,true);assert.equal(a.w.pointOptions.center.lon,103.82);assert.equal(a.w.pointOptions.zoom,11);
     a.$('#viewBtn').click();assert.equal(a.w.pointOptions.regionView,false);
+    a.change('#toSys','sg');a.$('#snapshotBtn').click();assert.equal(a.w.pointOptions.snapshot,true);assert.equal(a.w.pointOptions.regionView,false,'export always fits points, even after choosing a country');
   }finally{a.dom.window.close();}
 });
