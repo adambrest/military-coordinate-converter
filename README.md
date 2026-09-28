@@ -50,4 +50,4 @@ In the Converter map, tap-to-add replaces the Add point buttons with a blue Done
 
 Location is an explicit on/off tracker. The blue control means tracking is on; the compact status shows reported accuracy and fix age, turning amber when the fix is coarse or stale. Fresh fixes replace older fixes even when accuracy worsens. Dragging pauses camera following while location updates continue; Follow recentres and resumes following. Switching off, closing the converter map, leaving Point Picker, or hiding the browser stops tracking and clears the marker. Attribution remains separately visible. The browser does not expose satellite counts or a reliable GPS-versus-network source, so the app does not claim them.
 
-See [Singapore offline map feasibility and size estimates](docs/offline-maps.md) for coverage assumptions, provider requirements and storage estimates.
+See [Singapore offline map feasibility and size estimates](docs/offline-maps.md) for coverage assumptions, provider requirements and storage estimates, and [Toward 1.0](docs/roadmap.md) for what is deliberately not built yet and why.
