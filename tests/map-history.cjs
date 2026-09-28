@@ -22,14 +22,15 @@ for(const [engine,mobile] of [[chromium,false],[webkit,true]]){
  await at('fm',1.35,103.82);await page.click('#fieldAdd');
  await at('fm',1.36,103.83);await page.click('#fieldAdd');
  await at('fm',1.37,103.84);
- const undoBtn='#fieldMap .map-history a:first-child',redoBtn='#fieldMap .map-history a:last-child';
+ assert.equal(await page.locator('#fieldMap .map-history').count(),0,'the map carries no history control');
+ const undoBtn='#fieldUndo',redoBtn='#fieldRedo';
  await page.click(undoBtn);await settle();
  assert.equal(await page.locator('#fieldPoints .trow:not(.blank)').count(),1);
  assert.ok(near(await centre('fm'),[1.35,103.82]),'undo puts the crosshair back on the last point listed');
  await page.click(redoBtn);await settle();
  assert.equal(await page.locator('#fieldPoints .trow:not(.blank)').count(),2);
  assert.ok(near(await centre('fm'),[1.36,103.83]),'redo goes to the point restored');
- assert.equal(await page.locator(redoBtn).evaluate(el=>el.classList.contains('off')),true);
+ assert.equal(await page.locator(redoBtn).isDisabled(),true);
  // Tap to add leaves the view alone.
  await page.check('#fieldTap');await at('fm',1.30,103.80);await page.click(undoBtn);await settle();
  assert.ok(near(await centre('fm'),[1.30,103.80]),'tap mode does not move the map');
@@ -57,13 +58,13 @@ for(const [engine,mobile] of [[chromium,false],[webkit,true]]){
  const joined=()=>page.evaluate(()=>{let n=0;pm.eachLayer(l=>{if(l instanceof L.Polyline&&!(l instanceof L.Polygon)&&l.getLatLngs().length>1)n++;});return n;});
  assert.equal(await joined(),1,'the route is drawn between picks');
  assert.equal(await page.evaluate(()=>!!document.getElementById('measureRoute').closest('.side').querySelector('#fromRows')),true,'the route tick box sits on the From side');
- await page.click('#pointMap .map-history a:first-child');await settle();
+ await page.focus('#pointMap');await page.keyboard.press('Control+z');await settle();
  assert.match(await page.locator('#pointCount').textContent(),/^1 /);assert.ok(near(await centre('pm'),[1.35,103.82]));
- await page.click('#pointMap .map-history a:last-child');await settle();
+ await page.focus('#pointMap');await page.keyboard.press('Control+Shift+z');await settle();
  assert.match(await page.locator('#pointCount').textContent(),/^2 /);assert.ok(near(await centre('pm'),[1.36,103.83]));
- await page.click('#pointMap .map-history a:first-child');await page.click('#pointMap .map-history a:first-child');await settle();
+ await page.focus('#pointMap');await page.keyboard.press('Control+z');await page.focus('#pointMap');await page.keyboard.press('Control+z');await settle();
  assert.match(await page.locator('#pointCount').textContent(),/^0 /);
- assert.equal(await page.locator('#pointMap .map-history a:first-child').evaluate(el=>el.classList.contains('off')),true,'only picks made on this map can be undone here');
+ assert.equal(await page.locator('#pointMap .map-history').count(),0,'the converter map carries no history control either');
  assert.deepEqual(errors,[]);console.log(`${mobile?'Mobile WebKit':'Desktop Chromium'}: map undo/redo with recentring, non-overlapping and togglable point labels, converter map history passed`);
  }finally{await browser.close();}
 }

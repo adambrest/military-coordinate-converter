@@ -1,19 +1,19 @@
 /* Independent map-first point collection. Uses the existing local coordinate engine. */
 (function(root){
 'use strict';
-root.createFieldMap=function({formatter,projection,presets,onConvert,helper,countryPresets=[],presetName=id=>id,localGrid=()=>null,presetHolds=()=>true,homeGrid=()=>null,otherGridNotice=()=>'',fineGrid=()=>false,readInput=async()=>[],ask=async()=>false,gridChoiceAlert=null,boundary=()=>null,onMaps=()=>{}}){
+root.createFieldMap=function({formatter,projection,presets,onConvert,helper,countryPresets=[],presetName=id=>id,localGrid=()=>null,presetHolds=()=>true,homeGrid=()=>null,otherGridNotice=()=>'',fineGrid=()=>false,readInput=async()=>[],ask=async()=>false,gridChoiceAlert=null,boundary=()=>null,onMaps=()=>{},globalFormat=()=> 'mgrs',setGlobalFormat=()=>{}}){
  const $=id=>document.getElementById(id),key='mike-golf-romeo-field-v1';
  // `preferred` is a global grid someone chose by hand; `area` is the country grid the
  // view was last over, so a grid only changes on the way into or out of a country.
- let gps,fullScreen,imageExport,points=[],connected=false,system='mgrs',layer=MapSupport.DEFAULT_BASEMAP,map,markers,route,grid,view,undo=[],redo=[],bases,autoZoom,written=null,broad,target,preferred=null,area,choices={},mapHistory,labels;
+ let gps,fullScreen,imageExport,points=[],connected=false,system='mgrs',layer=MapSupport.DEFAULT_BASEMAP,map,markers,route,grid,view,undo=[],redo=[],bases,autoZoom,written=null,broad,target,preferred=null,area,choices={},labels;
  try{const s=JSON.parse(localStorage.getItem(key));if(s&&Array.isArray(s.points)){points=s.points.filter(RouteTools.valid).slice(0,20000);connected=!!s.connected;system=presets.includes(s.system)?s.system:'mgrs';layer=MapSupport.basemapId(s.basemapRevision===2?s.layer:(s.layer==='topo'?'street':s.layer));view=s.view;preferred=['mgrs','wgs84'].includes(s.preferred)?s.preferred:null;area=s.area;if(s.choices&&typeof s.choices==='object')choices=s.choices;}}catch(_){}
- const status=t=>{$('fieldStatus').textContent=t;};
+ const status=(t,kind='error',owner='input')=>{const el=$('fieldStatus');if(!t&&el.dataset.owner!==owner)return;el.textContent=t;el.dataset.owner=t?owner:'';el.classList.toggle('err',!!t&&kind==='error');};
  function save(){try{localStorage.setItem(key,JSON.stringify({points,connected,system,layer,view,preferred,area,choices,basemapRevision:2}));}catch(_){status('Device storage is full. Export your points before closing.');}}
  const snapshot=()=>JSON.stringify({points,connected,system});
- function historyButtons(){$('fieldUndo').disabled=!undo.length;$('fieldRedo').disabled=!redo.length;mapHistory?.sync(undo.length>0,redo.length>0);}
+ function historyButtons(){$('fieldUndo').disabled=!undo.length;$('fieldRedo').disabled=!redo.length;}
  function remember(){undo.push(snapshot());if(undo.length>30)undo.shift();redo=[];historyButtons();}
  function restore(json){({points,connected,system}=JSON.parse(json));refresh();}
- const GRID_LABELS={mgrs:'Global MGRS',wgs84:'Coordinates'};
+ const GRID_LABELS={mgrs:'Global MGRS',globalutm:'Global UTM',wgs84:'Coordinates'};
  const gridName=id=>GRID_LABELS[id]||presetName(id);
  const isCountry=id=>countryPresets.includes(id);
  const fits=(id,p)=>!isCountry(id)||presetHolds(id,p.lat,p.lon);
@@ -22,7 +22,8 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
  function writer(){if(!written)written=formatter(points,system);return written;}
  function coordinate(p){try{return writer().text(p);}catch(e){return e.message;}}
  function render(){
-  $('fieldFormat').value=system;$('fieldRoute').checked=connected;
+  $('fieldFormat').value=system==='globalutm'?'mgrs':system;$('fieldRoute').checked=connected;
+  $('fieldMilitaryFormatWrap').hidden=!['mgrs','globalutm'].includes(system);$('fieldMilitaryFormat').value=system;
   $('fieldTotal').textContent=points.length?points.length+(points.length===1?' point':' points'):'';
   $('fieldDistance').textContent=connected?RouteTools.summary(points):'';
   // A global grid picked by hand where a country grid would serve is kept, and said
@@ -115,6 +116,7 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   const here=[],elsewhere=[];
   if(points.length&&!pointFits)pointFits=presets.filter(id=>points.every(p=>fits(id,p)));
   for(const id of presets){
+   if(id==='globalutm')continue;
    const ok=points.length?pointFits.includes(id):!isCountry(id)||(centre&&presetHolds(id,centre.lat,MapSupport.longitude(centre.lng)));
    (ok?here:elsewhere).push(id);
   }
@@ -125,12 +127,12 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
    const group=(label,ids,disabled)=>{
     if(!ids.length)return null;
     const el=document.createElement('optgroup');el.label=label;
-    for(const id of ids){const o=new Option(gridName(id),id);o.disabled=disabled;el.append(o);}
+    for(const id of ids){const o=new Option(id==='mgrs'?'Military grid':gridName(id),id);o.disabled=disabled;el.append(o);}
     return el;
    };
    select.replaceChildren(...[group(labels[0],here,false),group(labels[1],elsewhere,!!points.length)].filter(Boolean));
   }
-  select.value=system;
+  select.value=system==='globalutm'?'mgrs':system;
  }
  function refresh(){written=null;pointFits=null;render();draw();save();offerGrids();grid?.refresh();target?.update();}
  function moved(){
@@ -209,8 +211,25 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
  // Alerts are the converter's own, so both tabs say the same thing the same way.
  let pending=null;
  const crossings=new Set();
- async function admit(incoming,commit){
+ async function admit(incoming,commit,{located=false}={}){
   incoming=incoming.filter(RouteTools.valid);if(!incoming.length)return false;
+  if(located){
+   // A GPX carries its own latitude and longitude, so it never has to be told where it
+   // is. Its points are added to whatever is already collected, never put in its place:
+   // a day's plotted route is not something to delete on an import and leave to undo.
+   // Where the old points and the new ones share no country grid, Coordinates holds
+   // both, and the list says so rather than changing grid quietly.
+   const before=snapshot(),oldCount=points.length;
+   if(oldCount+incoming.length>20000){status('20,000 point limit reached. Export or clear this collection first.');return false;}
+   const all=[...points,...incoming],local=localAt(incoming[0].lat,incoming[0].lon);
+   const next=oldCount&&all.every(p=>fits(system,p))?system
+    :local&&all.every(p=>fits(local,p))?local:'wgs84';
+   const moved=oldCount&&next!==system;
+   system=next;area=local;written=null;commit();undo[undo.length-1]=before;
+   status(`Added ${incoming.length} GPX point${incoming.length===1?'':'s'}${oldCount?' to this collection':''}.`
+    +(moved?` These points span more than one grid, so the list is now written in ${gridName(next)}.`:''),'info','import');
+   return true;
+  }
   if(points.length+incoming.length>20000){status('20,000 point limit reached. Export or clear this collection first.');return false;}
   // The first point decides the grid when it lands somewhere other than the crosshair.
   if(!points.length)enterArea(localAt(incoming[0].lat,incoming[0].lon));
@@ -243,8 +262,11 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
  }
 
  function draw(){if(!map)return;markers.clearLayers();
+  // The names the GPX will carry, so a label on the map and a waypoint on a device
+  // are recognisably one point.
+  const names=RouteTools.labels(points);
   points.forEach((p,i)=>{if(points.length>1000){L.circleMarker([p.lat,p.lon],{radius:2,weight:0,fillOpacity:.8,fillColor:'#2563eb',interactive:false}).addTo(markers);return;}
-   MapSupport.marker(map,{...p,number:i+1}).addTo(markers);
+   MapSupport.marker(map,{...p,number:i+1,name:names[i]}).addTo(markers);
   });
   drawRoute();
   labels?.run();
@@ -264,7 +286,6 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   gps=MapSupport.locate(map,{position:'bottomright'});
   autoZoom=MapSupport.autoZoom(map,()=>points);
   L.control.zoom({position:'bottomright'}).addTo(map);
-  mapHistory=MapSupport.historyButtons(map,{onUndo:()=>$('fieldUndo').click(),onRedo:()=>$('fieldRedo').click()});
   labels=MapSupport.labelLayout(map,{toggle:$('fieldLabels')});
   target=MapSupport.pointTarget(map,{tapMode:()=>$('fieldTap').checked,onChange:p=>{$('fieldCoordinate').textContent=coordinate(p);}});
   MapSupport.pointGestures(map,{onTap:p=>{
@@ -277,25 +298,28 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   bases={};
   for(const id of MapSupport.basemapIds){
    bases[id]=MapSupport.basemap(id,{maxZoom:19});
-   bases[id].on('tileerror',()=>status('Some map tiles are unavailable. Your points and coordinate calculations still work.'));
+   const failed=new Set();
+   const update=()=>{if(layer===id)status(failed.size?'Some map tiles are unavailable. Your points and coordinate calculations still work.':'','error','tiles');};
+   bases[id].on('tileerror',e=>{failed.add(e.tile);update();});
+   bases[id].on('tileload tileunload',e=>{failed.delete(e.tile);update();});
+   bases[id].on('add',update);
   }
   bases[layer].addTo(map);
-  // Three steps out. Close in, the map as drawn. Further out, the bundled land and
-  // water show through fading tiles, so roads and names ghost instead of turning to
-  // mud. Further out still the tiles go entirely and only the outlines remain, which
-  // asks nothing of the network and leaves the points the only saturated thing on it.
-  const QUIET_ZOOM=11,FAINT_ZOOM=9,BROAD_ZOOM=6;
+  // Two steps, not four. Below BROAD_ZOOM a street map is a whole country's worth of
+  // roads on a screen where none of it can be acted on, so the tiles go entirely and
+  // the bundled outlines stand in, asking nothing of the network. At every zoom above
+  // it the map is the map, at full strength: this is the scale a route is read at, and
+  // a half-faded basemap hides the ground it is there to show.
+  // The bundled land is kept a few zooms above the cutoff as well. It sits in a pane
+  // below the tiles, so it can never obscure them; it only gives the frame a coastline
+  // instead of flat water while tiles are still arriving.
+  const BROAD_ZOOM=6,LAND_ZOOM=9;
   function detail(){
     // Imagery is the picture itself, so it stays at every zoom.
     const zoom=layer==='satellite'?Infinity:map.getZoom();
-    const simple=zoom<BROAD_ZOOM,faint=!simple&&zoom<FAINT_ZOOM,quiet=!simple&&!faint&&zoom<QUIET_ZOOM;
-    // The bundled land sits under the tiles from the moment they start to fade, so what
-    // shows through is the sleek base rather than the page behind the map.
-    broad.show({land:simple||faint||quiet,names:simple});
-    const wrap=$('fieldMap');
-    wrap.classList.toggle('map-quiet',quiet);
-    wrap.classList.toggle('map-faint',faint);
-    wrap.classList.toggle('map-broad',simple);
+    const simple=zoom<BROAD_ZOOM;
+    broad.show({land:zoom<LAND_ZOOM,names:simple});
+    $('fieldMap').classList.toggle('map-broad',simple);
     const tiles=bases[layer];
     if(simple){if(map.hasLayer(tiles))map.removeLayer(tiles);}
     else if(!map.hasLayer(tiles))tiles.addTo(map);
@@ -305,12 +329,12 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   for(const b of document.querySelectorAll('.field-tools [data-layer]'))b.onclick=()=>{
    const next=MapSupport.basemapId(b.dataset.layer);
    if(next===layer)return;
-   map.removeLayer(bases[layer]);layer=next;layerButtons();
+   status('','error','tiles');map.removeLayer(bases[layer]);layer=next;layerButtons();
    detail();save();
   };
   markers=L.layerGroup().addTo(map);route=L.layerGroup().addTo(map);grid=createCoordinateGrid(map,{system:()=>system,projection,contains:presetHolds,enabled:()=>$('fieldGrid').checked,fine:fineGrid});
   fullScreen=MapSupport.fullscreen(map);
-  imageExport=MapSupport.saveImage(map,{onStatus:status});
+  imageExport=MapSupport.saveImage(map,{onStatus:(text,kind)=>status(text,kind,'snapshot'),basemap:()=>bases[layer]});
   let touched=false;map.on('movestart',()=>{touched=true;});
   guess.ready.then(p=>{if(!touched&&!view&&!points.length)map.setView([p.lat,p.lon],p.zoom);});
   map.on('moveend',()=>{const p=map.getCenter();view={lat:p.lat,lon:MapSupport.longitude(p.lng),zoom:map.getZoom()};moved();});
@@ -321,13 +345,17 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
  $('fieldFormat').value=system;
  layerButtons();
  $('fieldFormat').onchange=()=>{
-  const next=$('fieldFormat').value;
+  const next=$('fieldFormat').value==='mgrs'?globalFormat():$('fieldFormat').value;
   if(points.length&&!points.every(p=>fits(next,p))){$('fieldFormat').value=system;return;}
   if(points.length)remember();
   // Remember a global grid picked where a country grid would serve, per country.
   const centre=map&&map.getCenter(),home=points.length?homeGrid(points):centre?localAt(centre.lat,centre.lng):null;
   const known=home&&choices[home]===next;
   if(home){if(next===home)delete choices[home];else if(next==='mgrs')choices[home]=next;}
+  // Coordinates picked by hand is a standing answer, not a local one: it drops the
+  // countries where Global MGRS was remembered, so entering one of them again does not
+  // quietly overrule the more recent choice. Picking MGRS there again records it again.
+  if(next==='wgs84')for(const id of Object.keys(choices))if(choices[id]!=='wgs84')delete choices[id];
   system=next;preferred=isCountry(system)?null:system;written=null;
   if(home&&next==='mgrs'&&!known&&gridChoiceAlert)ask(gridChoiceAlert(home,next)).then(answer=>{if(answer==='alt'){$('fieldFormat').value=home;$('fieldFormat').onchange();}});
   const region=MapSupport.regions.find(r=>r.id===system);
@@ -335,10 +363,12 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   if(map&&region)map.setView([region.lat,region.lon],region.zoom,{animate:false});
   if(map){const c=map.getCenter();area=localAt(c.lat,c.lng);}
   refresh();
+  for(const row of $('fieldPoints').children)row.classList.add('detailed');
  };
+ $('fieldMilitaryFormat').onchange=()=>{if(points.length)remember();system=$('fieldMilitaryFormat').value;setGlobalFormat(system);refresh();for(const row of $('fieldPoints').children)row.classList.add('detailed');};
  $('fieldRoute').onchange=()=>{remember();connected=$('fieldRoute').checked;if(connected&&points.every(p=>p.breakBefore))points.forEach((p,i)=>p.breakBefore=i===0);drawRoute();$('fieldDistance').textContent=connected?RouteTools.summary(points):'';save();};
  const gridChoice=MapSupport.gridToggle($('fieldGrid'),()=>grid?.refresh());
- $('fieldSnapshot').onclick=()=>imageExport?.save({points});
+ $('fieldSnapshot').onclick=()=>imageExport?.save({points,fit:true});
  $('fieldTap').onchange=()=>{$('view-field').classList.toggle('tap-mode',$('fieldTap').checked);render();target?.update();};
  // With the list empty again, the grid is free to follow the map once more.
  const unlocked=()=>{if(!points.length&&map){area=undefined;moved();}};
@@ -354,17 +384,18 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
  });
  $('fieldPoints').addEventListener('click',e=>{if(e.target.closest('.del'))unlocked();});
  $('fieldClear').onclick=()=>{remember();points=[];refresh();unlocked();status('');};
- $('fieldCopy').onclick=async()=>{try{const write=writer();const rows=points.map(p=>[...write.cells(p),(p.name||'').replace(/[\t\r\n]/g,' ')].filter(Boolean).join('\t')).join('\n');await navigator.clipboard.writeText(rows);status('');}catch(e){status('Could not copy: '+e.message);}};
+ $('fieldCopy').onclick=async()=>{try{const write=writer();const rows=points.map(p=>[...write.cells(p),RouteTools.oneLine(p.name)].filter(Boolean).join('\t')).join('\n');await navigator.clipboard.writeText(rows);status('');}catch(e){status('Could not copy: '+e.message);}};
  $('fieldExport').onclick=()=>{const url=URL.createObjectURL(new Blob([RouteTools.gpx(points,connected)],{type:'application/gpx+xml'}));const a=document.createElement('a');a.href=url;a.download='mike-golf-romeo.gpx';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
  $('fieldMaps').onclick=()=>onMaps(points.map((p,i)=>({...p,number:i+1})));
  $('fieldConvert').onclick=()=>{if(points.length>2000){status('Use GPX export for tracks over 2,000 points. The converter table supports smaller collections.');return;}onConvert(points,connected,system);};
  $('fieldImport').onclick=()=>$('fieldFile').click();
  $('fieldFile').onchange=async()=>{const file=$('fieldFile').files[0];$('fieldFile').value='';if(!file)return;try{if(file.size>20*1024*1024)throw Error('GPX files must be smaller than 20 MB.');const result=RouteTools.parse(await file.text());
-  admit(result.points,()=>{remember();points.push(...result.points);connected=connected||result.connected;refresh();fit();status('');});
+  await admit(result.points,()=>{remember();points.push(...result.points);connected=connected||result.connected;refresh();fit();status('');},{located:true});
  }catch(e){status(e.message);}};
  render();return {open(){
   // Opening the map always shows every point collected.
   gridChoice.sync();
+  if(["mgrs","globalutm"].includes(system))system=globalFormat();
   if(!map)init();else if(points.length)fit();
   written=null;render();target.update();requestAnimationFrame(()=>{map.invalidateSize({pan:false});grid.refresh();});},close(){gps?.clear();},getPoints:()=>points.map(p=>({...p}))};
 };

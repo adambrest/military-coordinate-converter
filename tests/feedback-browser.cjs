@@ -22,7 +22,9 @@ for(const [engine,mobile] of [[chromium,false],[webkit,true]]){
  await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);
 
  const heights=await page.evaluate(()=>['fieldImport','fieldExport','fieldMaps','importGpx','gpxBtn','mapsBtn'].map(id=>{const el=document.getElementById(id);return getComputedStyle(el).height;}));
- assert.ok(heights.every(h=>h==='44px'),heights.join(','));
+ // Compact under a mouse, back to the 44px target under a finger: this is used
+ // one-handed, in gloves, in a vehicle that is moving.
+ assert.ok(heights.every(h=>(mobile?['44px']:['34px','36px']).includes(h)),(mobile?'touch: ':'pointer: ')+heights.join(','));
  assert.equal(await page.locator('[aria-label^="Jump to"]').count(),0);
  await page.click('.field-tools [data-layer="satellite"]');
  await page.evaluate(()=>fm.setView([1.35,103.82],15,{animate:false}));
@@ -30,8 +32,9 @@ for(const [engine,mobile] of [[chromium,false],[webkit,true]]){
  await page.click('#fieldMap .map-fullscreen a');
  assert.equal(await page.locator('.map-fullscreen-active').count(),1);
  await page.waitForFunction(()=>{let ready=true;fm.eachLayer(l=>{if(l._url&&(l.isLoading()||Object.values(l._tiles).some(t=>!t.loaded)))ready=false;});return ready;});
+ await page.waitForTimeout(260);
  const size=await page.locator('#fieldMap').boundingBox(),viewport=page.viewportSize();
- assert.ok(Math.abs(size.width-viewport.width)<2);assert.ok(Math.abs(size.height-viewport.height)<2);
+ assert.ok(Math.abs(size.width-viewport.width)<2);assert.ok(size.height<viewport.height);assert.ok(await page.locator('#fieldAdd').isVisible());assert.ok(await page.locator('#fieldGrid').isVisible());assert.equal(await page.locator('#fieldMap .map-fullscreen a').getAttribute('aria-pressed'),'true');
  await page.screenshot({path:'/tmp/feedback-fullscreen-'+(mobile?'mobile':'desktop')+'.png'});
  // Fractional zoom exposes seams on high-density mobile displays. The flat
  // dark fixture makes any light background leak unambiguous in a screenshot.
@@ -65,15 +68,23 @@ for(const [engine,mobile] of [[chromium,false],[webkit,true]]){
  await page.check('#fieldTap');assert.equal(await page.locator('#fieldDone').count(),0);
  await page.uncheck('#fieldTap');await page.click('#fieldAdd');
  await page.evaluate(()=>fm.setView([1.32,103.79],14,{animate:false}));await page.click('#fieldAdd');await page.check('#fieldGrid');
+ await page.evaluate(()=>{window.realCapture=html2canvas;window.html2canvas=async()=>{throw Error('Snapshot test failure');};});
+ await page.click('#fieldMap .map-save-image a');
+ await page.waitForFunction(()=>document.getElementById('fieldStatus').textContent==='Snapshot test failure');
+ assert.equal(await page.locator('#fieldMap .map-export-status').count(),0);
+ await page.evaluate(()=>{window.html2canvas=realCapture;});
  const original=await page.evaluate(()=>({bounds:fm.getBounds().toBBoxString(),zoom:fm.getZoom()}));
  const currentDownload=page.waitForEvent('download',{timeout:60000});await page.click('#fieldMap .map-save-image a');const currentFile=await currentDownload;
  await currentFile.saveAs('/tmp/current-view-'+(mobile?'mobile':'desktop')+'.png');
- const png=fs.readFileSync(await currentFile.path());assert.ok(png.readUInt32BE(16)>2000);assert.ok(png.readUInt32BE(20)>2000);assert.ok(png.includes(Buffer.from(original.bounds)),'snapshot metadata retains the exact camera bounds');
+ const png=fs.readFileSync(await currentFile.path());assert.ok(Math.max(png.readUInt32BE(16),png.readUInt32BE(20))<=1920);assert.ok(Math.min(png.readUInt32BE(16),png.readUInt32BE(20))<=1080);assert.ok(Math.min(png.readUInt32BE(16),png.readUInt32BE(20))>0);assert.ok(png.includes(Buffer.from(original.bounds)),'snapshot metadata retains the exact camera bounds');
+ const pixel=await page.evaluate(async data=>{const img=new Image();img.src=data;await img.decode();const canvas=document.createElement('canvas');canvas.width=img.width;canvas.height=img.height;const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0);return [...ctx.getImageData(10,10,1,1).data];},'data:image/png;base64,'+png.toString('base64'));
+ const ruler=await page.evaluate(async data=>{const img=new Image();img.src=data;await img.decode();const c=document.createElement('canvas');c.width=img.width;c.height=img.height;const ctx=c.getContext('2d');ctx.drawImage(img,0,0);return [...ctx.getImageData(25,c.height-18,1,1).data];},'data:image/png;base64,'+png.toString('base64'));assert.deepEqual(ruler,[23,43,64,255],'metric ruler is visibly drawn in the PNG');
+ assert.deepEqual(pixel,[20,50,30,255],'the saved PNG contains the loaded imagery, not an empty canvas');
  assert.ok(png.includes(Buffer.from('Esri')),'credits are retained in metadata');
  assert.deepEqual(await page.evaluate(()=>({bounds:fm.getBounds().toBBoxString(),zoom:fm.getZoom()})),original,'export cannot move the live map');
- assert.equal(await page.locator('#fieldMap .map-export-status').textContent(),'');
- await page.click('#fieldExportMenu summary');
- assert.deepEqual(await page.locator('#fieldExportMenu button').allTextContents(),['Export as GPX','Map snapshot','Google Maps']);
+ assert.equal(await page.locator('#fieldMap .map-export-status').count(),0);assert.equal(await page.locator('#fieldStatus').textContent(),'');
+ await page.click('#fieldExportMenu .export-trigger');
+ assert.deepEqual(await page.locator('#fieldExportMenu .export-options button').allTextContents(),['Export as GPX','Map image (fit points)','Google Maps']);
  await page.screenshot({path:'/tmp/export-'+(mobile?'mobile':'desktop')+'.png'});
  const download=page.waitForEvent('download',{timeout:60000});await page.click('#fieldSnapshot');
  const file=await download;const fitted=fs.readFileSync(await file.path());assert.equal(fitted.includes(Buffer.from(original.bounds)),false,'Export fits the points instead of preserving the camera');assert.deepEqual(await page.evaluate(()=>({bounds:fm.getBounds().toBBoxString(),zoom:fm.getZoom()})),original);assert.equal(file.suggestedFilename(),'mike-golf-romeo-map.png');await file.saveAs('/tmp/feedback-map-'+(mobile?'mobile':'desktop')+'.png');
@@ -90,11 +101,11 @@ for(const [engine,mobile] of [[chromium,false],[webkit,true]]){
  await page.screenshot({path:'/tmp/revised-done-'+(mobile?'mobile':'desktop')+'.png'});await page.click('#pointDone');
  assert.equal(await page.locator('#pointOverlay').isVisible(),false);assert.equal(await page.locator('#fromRows .trow').count(),before);assert.equal((await page.evaluate(()=>cleared)).length,2,'closing the converter stops tracking');
  await page.selectOption('#fromSys','wgs84');await page.locator('#fromRows .a').first().fill('1.35');await page.locator('#fromRows .b').first().fill('103.82');await page.click('#convertBtn');
- await page.click('#converterExport summary');
+ await page.click('#converterExport .export-trigger');
  const outputDownload=page.waitForEvent('download',{timeout:60000});await page.click('#snapshotBtn');
  assert.equal((await outputDownload).suggestedFilename(),'mike-golf-romeo-map.png');
  await page.click('#pointClose');
- await page.click('#converterExport summary');await page.keyboard.press('Escape');assert.equal(await page.locator('#converterExport').getAttribute('open'),null);
+ await page.click('#converterExport .export-trigger');await page.keyboard.press('Escape');assert.equal(await page.locator('#converterExport dialog').getAttribute('open'),null);
  assert.deepEqual(errors,[]);console.log(`${mobile?'Mobile WebKit':'Desktop Chromium'}: feedback: Done without extra points, grouped exports, full screen, PNG, seam pixels, button sizes and continuous location tracking passed`);
  }finally{await browser.close();}
 }

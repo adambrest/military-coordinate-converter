@@ -63,6 +63,8 @@
 #pointFormatPreview{margin-top:0;min-height:0}
 .point-footer #pointDistance{height:auto;min-height:15px;line-height:15px;margin:6px 0 0;text-align:left}
 #pointAdded:empty{display:none}
+.point-notices{height:40px;flex:0 0 40px;overflow:auto;scrollbar-width:thin}
+.overlay.viewing .point-footer,.overlay.viewing .point-footer:not(:has(.point-status:not([hidden]):not(:empty))){padding:8px 18px;border-top:1px solid var(--line)}
 .overlay.viewing .point-readout .readout-text{display:none}
 
 #boundaryOverlay .m-actions{flex-direction:column}#boundaryOverlay .m-actions button{flex:auto;padding:10px 14px}

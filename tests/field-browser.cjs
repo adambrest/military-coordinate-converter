@@ -15,7 +15,7 @@ await page.route(/tile\.openstreetmap\.org|tile\.opentopomap\.org|services\.arcg
 await page.route('**/beacon.min.js',r=>r.fulfill({contentType:'application/javascript',body:''}));
 await page.addInitScript(()=>{addEventListener('DOMContentLoaded',()=>{const make=L.map;L.map=(...args)=>{const map=make(...args);if(args[0]==='fieldMap')window.fieldTestMap=map;return map;};});});
 await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);await page.click('#tab-field');
-await page.evaluate(()=>{fieldTestMap.setView([1.35,103.82],14);});
+await page.evaluate(()=>{fieldTestMap.setView([1.35,103.82],14,{animate:false});});
 assert.equal(await page.locator('#fieldFormat').inputValue(),'sg','empty Singapore view selects its local grid');
 // A grid picked by hand, or a crossing, is answered in the shared alert; these steps keep it.
 const answer=async()=>{await page.waitForTimeout(60);if(await page.locator('#boundaryOverlay').isVisible())await page.click('#boundaryContinue');};
@@ -24,7 +24,21 @@ const layerNow=()=>page.locator('.field-tools [data-layer][aria-pressed="true"]'
 assert.equal(await layerNow(),'street','Street is the default');
 // With nothing collected the grid follows the ground: a country's own grid inside it,
 // Coordinates outside every one, and a grid chosen by hand only where the rules allow.
-const gridAt=async(lat,lon,z=11)=>{await page.waitForFunction(()=>!fieldTestMap._animatingZoom);await page.evaluate(([lat,lon,z])=>{fieldTestMap.setView([lat,lon],z,{animate:false});},[lat,lon,z]);return page.locator('#fieldFormat').inputValue();};
+// The grid follows the ground on moveend, so the move has to land before the select is
+// read; setting the view and reading straight after catches the previous answer.
+const gridAt=async(lat,lon,z=11)=>{
+  await page.waitForFunction(()=>!fieldTestMap._animatingZoom);
+  await page.evaluate(([lat,lon,z])=>{fieldTestMap.setView([lat,lon],z,{animate:false});},[lat,lon,z]);
+  // Wait for the camera to stop moving rather than for one moveend: a pending event from
+  // the previous step would resolve first and the grid would be read one move behind.
+  // The view can also be clamped, so settle on two identical frames, not on the target.
+  await page.evaluate(()=>{delete window.__cam;});
+  await page.waitForFunction(()=>{
+    const c=fieldTestMap.getCenter(),now=[c.lat,c.lng,fieldTestMap.getZoom()].join();
+    const settled=window.__cam===now&&!fieldTestMap._animatingZoom;
+    window.__cam=now;return settled;});
+  return page.locator('#fieldFormat').inputValue();
+};
 assert.equal(await gridAt(55.75,37.6),'wgs84','outside every country grid, Coordinates');
 await pickGrid('mgrs');
 assert.equal(await gridAt(56.0,38.0),'mgrs','Global MGRS chosen by hand holds outside a country');
@@ -116,15 +130,14 @@ const stage=async z=>{
             tiles,names:document.querySelectorAll('.broad-name').length};
   });
 };
-let step=await stage(12);
-assert.equal(step.cls,'','close in, the map is drawn as it is');
-assert.equal(step.tiles,1,'tiles are on close in');
-step=await stage(10);
-assert.equal(step.cls,'map-quiet','the map quietens on the way out');
-assert.equal(step.tiles,1);
-step=await stage(8);
-assert.equal(step.cls,'map-faint','further out it fades further');
-step=await stage(5);
+// Two states, not four: the map is the map at every zoom it is read at, and only at
+// country scale do the tiles go. Nothing dims or covers them on the way out.
+for(const zoom of [12,10,8,6]){
+  const step=await stage(zoom);
+  assert.equal(step.cls,'','zoom '+zoom+': the map is drawn as it is, undimmed');
+  assert.equal(step.tiles,1,'zoom '+zoom+': tiles are on');
+}
+let step=await stage(5);
 assert.equal(step.cls,'map-broad','at country scale only the outlines remain');
 assert.equal(step.tiles,0,'the broad view must request no tiles at all');
 assert.ok(step.names>0,'the broad view names the countries it shows');
@@ -162,8 +175,12 @@ assert.match(await page.locator('#boundaryDetail').textContent(),/Thailand MGR/)
 await page.click('#boundaryContinue');
 await page.waitForFunction(()=>document.querySelectorAll('#fieldPoints .trow').length===3);
 refs=await page.locator('#fieldPoints .trow').evaluateAll(rows=>rows.map(row=>[row.querySelector('.a').value,row.querySelector('.b').value].join(' ')));
-assert.match(refs[0],/^\d{4} \d{4}$/,'the points inside keep their short form');
-assert.ok(refs[2].replace(/\D/g,'').length>8,'the point that crossed is written in full: '+refs[2]);
+// Once a list straddles a square boundary every reference in it is written in full.
+// A short reference standing beside a full one is read as if it shared the same
+// square, so mixing the two forms in one list is how a point gets plotted a square
+// away from where it is.
+for(const [k,ref] of refs.entries())
+  assert.ok(ref.replace(/\D/g,'').length>8,'point '+(k+1)+' is written in full once the list crosses: '+ref);
 assert.match(await page.locator('#fieldAreaNote').innerText(),/point 3 is outside/i,'crossing an area line must say so');
 await page.click('#fieldClear');await page.click('#fieldUndo');await page.click('#fieldClear');
 await pickGrid('mgrs');
@@ -180,10 +197,10 @@ await page.click('#tab-field');await pickGrid('wgs84');assert.match(await page.l
 await page.setInputFiles('#fieldFile',{name:'bad.gpx',mimeType:'application/gpx+xml',buffer:Buffer.from('<gpx><wpt lat="999" lon="0"/></gpx>')});await page.waitForFunction(()=>document.getElementById('fieldStatus').textContent.includes('Invalid coordinate'));assert.equal(await page.locator('#fieldPoints li').count(),4);
 await page.evaluate(()=>{navigator.clipboard.writeText=async text=>{window.copiedPoints=text;};});await page.click('#fieldCopy');const copied=(await page.evaluate(()=>window.copiedPoints)).split('\n');assert.equal(copied.length,4);assert.equal(copied[0].split('\t').length,2,'unnamed points copy only coordinate columns, just like converter');
 // Export to Maps is on the Point Picker too, with the converter's dialog.
-const popup=page.waitForEvent('popup').catch(()=>null);await page.click('#fieldExportMenu summary');await page.click('#fieldMaps');
+const popup=page.waitForEvent('popup').catch(()=>null);await page.click('#fieldExportMenu .export-trigger');await page.click('#fieldMaps');
 assert.ok((await popup)||await page.locator('#mapsOverlay').isVisible(),'Export to Maps opens Google Maps or its parts');
 if(await page.locator('#mapsOverlay').isVisible())await page.click('#mapsCancel');
-const download=page.waitForEvent('download');await page.click('#fieldExportMenu summary');await page.click('#fieldExport');const d=await download;assert.equal(d.suggestedFilename(),'mike-golf-romeo.gpx');
+const download=page.waitForEvent('download');await page.click('#fieldExportMenu .export-trigger');await page.click('#fieldExport');const d=await download;assert.equal(d.suggestedFilename(),'mike-golf-romeo.gpx');
 await page.click('.field-tools [data-layer="satellite"]');await context.setOffline(true);await page.click('#fieldAdd');assert.equal(await page.locator('#fieldPoints li').count(),5,'adding coordinates works without tiles');await context.setOffline(false);
 // Upgrading an old saved picker changes the basemap, never its collected points/grid.
 await page.evaluate(()=>{const key='mike-golf-romeo-field-v1',s=JSON.parse(localStorage.getItem(key));s.layer='topo';s.system='wgs84';delete s.basemapRevision;localStorage.setItem(key,JSON.stringify(s));});

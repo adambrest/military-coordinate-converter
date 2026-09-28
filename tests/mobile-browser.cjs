@@ -66,7 +66,7 @@ const server=http.createServer((req,res)=>{
    await page.locator('#convertBtn').click();
    await page.locator('#locationOverlay.open').waitFor();
    await page.locator('[data-location="taiwan"]').click();
-   assert.equal(await page.locator('#aoBack').textContent(),'Change country');
+   assert.equal(await page.locator('#aoBack').textContent(),'Choose country');
    await page.locator('#aoBack').click();
    await page.locator('#locationOverlay.open').waitFor();
    await page.locator('[data-location="thailand"]').click();

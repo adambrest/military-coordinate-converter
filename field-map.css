@@ -49,6 +49,12 @@
 .map-fullscreen-active #fieldMap,.map-fullscreen-active #pointMap,.map-fullscreen-active #aoMap{height:100%!important;min-height:0!important}
 body:has(.map-fullscreen-active) .field-map-panel,body:has(.map-fullscreen-active) .point-modal,body:has(.map-fullscreen-active) .ao-modal{overflow:visible}
 .map-fullscreen a{font-size:24px}
+.map-fullscreen svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.map-fullscreen a[aria-pressed="true"]{background:#2563eb;color:white}
+.field-map-panel.map-fullscreen-active{display:flex;flex-direction:column;border:0;border-radius:0;background:var(--panel)}
+.field-map-panel.map-fullscreen-active .field-tools,.field-map-panel.map-fullscreen-active .field-readout{flex-shrink:0}
+.field-map-panel.map-fullscreen-active .field-map-wrap{flex:1;min-height:0}
+.map-fullscreen-active.point-modal{border-radius:0;border:0}
 /* Leaflet's additive blending brightens overlapping imagery edges. Normal
    compositing lets the shared one-pixel overlap cover fractional zoom seams. */
 .leaflet-container img.leaflet-tile{mix-blend-mode:normal}
@@ -59,10 +65,10 @@ body:has(.map-fullscreen-active) .field-map-panel,body:has(.map-fullscreen-activ
 .map-location-status.stale::before{background:#d97706}
 .map-location-status button{border:0;background:transparent;color:#2563eb;font:600 11px system-ui;padding:2px 3px;cursor:pointer}
 .map-locate a[aria-pressed="true"]{background:#2563eb;color:white}
-.map-export-status{padding:4px 8px;background:white;color:#334155;border-radius:7px;font:11px/1.4 system-ui;max-width:260px}
-.map-export-status:empty{display:none}
 /* The status sits above provider credits, never on top of them. */
-.leaflet-container:has(.map-location-status:not([hidden]),.map-export-status:not(:empty)) .leaflet-bottom.leaflet-left{bottom:34px}
+.leaflet-container:has(.map-location-status:not([hidden])) .leaflet-bottom.leaflet-left{bottom:34px}
 .snapshot-stage{position:fixed;left:-20000px;top:0;pointer-events:none;z-index:-1;background:#d9e2e8}
+.snapshot-stage .chosen-point-label{font-size:14px;max-width:220px;background:transparent;border:0;box-shadow:none}
+.snapshot-stage .grid-label-edge{font-size:13px}
 
 .map-save-image svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7}

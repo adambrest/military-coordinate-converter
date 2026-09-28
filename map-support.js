@@ -171,20 +171,6 @@
     // Each map picks up a change made on the other when it is next opened.
     return {sync(){const was=input.checked;read();if(was!==input.checked)onChange?.();}};
   }
-  // Undo and redo on the map itself, in the same button stack as zoom.
-  function historyButtons(map,{onUndo,onRedo,position="bottomright"}){
-    const make=(title,icon,go)=>{const a=L.DomUtil.create("a","");a.href="#";a.title=title;a.setAttribute("role","button");a.setAttribute("aria-label",title);a.innerHTML=icon;L.DomEvent.on(a,"click",e=>{L.DomEvent.stop(e);if(!a.classList.contains("off"))go();});return a;};
-    let undoEl,redoEl;
-    const control=L.control({position});
-    control.onAdd=()=>{
-      const bar=L.DomUtil.create("div","leaflet-bar map-button map-history");
-      undoEl=make("Undo last point",'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-5 5 5 5M4 10h10a6 6 0 0 1 6 6v3"/></svg>',onUndo);
-      redoEl=make("Redo",'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 5 5-5 5M20 10H10a6 6 0 0 0-6 6v3"/></svg>',onRedo);
-      bar.append(undoEl,redoEl);L.DomEvent.disableClickPropagation(bar);return bar;
-    };
-    control.addTo(map);
-    return {sync(canUndo,canRedo){undoEl?.classList.toggle("off",!canUndo);redoEl?.classList.toggle("off",!canRedo);}};
-  }
   function context(map,onClick){
     const land=L.layerGroup().addTo(map),pins=L.layerGroup();
     for(const c of Object.values(root.MAP_CONTEXT||{})){
@@ -230,6 +216,8 @@
   // Safari can label touch-generated clicks as mouse clicks, so detect taps
   // from touch events directly. Mouse double-click stays a separate path.
   function pointGestures(map,{onTap}={}){
+    // Only double-click/tap zooms toward the pointer. Wheel and +/- keep the centre.
+    map.options.scrollWheelZoom='center';
     let first=null,active=null,lastTouch=0;
     const container=map.getContainer(),reset=()=>{first=null;active=null;};
     let rollback=null,clickTime=0,clickPoint=null;
@@ -522,24 +510,32 @@
     return {go,clear:()=>stop()};
   }
   function fullscreen(map){
-    const container=map.getContainer(),host=container.id==='pointMap'?container.closest('.point-modal'):container.parentElement;
+    const container=map.getContainer(),host=container.closest('.point-modal,.field-map-panel,.ao-modal')||container.parentElement;
     let previousOverflow="",active=false;
     // A grid warning or other dialog must stay reachable when a map tap opens it.
     const dialogs=new MutationObserver(()=>{if(active&&[...document.querySelectorAll('.overlay.open')].some(el=>!el.contains(host)))set(false,false);});
-    const button=mapButton(map,{position:"topleft",className:"map-fullscreen",title:"Full screen",icon:'⛶',onClick:()=>set(!active)});
+    const icon=on=>'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+(on?'M4 9h5V4M20 9h-5V4M4 15h5v5M20 15h-5v5':'M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5')+'"/></svg>';
+    const button=mapButton(map,{position:"topleft",className:"map-fullscreen",title:"Maximize map",icon:icon(false),onClick:()=>set(!active)});
+    button.node().setAttribute('aria-pressed','false');
     function set(on,focus=true){
       if(on===active)return;active=on;
+      const center=map.getCenter(),zoom=map.getZoom(),before=host.getBoundingClientRect();
       if(on){previousOverflow=document.body.style.overflow;document.body.style.overflow="hidden";dialogs.observe(document.body,{subtree:true,attributes:true,attributeFilter:["class"]});}
       else{document.body.style.overflow=previousOverflow;dialogs.disconnect();}
       host.classList.toggle("map-fullscreen-active",on);
-      button.node().setAttribute("aria-label",on?"Exit full screen":"Full screen");button.node().title=on?"Exit full screen":"Full screen";button.node().setAttribute("aria-pressed",String(on));
-      map.invalidateSize({pan:false});if(focus)button.node().focus();
+      button.node().setAttribute("aria-label",on?"Restore map size":"Maximize map");button.node().title=on?"Restore map size":"Maximize map";button.node().setAttribute("aria-pressed",String(on));button.node().innerHTML=icon(on);
+      map.invalidateSize({pan:false});map.setView(center,zoom,{animate:false});
+      if(host.animate&&!root.matchMedia?.('(prefers-reduced-motion: reduce)').matches){
+        const after=host.getBoundingClientRect();
+        host.animate([{transformOrigin:'top left',transform:`translate(${before.left-after.left}px,${before.top-after.top}px) scale(${before.width/after.width},${before.height/after.height})`,opacity:.8},{transformOrigin:'top left',transform:'none',opacity:1}],{duration:220,easing:'ease-out'});
+      }
+      if(focus)button.node().focus();
     }
     document.addEventListener("keydown",e=>{
       if(!active)return;
       if(e.key==="Escape"){e.preventDefault();e.stopImmediatePropagation();set(false);}
       if(e.key==="Tab"){
-        const nodes=[...host.querySelectorAll('button:not(:disabled),a[href],[tabindex="0"]')].filter(node=>node.getClientRects().length&&!node.classList.contains('off'));
+        const nodes=[...host.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),a[href],[tabindex="0"]')].filter(node=>node.getClientRects().length&&!node.classList.contains('off'));
         if(nodes.length){e.preventDefault();e.stopImmediatePropagation();const i=nodes.indexOf(document.activeElement);nodes[(i+(e.shiftKey?-1:1)+nodes.length)%nodes.length].focus();}
       }
     },true);
@@ -605,5 +601,5 @@
       colors:BROAD
     };
   }
-  root.MapSupport={regions,baseView,approximateLocation,tileUrls,prefetchTiles,marker,context,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,pointTarget,imageryZoom,imageryService,trainingArea,BASEMAPS,DEFAULT_BASEMAP,basemapIds,basemapId,basemap,locate,fullscreen,saveImage,mapButton,autoZoom,clampLatitude,broadView,BROAD_COLORS:BROAD,softenTopo,seamless,labelLayout,historyButtons,gridToggle};
+  root.MapSupport={regions,approximateLocation,tileUrls,prefetchTiles,marker,context,limitCenter,longitude,worlds,repeatGeometry,squareZoom,pointGestures,pointTarget,imageryZoom,trainingArea,DEFAULT_BASEMAP,basemapIds,basemapId,basemap,locate,fullscreen,saveImage,mapButton,autoZoom,clampLatitude,broadView,softenTopo,seamless,labelLayout,gridToggle};
 })(globalThis);

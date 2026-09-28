@@ -4,7 +4,7 @@
   root.createPointPicker=function({preview,onConfirm,onViewChange,projection,contains,capture,retract,fine,history}){
     const $=id=>document.getElementById(id),overlay=$("pointOverlay");
     const STREET_ZOOM=7;
-    let imageExport,fullScreen,gps,route,picks=0,redos=0,mapHistory,pointLabels,map,countries,labels,markers,streets,topo,satellite,options={},returnFocus,frame,stableCenter,limitCenter,pointAutoZoom,grid,target;
+    let imageExport,fullScreen,gps,route,picks=0,redos=0,pointLabels,map,countries,labels,markers,streets,topo,satellite,options={},returnFocus,frame,stableCenter,limitCenter,pointAutoZoom,grid,target;
     // Beyond the imagery a provider actually holds for an area the tiles are only
     // enlarged, so stopping there keeps the crosshair from implying detail that
     // is not in the picture.
@@ -95,12 +95,13 @@
       markers.clearLayers();route.clearLayers();
       // Connected points are drawn joined, as on the Point Picker, and only then measured.
       if(options.connected&&points.length>1)L.polyline(points.map(p=>[p.lat,p.lon]),{color:"#2563eb",weight:3,interactive:false}).addTo(route);
-      for(const p of points){
-        MapSupport.marker(map,p).addTo(markers);
-      }
+      const names=globalThis.RouteTools?RouteTools.labels(points):null;
+      points.forEach((p,i)=>{
+        MapSupport.marker(map,names?{...p,name:names[i]}:p).addTo(markers);
+      });
       $("pointCount").textContent=points.length+(options.readOnly?" output point":" existing point")+(points.length===1?"":"s");
       pointAutoZoom&&pointAutoZoom.sync();
-      mapHistory?.sync(picks>0,redos>0);pointLabels?.run();
+      pointLabels?.run();
       // Adding point by point, the running distance is worth seeing straight away.
       const run=options.connected&&globalThis.RouteTools&&points.length>1?RouteTools.summary(points.map(p=>({...p,breakBefore:false}))):"";
       $("pointDistance").textContent=run;
@@ -115,7 +116,7 @@
       MapSupport.context(map);
       MapSupport.trainingArea(map);
       fullScreen=MapSupport.fullscreen(map);
-      imageExport=MapSupport.saveImage(map,{onStatus:text=>{$("pointAdded").textContent=text;}});
+      imageExport=MapSupport.saveImage(map,{onStatus:(text,kind)=>{const el=$("pointSnapshotStatus");el.hidden=!text;el.textContent=text;el.classList.toggle("err",kind==="error");}});
       limitCenter=MapSupport.limitCenter(map);
       countries=L.geoJSON(null,{pane:"pointCountries",interactive:false,style:{color:"#90a5b5",weight:.8,fillColor:"#f2f0e9",fillOpacity:1}}).addTo(map);
       map.attributionControl.addAttribution('<a href="https://www.naturalearthdata.com/">Natural Earth</a>');
@@ -165,7 +166,6 @@
         if(last&&!$("pointTap").checked)map.panTo([last.lat,last.lon]);
         update();
       };
-      mapHistory=MapSupport.historyButtons(map,{onUndo:()=>step(history.undo,true),onRedo:()=>step(history.redo,false)});
       overlay.addEventListener("keydown",e=>{
         if(!(e.ctrlKey||e.metaKey)||e.key.toLowerCase()!=="z")return;
         const el=document.activeElement;if(el&&/^(INPUT|TEXTAREA)$/.test(el.tagName)&&el.type!=="checkbox")return;

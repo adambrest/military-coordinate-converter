@@ -44,10 +44,15 @@
             }
             else{
               const step=10**(5-g.e.length),ll=root.proj4(proj,"WGS84",[e+Number(g.e)*step,n+Number(g.n)*step]);
-              point={lat:ll[1],lon:ll[0]};
+              const center=root.proj4(proj,"WGS84",[e+(Number(g.e)+.5)*step,n+(Number(g.n)+.5)*step]);
+              point={lat:center[1],lon:center[0],cellSize:step};
               if(!contains(id,point.lat,point.lon))result.invalid=true;
             }
-            if(i===0&&point){result.point=point;result.lat=point.lat;result.lon=point.lon;}
+            if(i===0&&point){
+              result.point=point;result.lat=point.lat;result.lon=point.lon;
+              const size=point.cellSize||10**(5-g.e.length),en=root.proj4('WGS84',proj,[point.lon,point.lat]);
+              result.cellSize=size;result.footprint=GlobalGrid.square(proj,Math.floor(en[0]/size)*size,Math.floor(en[1]/size)*size,size);
+            }
           }
         }
         return result;
@@ -59,6 +64,7 @@
       pointLayer.clearLayers();
       const shown=chosen||selection;
       if(!shown?.point)return;
+      if(shown.footprint)polygon(shown.footprint,{color:hovering?'#2563eb':'#7c3aed',weight:2,fillColor:hovering?'#2563eb':'#7c3aed',fillOpacity:.2},pointLayer,shown.offset||0);
       L.circleMarker([shown.point.lat,shown.point.lon+(shown.offset||0)],{radius:7,color:"#fff",weight:2,fillColor:hovering?"#2563eb":"#7c3aed",fillOpacity:1,interactive:false}).addTo(pointLayer);
     }
     function selectCandidate(chosen){
@@ -88,7 +94,8 @@
       const layer=polygon(chosen.polygon,{interactive:true,bubblingMouseEvents:false,fillOpacity:.05,weight:1.5},grid,worldOffset);
       layer.options.aoCandidate=chosen;
       layer.on("click",e=>{L.DomEvent.stopPropagation(e);selectCandidate(chosen);});
-      // Once a square is clicked its point stays put; hovering only previews before that.
+      // Once a square is clicked its point stays put; hovering only previews before that,
+      // or a brush past a neighbour looks like the selection moved.
       layer.on("mouseover",()=>{layer.setStyle({fillOpacity:.15});if(chosen.point&&!selection)showPoint(chosen,true);});
       layer.on("mouseout",()=>{layer.setStyle({fillOpacity:.05});if(chosen.point&&!selection)showPoint(null);});
       // Stacked labels at country scale are unreadable; the squares still are not.
@@ -154,7 +161,7 @@
       cancelTap=MapSupport.pointGestures(map);
       map.attributionControl.setPrefix(false);
       fullScreen=MapSupport.fullscreen(map);
-      MapSupport.saveImage(map,{onStatus:text=>{$("aoNetwork").hidden=!text;$("aoNetwork").textContent=text;}});
+      MapSupport.saveImage(map,{onStatus:(text,kind)=>{const el=$("aoSnapshotStatus");el.hidden=!text;el.textContent=text;el.classList.toggle("err",kind==="error");}});
       L.control.scale({imperial:false}).addTo(map);
       map.createPane("offlineLand").style.zIndex="150";
       const land=L.layerGroup().addTo(map);
@@ -181,10 +188,12 @@
       if(root.ResizeObserver)new ResizeObserver(()=>requestAnimationFrame(resize)).observe($("aoMap"));else root.addEventListener("resize",resize);
     }
     function close(){ fullScreen?.exit();cancelTap?.();$("aoOverlay").classList.remove("open","viewing");returnFocus?.focus(); }
-    $("aoClose").addEventListener("click",close);
-    $("aoApply").addEventListener("click",()=>{if(!selection||$("aoApply").disabled)return;const chosen=selection;close();onSelect(chosen,options);});
+    const cancel=()=>{close();if(options.onDismiss)options.onDismiss();else onCancel?.();};
+    const complete=chosen=>options.onResolve?options.onResolve(chosen):onSelect(chosen,options);
+    $("aoClose").addEventListener("click",cancel);
+    $("aoApply").addEventListener("click",()=>{if(!selection||$("aoApply").disabled)return;const chosen=selection;close();complete(chosen);});
     $("aoOverlay").addEventListener("keydown",e=>{
-      if(e.key==="Escape"){e.preventDefault();close();}
+      if(e.key==="Escape"){e.preventDefault();cancel();}
       if(e.key==="Tab"){
         const nodes=[...$("aoOverlay").querySelectorAll('button:not(:disabled),select,input,[tabindex="0"],a[href]')].filter(el=>el.getClientRects().length);
         const first=nodes[0],last=nodes[nodes.length-1];
@@ -197,7 +206,7 @@
       if(p.lead){
         const [e,n]=p.lead,g=options.pick,step=g?10**(5-g.e.length):1;
         const point=root.proj4(projection(id),"WGS84",[e*100000+(g?Number(g.e)*step:50000),n*100000+(g?Number(g.n)*step:50000)]);
-        onSelect({id,e,n,lat:point[1],lon:point[0]},options);return;
+        complete({id,e,n,lat:point[1],lon:point[0]});return;
       }
       showMap({...options,system:id,preset:id});
     }
@@ -222,7 +231,7 @@
     $("locationOverlay").querySelectorAll("[data-location]").forEach(button=>button.addEventListener("click",()=>choose(button.dataset.location)));
     // Turning the chooser down is an answer too: the caller has to hear it, or the
     // reference it was waiting on stays pending and Convert only asks again.
-    const closeLocations=()=>{$("locationOverlay").classList.remove("open");returnFocus?.focus();onCancel?.();};
+    const closeLocations=()=>{$("locationOverlay").classList.remove("open");returnFocus?.focus();if(options.onDismiss)options.onDismiss();else onCancel?.();};
     $("locationClose").addEventListener("click",closeLocations);
     $("locationOverlay").addEventListener("keydown",e=>{if(e.key==="Escape")closeLocations();
       if(e.key==="Tab"){const nodes=$("locationOverlay").querySelectorAll("button:not(:disabled):not([hidden])"),first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}

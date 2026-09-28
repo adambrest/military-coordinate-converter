@@ -5,7 +5,7 @@
   const transforms=new Map();
   function check(lat,lon){
     if(!Number.isFinite(lat)||!Number.isFinite(lon)||lon < -180||lon > 180||lat < -80||lat > 84)
-      throw new Error("Global MGRS supports 80°S to 84°N. Use latitude/longitude outside this area.");
+      throw new Error("Global MGRS covers 80°S to 84°N. Outside that band, write the point as Coordinates.");
   }
   function parts(lat,lon,digits=4){
     check(lat,lon);

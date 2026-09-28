@@ -14,7 +14,7 @@ A coordinate and military grid tool for field use. It runs in your browser, work
 
 Paste a single point or a whole batch. Formats can be mixed in one paste.
 
-- **Latitude and longitude** — decimal degrees, degrees and minutes, or degrees, minutes and seconds, with or without symbols. Mangled copies are read too: smart quotes, `º`, decimal commas, full-width digits, `Lat:` labels, JSON and `POINT(lon lat)`.
+- **Latitude and longitude** — decimal degrees, degrees and minutes, or degrees, minutes and seconds, with or without symbols. Mangled copies are read too: smart quotes, `º`, full-width digits, `Lat:` labels, JSON and `POINT(lon lat)`. A comma is read as a decimal point where a line holds two of them and no full stop, so `12,5 13,5` is 12.5 and 13.5 rather than 12°05′; the reading is always said, because the other one is 46 km away. A single comma stays the separator between the two numbers — `1,35` is latitude 1, longitude 35 — and that reading is said too, because someone who meant 1.35 is 3,800 km out.
 - **Global MGRS** at any precision, and **UTM** with its zone.
 - **Country grid references** — Singapore, Brunei, Taiwan, Thailand and Australia, short or full.
 - **Google and Apple Maps links**, including short links, which are followed online. A whole list is followed in one pass, and a label pasted with a link becomes that point's name.
@@ -24,7 +24,9 @@ The first paste sets the input grid (it keeps the grid you chose when that can h
 
 ## Output
 
-Point 1 fixes the reference area, so references stay short while every point shares it. A point that crosses out of that area is named and written in full.
+Point 1 fixes the reference area, so references stay short while every point shares it. Once any point crosses out of that area, every reference in the list is written in full, because a short reference standing beside a full one is read as sharing the same square.
+
+Point names are made unique where they leave the app: the first keeps the name as typed and each repeat after it is numbered, so a GPX a buddy opens lists as many waypoints as the table shows. Unnamed points are numbered by position. A name is collapsed to one line, so a tab arriving from an imported GPX cannot shift the columns Copy produces.
 
 Street maps from OpenStreetMap are the default. OpenTopoMap (CC-BY-SA) and Esri imagery are also available. Contours are SRTM-derived, so they show the shape of the ground rather than surveyed heights.
 
@@ -36,7 +38,13 @@ Street maps from OpenStreetMap are the default. OpenTopoMap (CC-BY-SA) and Esri 
 
 Choose an input/output country preset to move the corresponding map to that country; the separate “Jump to” menu has been removed. Converter preset changes apply on the next map opening. Auto-Zoom still fits all collected points.
 
-Every map has full-screen and a photo button that saves the current view. Full screen uses the browser viewport, including on iOS; press Escape or the same control to exit. The Export menu groups Export as GPX, Map snapshot, and Google Maps, with the same right-aligned disclosure triangle as Detail IC. Export → Map snapshot fits the collected points; the photo button preserves the current camera. Both render a separate map up to 16 megapixels (8,192 pixels on the longest edge), fetching higher-detail tiles where available. Labels remain at native text size so the map has more usable detail. The live map is not resized or moved. PNGs have no visible controls or attribution; source credits and view bounds are retained in PNG metadata. For publication, display provider credits with the image as required by [OSM](https://www.openstreetmap.org/copyright) and [Esri](https://support.esri.com/en-us/knowledge-base/what-is-the-correct-way-to-cite-an-arcgis-online-basema-000012040). If a provider prevents image export, choose another layer or use a device screenshot.
+Zooming out, the map is the map at full strength down to zoom 6; below that the tiles are dropped for bundled country outlines, which ask nothing of the network at a scale where a country's roads cannot be acted on. Nothing is drawn over the tiles and no stage dims them.
+
+Every map has a maximize control and a camera button. Maximize retains map settings and action buttons, preserves the center and zoom, and changes its icon and pressed state; Escape restores the previous size. Wheel and zoom-button changes keep the map center fixed. Double-click/tap zooms toward the selected spot. Undo/redo buttons stay beside the tables.
+
+Export opens an action sheet for GPX, Map image (fit points), and Google Maps. The fitted image includes every collected point; the camera button snapshots the current view. PNGs keep the shape of the map they were taken from, so a square map gives a square image. A map smaller than Full HD is enlarged towards 1,920 pixels on the long edge and 1,080 on the short edge to pull in finer tiles; a map already larger than that keeps its own size rather than being shrunk, so an export is never coarser than the screen it came from. A map too small to read is refused rather than saved blank. Labels use a white outline without tooltip boxes. Images include a metric scale and visible provider credits, with source URLs and view bounds also retained in PNG metadata. Capture uses a separate map and never moves the live view. If imagery cannot be exported, the app reports the error and retains the points.
+
+GPX imports use their latitude/longitude directly and choose a grid that covers the collection. They are added to what is already collected and never replace it; imports spanning country grids use Coordinates, and the list says when its grid moved. Short references without a known location open the same filtered location chooser as the converter.
 
 In the Converter map, tap-to-add replaces the Add point buttons with a blue Done button in the same footer. Done closes the map without adding a point. Point Picker has no Done button.
 

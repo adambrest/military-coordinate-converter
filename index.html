@@ -56,7 +56,8 @@
 
   /* tables */
   .tbl{border:1px solid var(--line);border-radius:10px;overflow:hidden}
-  .thead,.trow{display:grid;grid-template-columns:26px minmax(0,1.4fr) minmax(0,1.4fr) minmax(60px,.8fr) 22px;gap:5px;align-items:center;padding:5px 6px}
+  .thead,.trow{display:grid;grid-template-columns:26px minmax(0,1fr) minmax(0,1fr) minmax(76px,1.35fr) 22px;gap:5px;align-items:center;padding:5px 6px}
+  .thead>span:first-child{text-align:center}
   .thead{background:var(--panel);color:var(--muted);font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px}
   .thead span{min-width:0;white-space:normal;overflow-wrap:anywhere;line-height:1.3}
   .trow{border-top:1px solid var(--line)}
@@ -80,14 +81,11 @@
   .del:hover{opacity:1;color:var(--danger);background:var(--panel2)}
   .trow.out .del{visibility:hidden}
   .tone-fallback{filter:saturate(.6) contrast(.78) brightness(1.12)}
-  /* Zooming out, the same map is quietened before it is replaced outright. */
-  /* Fading alone leaves the road colours; a little more desaturation takes the
-     warmth out of them without the flattening that pure contrast changes cause. */
-  .map-quiet .leaflet-tile-pane{opacity:.62;filter:saturate(.6)}
-  .map-faint .leaflet-tile-pane{opacity:.34;filter:saturate(.45)}
+  /* No stage dims the tiles. A half-faded basemap hides the ground it is there to
+     show, and at the zooms where it used to fade the map is still being read. */
   /* Broad view: cool greys and a soft water blue. Nothing glaring, and the blue
-     of the points stays the only saturated thing on screen. */
-  .map-broad{background:#d9e2e8}
+     of the points stays the only saturated thing on screen. The maps already carry
+     this ground, so the class only marks the state for the snapshot stage. */
   .broad-name{color:#4c5a64;font:600 11px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     text-align:center;white-space:normal;pointer-events:none;
     text-shadow:0 1px 2px #fff,0 -1px 2px #fff,1px 0 2px #fff,-1px 0 2px #fff}
@@ -103,7 +101,6 @@
   .map-button a:hover{color:var(--accent)}
   .map-button a.off{color:#cbd5e1;pointer-events:none}
   .map-locate svg{width:18px;height:18px;fill:currentColor;stroke:none}
-  .map-history svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
   .labels-off .chosen-point-label{display:none}.chosen-point-label.label-aside{visibility:hidden}
   .map-autozoom svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   .map-button a.busy{color:var(--accent)}
@@ -246,18 +243,53 @@
   @media (max-width:420px){.cell,.cell.nm,.trow.out .cell{font-size:11px;padding-left:5px;padding-right:5px}}
   /* One button shape under every table, on both tabs. The colours still say what a
      button does; the height, type and corners are the same everywhere. */
-  .row-actions .select-map,.row-actions .addrow,.exportbar button{height:44px;min-height:44px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0 14px;border-radius:9px;font-family:inherit;font-size:13px;font-weight:600;line-height:1.2;margin:0}
+  .row-actions .select-map,.row-actions .addrow,.exportbar button{height:34px;min-height:34px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0 10px;border-radius:7px;font-family:inherit;font-size:12px;font-weight:600;line-height:1.2;margin:0}
   .exportbar{gap:8px}
-  .export-menu{position:relative;flex:1 1 0;min-width:0}
-  .export-menu summary{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;gap:16px;list-style:none;border:1px solid var(--accent);border-radius:9px;background:var(--accent);color:white;font-family:inherit;font-size:13px;font-weight:600;line-height:1.2;cursor:pointer}
-  .export-menu summary::-webkit-details-marker{display:none}
-  .export-menu summary::after{content:"▸";margin-left:auto;font-size:13px;transition:transform .15s}
-  .export-menu[open] summary::after{transform:rotate(90deg)}
-  .export-options{position:absolute;bottom:calc(100% + 8px);left:0;z-index:30;min-width:180px;padding:4px;border:1px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 4px 12px #0f172a14}
-  .exportbar .export-options button{display:flex;width:100%;justify-content:flex-start;padding:0 12px;border:0;background:transparent;white-space:nowrap}
-  .exportbar .export-options button:hover{background:var(--panel2)}
+  .export-menu{flex:1 1 0;min-width:0}
+  .exportbar .export-trigger{width:100%;gap:8px}
+  .export-trigger svg,.export-options svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;flex-shrink:0}
+  .export-sheet{width:min(360px,calc(100vw - 32px));padding:20px;border:1px solid var(--line);border-radius:18px;background:var(--panel);color:var(--text);box-shadow:0 20px 80px #0003}
+  .export-sheet::backdrop{background:#0f172a66;backdrop-filter:blur(3px)}
+  .export-sheet header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:0;background:none;border:0}
+  .export-sheet h3{margin:0;font-size:17px}
+  .exportbar .export-sheet .export-close{flex:0 0 36px;width:36px;height:36px;padding:0;border:0;background:var(--panel2);font-size:22px}
+  .export-options{display:grid;gap:6px}
+  .exportbar .export-options button{width:100%;height:36px;justify-content:flex-start;gap:10px;padding:0 10px;border:0;background:var(--panel2);font-size:13px}
+  .exportbar .export-options button:hover{background:var(--line)}
+  @media(max-width:600px){.export-sheet{margin:auto 0 0;width:100%;max-width:none;box-sizing:border-box;border-radius:20px 20px 0 0;padding:20px 20px max(24px,env(safe-area-inset-bottom))}}
+
   .exportbar button{padding:0 8px}
-  .row-actions .histbtn{min-width:44px;min-height:44px;border-radius:9px}
+  .row-actions .histbtn{min-width:32px;min-height:32px;width:32px;height:32px;border-radius:7px}
+  .row-actions,.exportbar{gap:6px}
+  .convert{min-height:36px;padding:0 16px;font-size:13px;border-radius:8px}
+  .point-actions button,.field-readout .convert{min-height:34px;font-size:12px;padding:0 12px}
+  .point-layers button,.field-tools .point-layers button{padding:5px 10px;transition:background .18s,color .18s}
+  /* A finger is not a pointer. The compact sizes above suit a mouse; on a touch screen
+     every control goes back to the 44px target, because this is used one-handed, in
+     gloves, in a vehicle that is moving. */
+  @media (pointer:coarse){
+    .row-actions .select-map,.row-actions .addrow,.exportbar button{height:44px;min-height:44px;padding:0 14px;border-radius:9px;font-size:13px}
+    .row-actions .histbtn{min-width:44px;min-height:44px;width:44px;height:44px;border-radius:9px}
+    .convert,.point-actions button,.field-readout .convert{min-height:44px;font-size:13px;padding:0 16px;border-radius:9px}
+    .exportbar .export-options button,.exportbar .export-sheet .export-close{height:44px;min-height:44px;flex-basis:44px;width:44px}
+    .exportbar .export-options button{width:100%}
+    .del{width:38px;height:38px}
+    .point-layers button,.field-tools .point-layers button{padding:10px 12px}
+  }
+  .table-notices{height:70px;flex:0 0 70px;overflow:auto;scrollbar-width:thin}
+  .table-notices .regionchip{margin-bottom:6px}
+  .format-choice[hidden]{display:flex;visibility:hidden;pointer-events:none}
+  .detect{min-height:34px;margin:4px 2px;padding:3px 8px 6px}
+  .detect.warn{margin:4px 2px;padding-top:3px;padding-bottom:6px}
+  #toOutside{min-height:36px}
+  #toOutside[hidden]{display:block;visibility:hidden}
+  #fieldHint{min-height:32px}
+  #fieldStatus:empty{display:block;visibility:hidden}
+  .export-sheet[open]{animation:sheet-enter .18s ease-out}
+  .view.on{animation:workspace-enter .2s ease-out}
+  @keyframes sheet-enter{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  @keyframes workspace-enter{from{opacity:.6;transform:translateY(5px)}to{opacity:1;transform:none}}
+  @media(prefers-reduced-motion:reduce){.view.on,.export-sheet[open]{animation:none}.point-layers button{transition:none}}
   .cell.outside{color:var(--warn);font-weight:600}
   /* Converting, after Detail IC: old results slide out left, new ones flash in. */
   #toRows{position:relative}
@@ -303,8 +335,9 @@
           <div class="lbl">From <span id="fromName" hidden></span></div>
           <select class="sys" id="fromSys" aria-label="Input system"></select>
           <label class="format-choice" id="fromFormatWrap" hidden>Format <select id="fromFormat" aria-label="Global input format"><option value="mgrs">MGRS</option><option value="globalutm">UTM</option></select></label>
-          <div class="pastehint" id="pasteHint"></div>
+          <div class="table-notices"><div class="pastehint" id="pasteHint"></div>
           <div class="regionchip" id="regionChip" hidden></div>
+          </div>
           <div class="tbl"><div class="thead" id="fromHead"></div><div id="fromRows"></div></div>
           <div class="detect" id="detect"></div>
           <div class="row-actions"><button id="importGpx" class="select-map" type="button">Import GPX</button><input type="file" id="importGpxFile" accept=".gpx,application/gpx+xml" hidden><button class="addrow" id="addRow">+ Add row</button><button class="select-map" id="selectMap" type="button">Select from map</button><span class="history"><button class="histbtn danger" id="clearAll" type="button" title="Delete all rows" aria-label="Delete all rows" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button><button class="histbtn" id="undoBtn" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-5 5 5 5M4 10h10a6 6 0 0 1 6 6v3"/></svg></button><button class="histbtn" id="redoBtn" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 5 5-5 5M20 10H10a6 6 0 0 0-6 6v3"/></svg></button></span></div>
@@ -324,14 +357,15 @@
           <div class="lbl">To <span id="toName" hidden></span></div>
           <select class="sys" id="toSys" aria-label="Output system"></select>
           <label class="format-choice" id="toFormatWrap" hidden>Format <select id="toFormat" aria-label="Global output format"><option value="mgrs">MGRS</option><option value="globalutm">UTM</option></select></label>
-          <div class="regionchip" id="regionChipTo" hidden></div>
+          <div class="table-notices"><div class="regionchip" id="regionChipTo" hidden></div>
           <div class="pastehint" id="toStale" hidden>Out of date. Press Convert or Enter to update.</div>
+          </div>
           <div class="tbl"><div class="thead" id="toHead"></div><div id="toRows"></div></div>
           <p class="area-note" id="toOutside" role="status" hidden></p>
           <div class="exportbar">
-            <details class="export-menu" id="converterExport"><summary>Export</summary><div class="export-options">
-              <button id="gpxBtn" disabled>Export as GPX</button><button id="snapshotBtn" disabled>Map snapshot</button><button id="mapsBtn" disabled>Google Maps</button>
-            </div></details>
+            <div class="export-menu" id="converterExport"><button class="export-trigger" type="button" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M5 13v7h14v-7"/></svg>Export</button><dialog class="export-sheet" aria-labelledby="converterExportTitle"><header><h3 id="converterExportTitle">Export</h3><button type="button" class="export-close" aria-label="Close export">×</button></header><div class="export-options">
+              <button id="gpxBtn" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7zM14 3v5h4M10 12h5m-5 4h5"/></svg>Export as GPX</button><button id="snapshotBtn" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v16H3zM3 16l5-5 5 5 3-3 5 5"/></svg>Map image (fit points)</button><button id="mapsBtn" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-7 7-12a7 7 0 0 0-14 0c0 5 7 12 7 12zM9 9a3 3 0 1 0 6 0 3 3 0 1 0-6 0"/></svg>Google Maps</button>
+            </div></dialog></div>
             <button id="viewBtn" disabled>View on map</button>
             <button id="copyBtn" disabled>Copy</button>
           </div>
@@ -347,13 +381,14 @@
  <div class="field-readout"><div class="readout-text"><span id="fieldReadoutGrid" class="readout-grid"></span><output id="fieldCoordinate"></output></div><button id="fieldAdd" class="convert">Add point</button></div>
  </div><aside class="field-output side">
  <div class="lbl">Output <span id="fieldTotal" class="lbl-count">0 points</span></div>
- <select class="sys" id="fieldFormat" aria-label="Output grid"><option value="mgrs">Global MGRS</option><option value="wgs84">Coordinates</option><option value="sg">Singapore MGR</option><option value="brunei">Brunei MGR</option><option value="taiwan">Taiwan MGR</option><option value="thailand">Thailand MGR</option><option value="australia">Australia MGR</option></select>
+ <select class="sys" id="fieldFormat" aria-label="Output grid"><option value="mgrs">Military grid</option><option value="wgs84">Coordinates</option><option value="sg">Singapore MGR</option><option value="brunei">Brunei MGR</option><option value="taiwan">Taiwan MGR</option><option value="thailand">Thailand MGR</option><option value="australia">Australia MGR</option></select>
+ <label class="format-choice" id="fieldMilitaryFormatWrap" hidden>Format <select id="fieldMilitaryFormat" aria-label="Military grid format"><option value="mgrs">MGRS</option><option value="globalutm">UTM</option></select></label>
  <div class="pastehint" id="fieldHint"></div>
  <input class="field-import" id="fieldFile" type="file" accept=".gpx,application/gpx+xml">
  <div class="tbl"><div class="thead"><span>#</span><span id="fieldEastHead">Easting</span><span id="fieldNorthHead">Northing</span><span>Name</span><span></span></div><ol id="fieldPoints"></ol></div>
  <div class="row-actions"><button id="fieldImport" class="select-map" type="button">Import GPX</button><button class="addrow" id="fieldAddRow" type="button">+ Add row</button><span class="history"><button class="histbtn danger" id="fieldClear" type="button" title="Clear all points" aria-label="Clear all points" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button><button class="histbtn" id="fieldUndo" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-5 5 5 5M4 10h10a6 6 0 0 1 6 6v3"/></svg></button><button class="histbtn" id="fieldRedo" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 5 5-5 5M20 10H10a6 6 0 0 0-6 6v3"/></svg></button></span></div>
  <div class="route-distance-control"><label><input type="checkbox" id="fieldRoute"> Connect points in order</label><p id="fieldDistance" aria-live="polite"></p></div>
- <div class="exportbar"><details class="export-menu" id="fieldExportMenu"><summary>Export</summary><div class="export-options"><button id="fieldExport">Export as GPX</button><button id="fieldSnapshot">Map snapshot</button><button id="fieldMaps">Google Maps</button></div></details><button id="fieldConvert">Send to converter</button><button id="fieldCopy">Copy</button></div>
+ <div class="exportbar"><div class="export-menu" id="fieldExportMenu"><button class="export-trigger" type="button" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M5 13v7h14v-7"/></svg>Export</button><dialog class="export-sheet" aria-labelledby="fieldExportMenuTitle"><header><h3 id="fieldExportMenuTitle">Export</h3><button type="button" class="export-close" aria-label="Close export">×</button></header><div class="export-options"><button id="fieldExport"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7zM14 3v5h4M10 12h5m-5 4h5"/></svg>Export as GPX</button><button id="fieldSnapshot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v16H3zM3 16l5-5 5 5 3-3 5 5"/></svg>Map image (fit points)</button><button id="fieldMaps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-7 7-12a7 7 0 0 0-14 0c0 5 7 12 7 12zM9 9a3 3 0 1 0 6 0 3 3 0 1 0-6 0"/></svg>Google Maps</button></div></dialog></div><button id="fieldConvert">Send to converter</button><button id="fieldCopy">Copy</button></div>
  <p class="area-note" id="fieldAreaNote" role="status" hidden></p><p class="detect err" id="fieldStatus" role="status"></p>
  </aside></div></section>
     <!-- SETTINGS -->
@@ -394,13 +429,13 @@
   <div class="overlay" id="aoOverlay" role="dialog" aria-modal="true" aria-labelledby="aoTitle">
     <div class="modal ao-modal">
       <div class="ao-heading"><div><h3 id="aoTitle">Select your area</h3><p id="aoInstruction">Zoom in, then click your area to select its grid square.</p></div><button id="aoClose" aria-label="Close map">×</button></div>
-      <div class="ao-toolbar"><button id="aoBack" class="setting-action">Change country</button><span id="aoSystemLabel"></span><span id="aoScope" class="ao-scope" aria-live="polite"></span></div>
+      <div class="ao-toolbar"><button id="aoBack" class="setting-action">Choose country</button><span id="aoSystemLabel"></span><span id="aoScope" class="ao-scope" aria-live="polite"></span></div>
       <div class="ao-map-wrap"><div id="aoMap" aria-label="AO map. Arrow keys pan, plus and minus zoom. Click a grid square to select it." tabindex="0"></div></div>
       <div class="ao-footer">
         <div id="aoSelection" aria-live="polite">No area selected</div>
         <div id="aoWarning" class="ao-warning" role="alert" hidden></div>
         <div class="ao-actions"><button class="setting-action primary" id="aoApply" disabled>Use selection</button></div>
-        <p class="note" id="aoNetwork" hidden>Street map unavailable.</p>
+        <p class="note" id="aoSnapshotStatus" role="status" hidden></p><p class="note" id="aoNetwork" hidden>Street map unavailable.</p>
       </div>
     </div>
   </div>
@@ -410,7 +445,7 @@
       <div class="point-heading"><h3 id="pointTitle">Select a point</h3><button id="pointClose" aria-label="Close point map">×</button></div>
       <div class="point-toolbar"><div class="point-layers" role="group" aria-label="Map layer"><button id="pointStreet" aria-pressed="true">Street</button><button id="pointTopo" aria-pressed="false">Topo</button><button id="pointSatellite" aria-pressed="false">Satellite</button></div><label class="point-grid-control"><input type="checkbox" id="pointGrid"> Grid</label><label class="point-grid-control"><input type="checkbox" id="pointLabels" checked> Labels</label><label class="point-tap-control"><input type="checkbox" id="pointTap"> Tap to add</label><span id="pointPreset"></span><span id="pointCount"></span></div>
       <div class="point-map-wrap"><div id="pointMap" tabindex="0" aria-label="Point map. Arrow keys move the crosshair location; plus and minus zoom; Enter adds the point."></div><svg class="point-crosshair" aria-hidden="true" viewBox="0 0 32 32"><path class="crosshair-edge" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/><path class="crosshair-core" d="M16 2V10 M16 22V30 M2 16H10 M22 16H30"/></svg></div>
-      <div class="point-footer"><div class="point-readout"><div class="readout-text"><span class="readout-grid" id="pointReadoutGrid"></span><div id="pointCoordinate"></div><div id="pointFormatPreview" aria-live="polite"></div></div><div class="point-actions"><button class="setting-action primary" id="pointDone">Done</button><button class="setting-action" id="pointContinue">Add point</button><button class="setting-action primary" id="pointConfirm">Add point and close</button></div></div><p id="pointDistance" aria-live="polite"></p><p class="point-status" id="pointUnresolved" hidden></p><p class="point-status" id="pointNetwork" hidden></p><p class="point-status" id="pointAdded" role="status"></p></div>
+      <div class="point-footer"><div class="point-readout"><div class="readout-text"><span class="readout-grid" id="pointReadoutGrid"></span><div id="pointCoordinate"></div><div id="pointFormatPreview" aria-live="polite"></div></div><div class="point-actions"><button class="setting-action primary" id="pointDone">Done</button><button class="setting-action" id="pointContinue">Add point</button><button class="setting-action primary" id="pointConfirm">Add point and close</button></div></div><p id="pointDistance" aria-live="polite"></p><div class="point-notices"><p class="point-status" id="pointUnresolved" hidden></p><p class="point-status" id="pointNetwork" hidden></p><p class="point-status" id="pointSnapshotStatus" role="status" hidden></p><p class="point-status" id="pointAdded" role="status"></p></div></div>
     </div>
   </div>
 
@@ -608,7 +643,7 @@
       const {E,N}=toProjFromWGS(lat,lon,projectionFor(presetId,S)), lead=[Math.floor(E/100000),Math.floor(N/100000)];
       const selected=p.lead||s.square;
       const canOmit = !!selected && selected[0]===lead[0] && selected[1]===lead[1];
-      return sgHalvesEN(E,N,s,lead,canOmit);
+      return sgHalvesEN(E,N,{...s,sgDigits:Math.min(s.sgDigits??4,inputDigits??5)},lead,canOmit);
     }
     // utm / projected -> full easting/northing in meters (configurable decimals)
     const {E,N}=toProjFromWGS(lat,lon,projectionFor(presetId,S));
@@ -889,6 +924,9 @@
   function parseLatLon(text, preferredOrder){
     const raw=String(text).trim(); if(!raw) return {error:"empty"};
     const map=extractMapCoordinate(raw); if(map) return map;
+    // normalizeCoordText turns a line's commas into decimal points under the same rule
+    // used when splitting a batch; note it here so the reading can be reported.
+    let decimalComma=!/\./.test(raw)&&(raw.match(/\d,\d/g)||[]).length===2;
     let norm=normalizeCoordText(raw);
     // Well-known text is always longitude first.
     const wkt=norm.match(/^\s*POINT\s*Z?\s*([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)(?:\s+[+-]?\d+(?:\.\d+)?)?\s*$/i);
@@ -898,7 +936,23 @@
     let labelOrder=null;
     if(labels.length===2){const firstLat=/^lat/i.test(labels[0][1]),secondLat=/^lat/i.test(labels[1][1]);if(firstLat!==secondLat)labelOrder=firstLat?"latlon":"lonlat";}
     norm=norm.replace(/\b(lat(?:itude)?|lng|lon(?:g(?:itude)?)?)\b\s*[:=]?/gi," ").toUpperCase();
-    const split=coordinateComponents(norm);
+    // One comma between two plain numbers is the separator: "1,35" is latitude 1, longitude
+    // 35, because a lone comma between two numbers is overwhelmingly that. But the same text
+    // is 1.35 to most of the world, and read that way the point is 3,800 km off with nothing
+    // said. A space after the comma, marks, or hemisphere letters all settle it, so only the
+    // tight bare form asks the question.
+    const pairComma=!/\./.test(raw)&&(raw.match(/\d,\d/g)||[]).length===1&&!/[°'"NSEW]/.test(norm);
+    // A comma is the decimal point across most of the world. Where a line holds several
+    // of them and reading them all as decimal points leaves two plain numbers, that is
+    // what they are: "12,5 13,5" is 12.5 and 13.5. Read the other way it is 12 degrees
+    // 5 minutes, which puts the point 46 km off and looks just as confident. Only a
+    // reading that would otherwise be degrees-and-minutes, or would not parse at all, is
+    // overridden, so "1.35, 103.82" and "12 30 13 45" are untouched.
+    let split=coordinateComponents(norm);
+    if((norm.match(/,/g)||[]).length>=2){
+      const alt=coordinateComponents(norm.replace(/,/g,"."));
+      if(!alt.error&&!alt.comps.some(c=>c.hasMinSec)&&(split.error||split.comps.some(c=>c.hasMinSec))){split=alt;decimalComma=true;}
+    }
     if(split.error)return split;
     let [a,b]=split.comps;
     if(labelOrder&&!a.card&&!b.card){
@@ -932,6 +986,10 @@
     // range fix
     if(Math.abs(lat)>90 && Math.abs(lon)<=90){ const t=lat;lat=lon;lon=t; warning="Values appeared reversed and were swapped."; }
     if(Math.abs(lat)>90||Math.abs(lon)>180) return {error:"out of range"};
+    // Said out loud, with the numbers, because the alternative reading is defensible and
+    // the reader is the only one who knows which source this came from.
+    if(decimalComma)warning=["Commas read as decimal points: "+lat.toFixed(6)+", "+lon.toFixed(6)+". Write degrees and minutes with ° and ′ if that is what they were.",warning].filter(Boolean).join(" ");
+    else if(pairComma)warning=["Comma read as a separator, not a decimal point: "+lat.toFixed(6)+", "+lon.toFixed(6)+". Write decimals with a point if the comma was inside one number.",warning].filter(Boolean).join(" ");
     return {lat,lon,warning,confidence,detected:describeLL(a,b),detectedOrder};
   }
   function describeLL(a,b){ const dms=a.hasMinSec||b.hasMinSec; const card=a.card||b.card; return `WGS 84 ${dms?"DMS/DDM":"decimal"}${card?" with hemisphere":""}`; }
@@ -1052,9 +1110,11 @@
   function generateGpx(name, points, isoTime){
     const nm=xmlEsc(name);
     const head=`<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Mike Golf Romeo" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">\n  <metadata>\n    <name>${nm}</name>\n    <time>${isoTime}</time>\n  </metadata>\n`;
-    const nameOf=(p,i)=>xmlEsc(p.name && p.name.trim() ? p.name : `Point ${i+1}`);
+    // Point names are made unique here too, so a GPX a buddy opens lists as many
+    // waypoints as this table shows.
+    const names=RouteTools.labels(points);
     let body="";
-    points.forEach((p,i)=>{ body+=`  <wpt lat="${p.lat.toFixed(6)}" lon="${p.lon.toFixed(6)}">\n    <name>${nameOf(p,i)}</name>\n  </wpt>\n`; });
+    points.forEach((p,i)=>{ body+=`  <wpt lat="${p.lat.toFixed(6)}" lon="${p.lon.toFixed(6)}">\n    <name>${xmlEsc(names[i])}</name>\n  </wpt>\n`; });
     return head+body+`</gpx>\n`;
   }
 
@@ -1144,7 +1204,10 @@
     function presetEnabled(id){return id==="auto"||id==="wgs84"?true:GLOBAL_FORMATS.includes(id)?!!state.militaryEnabled:!state.disabledPresets?.includes(id);}
     function enabledGrid(points){return suggestedGrid(points,COUNTRY_PRESETS.filter(presetEnabled));}
     // build system selects
-    function buildSel(sel){ const ids=sel.id==="fromSys"?["auto",...PRESET_ORDER]:PRESET_ORDER;sel.innerHTML=ids.filter(presetEnabled).map(id=>`<option value="${id}">${id==="mgrs"?"Military grid":PRESETS[id].name}</option>`).join(""); }
+    function outputAllowed(id){
+      return !COUNTRY_PRESETS.includes(state.from)||!COUNTRY_PRESETS.includes(id)||id===state.from;
+    }
+    function buildSel(sel){ const ids=sel.id==="fromSys"?["auto",...PRESET_ORDER]:PRESET_ORDER;sel.innerHTML=ids.filter(id=>presetEnabled(id)&&(sel.id!=="toSys"||outputAllowed(id))).map(id=>`<option value="${id}">${id==="mgrs"?"Military grid":PRESETS[id].name}</option>`).join(""); }
     function syncFormat(side){
       const id=state[side],global=GLOBAL_FORMATS.includes(id);
       if(global&&!state.militaryEnabled){state.militaryEnabled=true;save();}
@@ -1153,7 +1216,6 @@
       $("#"+side+"Sys").value=global?"mgrs":id;
       $("#"+side+"FormatWrap").hidden=!global;
       if(global)$("#"+side+"Format").value=id;
-      $("#"+side+"FormatWrap").hidden=true;
     }
     buildSel($("#fromSys")); buildSel($("#toSys"));
     $("#fromSys").value=state.from; $("#toSys").value=state.to;
@@ -1268,7 +1330,7 @@
         const A=div.querySelector(".a"),B=div.querySelector(".b"),NM=div.querySelector(".nm");
         const prefix=div.querySelector(".prefix,.square");
         if(prefix)prefix.addEventListener("input",()=>{prefix.closest(".area-pill")?.classList.remove("bad");readRows();state.points=[];renderTo();updateRegionChips();setBottomError("");save();});
-        [A,B,NM].forEach(inp=>inp.addEventListener("input",()=>{ if(inp!==NM)stopResolving(i); readRows(); updatePasteHint(); setBottomError(""); state.points=[];renderTo();save(); }));
+        [A,B,NM].forEach(inp=>inp.addEventListener("input",()=>{ if(inp!==NM)stopResolving(i); clearPasteNotes(); readRows(); updatePasteHint(); setBottomError(""); state.points=[];renderTo();save(); }));
         [A,B].forEach(inp=>inp.addEventListener("blur",()=>{ inp.classList.remove("bad"); }));
         // A finished edit to any field is one step for Undo, however many keys it took.
         [A,B,NM,prefix].forEach(inp=>{
@@ -2022,12 +2084,23 @@
       return lines.flatMap(line=>{
         // 12 34, split by a space alone, is a short grid reference; 12, 34 stays a lat/long.
         if(/^\s*(\d{1,2})[ \t]+(\d{1,2})\s*$/.test(line)&&!splitGrid(line).error)return [{text:line.trim(),name:"",grid:true}];
+        // A lone comma between two plain numbers may be a decimal point rather than a
+        // separator, and the parser is the only thing that can say which. Tokenising here
+        // would throw the comma away and the question with it. A pair wide enough to be a
+        // reference is left alone: "4825,1193" is a grid, and the grid reader strips commas.
+        if(/^\s*[-+]?\d+,[-+]?\d+\s*$/.test(line)){const g=splitGrid(line);if(g.error||g.d<3)return [{text:line.trim(),name:""}];}
         // Spreadsheet and Copy columns: a first or last column with words is the name.
         const fields=line.split("\t").map(f=>f.trim()).filter(Boolean);
         if(fields.length>1)for(const [coordinate,label] of [[fields.slice(0,-1).join(" "),fields.at(-1)],[fields.slice(1).join(" "),fields[0]]]){
           if(/[A-Za-z\u00C0-\uFFFF]/.test(label)&&!/^https?:/i.test(label)&&valid(coordinate))return [{text:coordinate,name:label}];
         }
-        const tokens=line.replace(/[,;|](?=https?:\/\/)/gi," ").match(/https?:\/\/[^\s<>"\]]+|[^\s,;|<>]+/gi)||[];
+        // A comma between digits is a decimal point, not a separator, when the line has no
+        // decimal point of its own and exactly two of them. Splitting "12,5 13,5" on its
+        // commas leaves four bare numbers, which regroup into 12°05' and 13°05' - a
+        // confident answer 46 km from the one that was pasted.
+        const decimalCommas=!/\./.test(line)&&(line.match(/\d,\d/g)||[]).length===2;
+        const scanned=decimalCommas?line.replace(/(\d),(\d)/g,"$1.$2"):line;
+        const tokens=scanned.replace(/[,;|](?=https?:\/\/)/gi," ").match(/https?:\/\/[^\s<>"\]]+|[^\s,;|<>]+/gi)||[];
         const result=[],name=[];let previousName=false;
         for(let start=0;start<tokens.length;){
           if(/^https?:/i.test(tokens[start])){result.push(tokens[start].replace(/[;,]+$/,""));start++;previousName=false;continue;}
@@ -2046,7 +2119,7 @@
         }
         if(name.length&&result.length!==1)return [{text:line.trim(),name:""}];
         const label=name.join(" ").replace(/^[\s(["'*:–-]+|[\s)\]"'*:–-]+$/g,"");
-        return result.map(text=>({text,name:label}));
+        return result.map(text=>({text,name:label,comma:decimalCommas}));
       });
     }
     let resolving=0,resolvingBusy=false,resolvingRow=-1;
@@ -2150,9 +2223,17 @@
     }
     // Every paste is two edits a reader may want back: the text as it landed, and the
     // table before it. Undo steps through both.
+    // A paste that had to guess - which number was the latitude, or how a comma in
+    // "12,5" was meant - says so. Pasting then rewrites the row into an unambiguous
+    // form, so by the time Convert re-reads it the guess looks certain and the note
+    // would vanish at the very moment the reader acts on it. The note is held here
+    // until the rows are edited, and Convert repeats it.
+    let pasteNotes=[];
+    const clearPasteNotes=()=>{pasteNotes=[];};
     function onPaste(e,i,opts={}){
       const text=normalizeMapText((e.clipboardData||window.clipboardData).getData("text"));
       if(!text)return;
+      clearPasteNotes();
       // A real paste lands in one row and adds rows for the rest; a re-read of rows the
       // table already holds replaces them where they are.
       const insert=opts.insert??!!e.target;
@@ -2215,6 +2296,10 @@
         if(PRESETS[state.from].lead)state.aoConfirmed=true;
         // Auto-detect has no reference area, even if a previous conversion confirmed one.
         if(state.from==="auto"||!state.aoConfirmed||state.from==="wgs84"||(state.from==="mgrs"&&!state.settings.mgrs.ao)){
+          // Digits alone can only be a grid reference, so the grid wins - but a reader who
+          // set the input to Coordinates is about to meet a dialog about a question they
+          // did not ask, and should be told why.
+          if(PRESETS[state.from]?.kind==="latlong")detect("Digits on their own are a grid reference, not coordinates, so this is being read as a grid.","warn");
           openCountryChooser(lines.map(l=>l.text).join("\n"),i,{insert,names:lines.map(l=>l.name)});return;
         }
       }
@@ -2267,9 +2352,13 @@
       if(parsed.some(p=>p.error)){
         e.preventDefault();
         const k=parsed.findIndex(p=>p.error),failed=parsed[k];
-        // A single-line field shows what failed; several lines stay out of it rather than
-        // run together, and the message names the line.
-        if(!(e.target&&multiline&&state.from!=="auto")){
+        // A single-line field shows what failed; a genuine several-line paste stays out of
+        // it rather than run together, and the message names the line. A pair like
+        // "1,35 103,82" splits into two readings without ever having had a line break, and
+        // discarding it would leave a blank row and the reader no idea what became of the
+        // text they pasted.
+        const typedOneLine=!/[\r\n]/.test(text);
+        if(!(e.target&&multiline&&!typedOneLine&&state.from!=="auto")){
           if(e.target)rememberSnapshot(before);
           state.rows[i]=[text,"",state.rows[i]?.[2]||""];state.points=[];renderFrom();renderTo();
         }
@@ -2302,6 +2391,10 @@
       }
       if(!short)rememberRaw();
       if(target!==state.from&&COUNTRY_PRESETS.includes(target))pickOutput(target,[]);
+      // Pasting settles the input system from what was actually pasted. Where that
+      // overrules a system the reader picked, it is said rather than just done.
+      if(target!==state.from&&state.explicitInput&&state.from!=="auto")
+        pasteNotes=[...pasteNotes,"Input read as "+(target==="mgrs"?"Global MGRS":PRESETS[target].name)+", which is what was pasted."];
       state.from=target;$("#fromSys").value=target;
       delete state.pendingGrid;
       const points=parsed.map(p=>p.point).filter(Boolean);
@@ -2321,6 +2414,10 @@
       // map pick leaves the results greyed until Convert or Enter.
       state.points=[];renderFrom();updatePairState();renderTo();flashRows(i,parsed.length);if(opts.convert)convert();
       const pasted=[...new Set(parsed.map(r=>r.point&&r.point.warning).filter(Boolean))];
+      // Both readings of a comma are defensible and only the reader knows the source, so
+      // the one that was used is named rather than assumed.
+      if(lines.some(l=>l.comma))pasted.unshift("Commas read as decimal points. Write degrees and minutes with ° and ′ if that is what they were.");
+      pasteNotes=pasted;
       if(pasted.length){const d=$("#detect");d.textContent=[d.textContent,...pasted].filter(Boolean).join(" ");d.className="detect warn";}
       save();
     }
@@ -2400,6 +2497,7 @@
       chip.hidden=!hasAreas(id);
       if(chip.hidden)return;
       const key=inputAreaKey();
+      chip.className="regionchip";
       chip.textContent=key?`Reference area: ${areaLabel(id,key)} · Change`:"Select reference area";
       chip.setAttribute("role","button");chip.tabIndex=0;
       chip.onclick=()=>openSquareBrowser(id);
@@ -2434,7 +2532,6 @@
     let rereading=false;
     function convert(){
       state.points=[];renderTo();
-      if(pairInvalid()){ updatePairState(); return; }
       setBottomError("");
       $("#fromRows").querySelectorAll(".prefix").forEach(input=>{input.value=input.value.toUpperCase().replace(/^(\d{1,2}[C-HJ-NP-X])\s*([A-HJ-NP-Z]{2})$/,"$1 $2");});
       readRows();
@@ -2543,7 +2640,7 @@
       const orderUpdated=detectedOrder&&state.settings.wgs84.order!==detectedOrder;
       if(orderUpdated){ state.settings.wgs84.order=detectedOrder; renderFrom(); }
       const spacing=d=>{const m=10**(5-d);return m>=1000?m/1000+" km":m+" m";};
-      const notes=[...parseNotes];
+      const notes=[...new Set([...pasteNotes,...parseNotes])];
       if(ambiguous)notes.push("These digits sit inside "+PRESETS[state.from].name.replace(" MGR","")+" read as "+ambiguous.map(spacing).join(" or ")+". Showing "+spacing(ambiguous[0])+" — set the precision in Settings if that is wrong.");
       // The reference is still valid here; it just is not over the country itself.
       const offshore=COUNTRY_PRESETS.includes(state.to)?pts.filter(p=>!presetLikely(state.to,p.lat,p.lon)):[];
@@ -2555,6 +2652,7 @@
     }
 
     function renderTo(){
+      if(!outputAllowed(state.to))state.to="wgs84";
       // Points in a country with its own grid are written in that grid. Only a grid
       // chosen by hand overrides it, and then the choice is kept and flagged.
       const home=state.points?.length&&!COUNTRY_PRESETS.includes(state.from)&&GLOBAL_FORMATS.includes(state.to)?enabledGrid(state.points):null;
@@ -2580,7 +2678,7 @@
       }
       rowsEl.innerHTML="";
       let pts=state.points||[];
-      const notes=[outsideNotice(state.to,pts),home&&home!==state.to&&GLOBAL_FORMATS.includes(state.to)?otherGridNotice(home,state.to):""].filter(Boolean);
+      const notes=[outputFellBack,outsideNotice(state.to,pts),home&&home!==state.to&&GLOBAL_FORMATS.includes(state.to)?otherGridNotice(home,state.to):""].filter(Boolean);
       $("#toOutside").textContent=notes.join(" ");$("#toOutside").hidden=!notes.length;
       if(pts.length){
         let changes=[];
@@ -2674,18 +2772,29 @@
       state.points=[]; renderFrom(); renderTo(); updatePairState(); detect(""); save();
       // The other side was computed a moment ago, so recompute it rather than
       // handing back an empty column and asking for Convert again.
-      if(pts.length&&!pairInvalid())convert();
+      if(pts.length)convert();
     });
 
-    // Any dropdown combination is allowed (so the user can freely re-pick from/to); only the Convert
-    // button is blocked when the pair is meaningless: two DIFFERENT grids. Same system passes through.
-    function pairInvalid(){ return COUNTRY_PRESETS.includes(state.from)&&COUNTRY_PRESETS.includes(state.to)&&state.from!==state.to; }
+    // Two different country grids cannot describe one reference, so the output list
+    // never offers a country grid the input rules out. A saved or swapped choice can
+    // still land there; it falls back to Coordinates and says so, because an output
+    // grid that changes itself quietly is an answer in a system nobody asked for.
+    // The message lives on the output's own notice line, not on the shared error line
+    // under the table: a row that fails to parse in the same interaction would otherwise
+    // overwrite it, and the reader would never learn their output grid had moved. It
+    // stays until they choose an output themselves or change the input again.
+    let outputFellBack="";
     function updatePairState(){
-      const bad=pairInvalid(); $("#convertBtn").disabled=bad;
-      const countryError=!bad&&state.to!=="wgs84"?countryMismatchMessage(state.to,state.points||[]):"";
+      if(!outputAllowed(state.to)){
+        outputFellBack=PRESETS[state.to].name+" cannot be an output while the input is "+PRESETS[state.from].name+", so the output is now Coordinates.";
+        state.to="wgs84";state.explicitOutput=false;
+        const el=$("#toOutside");el.textContent=outputFellBack;el.hidden=false;
+      }
+      syncFormat("to");
+      const countryError=state.to!=="wgs84"?countryMismatchMessage(state.to,state.points||[]):"";
       if(countryError){ state.points=[]; }
-      setBottomError(bad?"Two country grids can't be converted — choose a global output.":countryError);
-      return bad||!!countryError;
+      setBottomError(countryError);
+      return !!countryError;
     }
     // Changing the input system clears the entries rather than rereading the same
     // digits as another place. Undo puts them back.
@@ -2719,7 +2828,7 @@
     $("#redoBtn").addEventListener("click",redo);
     document.addEventListener("keydown",e=>{
       if(!(e.metaKey||e.ctrlKey)||e.key.toLowerCase()!=="z")return;
-      if(document.querySelector(".overlay.open")||$("#view-field").classList.contains("on"))return;
+      if(document.querySelector(".overlay.open,dialog[open]")||$("#view-field").classList.contains("on"))return;
       const el=document.activeElement;
       // Leave the browser's own text undo alone while a field is being edited.
       if(el&&/^(INPUT|TEXTAREA)$/.test(el.tagName)&&!el.readOnly)return;
@@ -2729,7 +2838,7 @@
     // Point Picker. In a field, Enter belongs to the field (a new row in the tables).
     document.addEventListener("keydown",e=>{
       if(e.key!=="Enter"||e.defaultPrevented||e.metaKey||e.ctrlKey||e.altKey||e.shiftKey||e.isComposing)return;
-      if(document.querySelector(".overlay.open"))return;
+      if(document.querySelector(".overlay.open,dialog[open]"))return;
       const el=document.activeElement;
       if(el&&(/^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(el.tagName)||el.isContentEditable))return;
       if($("#view-conv").classList.contains("on")){e.preventDefault();$("#convertBtn").click();}
@@ -2761,7 +2870,7 @@
       save();
     }
     $("#fromSys").addEventListener("change",()=>{
-      readRows();
+      outputFellBack="";readRows();
       const previous=state.from,chosen=$("#fromSys").value;
       const target=chosen==="mgrs"?(state.settings.mgrs.format||"mgrs"):chosen;
       state.mapInputRegion=COUNTRY_PRESETS.includes(target)?target:null;
@@ -2786,7 +2895,7 @@
       detect(away.length?(away.length===1?"Point "+away[0]+" is":"Points "+away.join(", ")+" are")+" outside "+PRESETS[target].name+", so "+(away.length===1?"it was":"they were")+" left as entered.":"",away.length?"warn":"");
       if(showing&&current.points.length&&!current.unresolved)convert();
     });
-    $("#toSys").addEventListener("change",()=>{ state.to=$("#toSys").value;if(state.to==="mgrs")state.to=state.settings.mgrs.format||"mgrs";state.explicitOutput=true;state.mapOutputRegion=COUNTRY_PRESETS.includes(state.to)?state.to:null;
+    $("#toSys").addEventListener("change",()=>{ outputFellBack=""; state.to=$("#toSys").value;if(state.to==="mgrs")state.to=state.settings.mgrs.format||"mgrs";state.explicitOutput=true;state.mapOutputRegion=COUNTRY_PRESETS.includes(state.to)?state.to:null;
       readRows();const shown=state.points?.length?state.points:existingMapPoints().points;
       const home=shown.length&&GLOBAL_FORMATS.includes(state.to)?enabledGrid(shown):null,known=keptGrid(home)===state.to;
       noteChoice(shown,state.to);
@@ -2798,15 +2907,28 @@
     $("#fromFormat").addEventListener("change",()=>{
       readRows();const id=$("#fromFormat").value;
       if(id===state.from)return;
+      const current=existingMapPoints();
+      if(current.unresolved){$("#fromFormat").value=state.from;detect('Resolve incomplete references before changing format.','warn');return;}
       const hadInput=state.rows.some(r=>r.some(v=>String(v).trim()));
       if(hadInput)remember();
       state.settings.mgrs.format=id;
-      finishFrom(id,[]);
+      const rewritten=current.points.length;
+      if(rewritten){fillArea(current.points,id);state.rows=current.points.map(p=>inputRow(p,id));}
+      finishFrom(id,current.points);
       setBottomError("");
-      detect(hadInput?"Entries kept unchanged. Press Convert to use the selected input system.":"",hadInput?"warn":"");
+      if(rewritten)convert();
+      // The entries are rewritten rather than left alone, because MGRS digits read as
+      // UTM meters name a different place. Writing them into a grid rounds them to that
+      // grid's precision, and nothing else on screen would say a position had moved.
+      const cell=10**(5-(state.settings.mgrs.sgDigits??4));
+      const note=!rewritten?"":id==="mgrs"
+        ?"Entries rewritten as Global MGRS, rounded to the nearest "+(cell>=1000?cell/1000+" km":cell+" m")+" by the precision set in Settings."
+        :"Entries rewritten as Global UTM.";
+      if(note)detect([note,$("#detect").textContent].filter(Boolean).join(" "),"warn");
+      else detect('');
     });
     $("#toFormat").addEventListener("change",()=>{
-      state.to=$("#toFormat").value;state.explicitOutput=true;updatePairState();
+      outputFellBack="";state.to=$("#toFormat").value;state.explicitOutput=true;updatePairState();
       state.settings.mgrs.format=state.to;
       if(rowsHaveContent())convert();else renderTo();save();
     });
@@ -2850,7 +2972,7 @@
       for(let start=0;start<count-1;){const end=Math.min(count,start+limit);parts.push([start,end]);start=end-1;}
       return parts;
     }
-    function closeMaps(){$("#mapsOverlay").classList.remove("open");$(mapsFromPicker?"#fieldExportMenu summary":"#converterExport summary").focus();}
+    function closeMaps(){$("#mapsOverlay").classList.remove("open");$(mapsFromPicker?"#fieldExportMenu .export-trigger":"#converterExport .export-trigger").focus();}
     let mapsFromPicker=false;
     $("#mapsBtn").addEventListener("click",()=>{mapsFromPicker=false;exportToMaps(state.points||[]);});
     function exportToMaps(pts){
@@ -2868,7 +2990,7 @@
       $("#mapsOverlay").classList.add("open");holder.firstChild.focus();
     }
     function viewOutput(snapshot=false){
-      if(snapshot)$("#converterExport summary").focus();
+      if(snapshot)$("#converterExport .export-trigger").focus();
       const pts=state.points||[];if(!pts.length)return;
       // Numbered here because the output rows carry no number of their own, and the
       // shared marker falls back to one for any point that was never named.
@@ -2882,11 +3004,12 @@
     $("#viewBtn").addEventListener("click",()=>viewOutput());
     $("#snapshotBtn").addEventListener("click",()=>viewOutput(true));
     for(const menu of document.querySelectorAll('.export-menu')){
-      menu.addEventListener('click',event=>{if(event.target.closest('button')){menu.open=false;if(menu.contains(document.activeElement))menu.querySelector('summary').focus();}});
-      menu.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();menu.open=false;menu.querySelector('summary').focus();}});
-      menu.addEventListener('toggle',()=>{if(menu.open)for(const other of document.querySelectorAll('.export-menu'))if(other!==menu)other.open=false;});
+      const sheet=menu.querySelector('dialog');
+      menu.querySelector('.export-trigger').addEventListener('click',()=>sheet.showModal());
+      menu.querySelector('.export-close').addEventListener('click',()=>sheet.close());
+      sheet.addEventListener('click',event=>{if(event.target===sheet)sheet.close();});
+      menu.querySelector('.export-options').addEventListener('click',event=>{if(event.target.closest('button')&&!event.target.closest('button').disabled&&sheet.open)sheet.close();},true);
     }
-    document.addEventListener('click',event=>{for(const menu of document.querySelectorAll('.export-menu'))if(!menu.contains(event.target))menu.open=false;});
     $("#mapsCancel").addEventListener("click",closeMaps);
     $("#mapsGpx").addEventListener("click",()=>{closeMaps();if(mapsFromPicker)$("#fieldExport").click();else openGpx();});
     $("#mapsOverlay").addEventListener("keydown",e=>{
@@ -2901,13 +3024,13 @@
       if(!state.points||!state.points.length)return;
       // Tabs put reference and name in their own spreadsheet columns, and a paste back in
       // reads the name column as the point's name.
-      const cells=outputCells(state.points),text=state.points.map((p,i)=>{ const [a,b]=cells[i]; return [a,b,p.name].filter(Boolean).join("\t"); }).join("\n");
+      const cells=outputCells(state.points),text=state.points.map((p,i)=>{ const [a,b]=cells[i]; return [a,b,RouteTools.oneLine(p.name)].filter(Boolean).join("\t"); }).join("\n");
       navigator.clipboard.writeText(text).then(()=>toast("Copied "+state.points.length+" points")).catch(()=>toast("Copy failed",true));
     });
 
     /* ---- GPX modal ---- */
     function openGpx(){ if(!state.points||!state.points.length)return; $("#gpxName").value=""; updateGpxNote(); $("#gpxOverlay").classList.add("open"); $("#gpxName").focus(); }
-    function closeGpx(){ $("#gpxOverlay").classList.remove("open"); $("#converterExport summary").focus(); }
+    function closeGpx(){ $("#gpxOverlay").classList.remove("open"); $("#converterExport .export-trigger").focus(); }
     $("#gpxOverlay").addEventListener("keydown",e=>{
       if(e.key==="Escape"){e.preventDefault();closeGpx();}
       if(e.key==="Tab"){
@@ -2941,7 +3064,8 @@
       state.rows=points.map(p=>[p.lat.toFixed(8),p.lon.toFixed(8),p.name||""]);
       state.points=points.map(p=>({...p}));
       state.importedRoute={signature:JSON.stringify(points.map(p=>[Number(p.lat.toFixed(8)),Number(p.lon.toFixed(8))])),points:points.map(p=>({...p}))};
-      state.to="mgrs";state.militaryEnabled=true;state.militaryVersion=3;state.settings.mgrs.sgOmit=false;
+      state.to=output||suggestedGrid(points)||(state.settings.mgrs.format||'mgrs');state.militaryEnabled=true;state.militaryVersion=3;
+      fillArea(points,state.to);
       // Points sent from the picker arrive in the grid they were read in there, so the
       // same point never reads one way on one tab and another way on the next.
       if(output&&PRESETS[output]){state.to=output;state.explicitOutput=true;}
@@ -2956,15 +3080,20 @@
       const file=$("#importGpxFile").files[0];$("#importGpxFile").value="";if(!file)return;
       try{if(file.size>20*1024*1024)throw Error("GPX files must be smaller than 20 MB.");const result=RouteTools.parse(await file.text());
         if(result.points.length>2000)throw Error("For GPX files over 2,000 points, use Point Picker → Import GPX. It handles up to 20,000 points.");
+        let notice='Imported '+result.points.length+' GPX points';
         if(rowsHaveContent()){
           // Existing entries are kept; importing is additive.
           const current=existingMapPoints();if(current.unresolved)throw Error("Resolve existing incomplete rows before importing, or use Point Picker.");
+          // Importing adds; it never replaces what is already in the table. Where the old
+          // rows and the new ones share no country grid, importPoints falls back to a grid
+          // that holds them all rather than dropping either side.
           const sig=JSON.stringify(current.points.map(p=>[Number(p.lat.toFixed(8)),Number(p.lon.toFixed(8))]));
           const prior=state.importedRoute?.signature===sig?state.importedRoute.points:current.points.map(p=>({...p,breakBefore:!$("#measureRoute").checked}));
           if(prior.length+result.points.length>2000)throw Error("Combined collection exceeds 2,000 points. Use Point Picker for larger GPX files.");
           importPoints([...prior,...result.points],result.connected||$("#measureRoute").checked);
+          notice=`Added ${result.points.length} GPX points to this collection.`;
         }else importPoints(result.points,result.connected);
-        toast("Imported "+result.points.length+" GPX points");
+        detect(notice);toast('GPX imported');
       }catch(e){setBottomError(e.message);}
     });
     // The Point Picker reads what is pasted or typed with the converter's own readers:
@@ -2978,7 +3107,7 @@
         const results=await Promise.all(links.map(link=>followLink(link).then(url=>({link,url}),()=>({link}))));
         for(const r of results)if(r.url)text=text.split(r.link).join(r.url);
       }
-      const place=p=>({lat:p.lat,lon:p.lon});
+      const place=p=>({lat:p.lat,lon:p.lon,...p.digits!==undefined?{digits:p.digits}:{}});
       const readLine=line=>{
         try{
           if(fullMGR(line)){const r=GlobalGrid.parse(line);return r.error?{error:r.error}:{point:place(r)};}
@@ -3000,21 +3129,31 @@
       // Digits alone are a reference in the picker's grid, in the area of the points
       // pasted with them or else of point 1.
       const known=read.find(r=>r.point)?.point||anchor;
+      const short=read.filter(r=>r.digits);
+      let chosen=null;
+      if(short.length&&!known){
+        chosen=await new Promise(resolve=>picker.open({
+          pending:{text:short.map(r=>r.digits.e+' '+r.digits.n).join('\n')},pick:short[0].digits,
+          onResolve:resolve,onDismiss:()=>resolve(null)
+        }));
+        if(!chosen)return [];
+      }
       for(const r of read){
         if(!r.digits)continue;
-        const id=system&&system!=="wgs84"?system:(known&&enabledGrid([known]))||"mgrs";
+        const id=chosen?.id||(anchor&&system&&system!=="wgs84"?system:null)||(known&&enabledGrid([known]))||(system&&system!=="wgs84"?system:"mgrs");
         try{
           const S={...state.settings,[id]:{...state.settings[id]}};
           if(!PRESETS[id].lead){
-            if(!known){r.error="Digits alone need an area. Paste a full reference, or add a point on the map first.";continue;}
-            const key=areaKeyAt(id,known.lat,known.lon);
+            const point=chosen||known;
+            if(!point){r.error="Digits alone need an area.";continue;}
+            const key=chosen?(id==='mgrs'?chosen.prefix:chosen.e+'/'+chosen.n):areaKeyAt(id,point.lat,point.lon);
             if(id==="mgrs")S.mgrs={...S.mgrs,ao:key,sgOmit:true};else S[id]={...S[id],square:key.split("/").map(Number),sgOmit:true};
           }
           const q=parseCells(id,r.digits.e,r.digits.n,S);
           if(q.error)r.error=q.error;else r.point=place(q);
         }catch(error){r.error=error.message;}
       }
-      return read.map(r=>r.point?{point:{lat:r.point.lat,lon:MapSupport.longitude(r.point.lon)},name:r.name}:{error:explain(r.error||"Could not read this line.")});
+      return read.map(r=>r.point?{point:{...r.point,lon:MapSupport.longitude(r.point.lon)},name:r.name}:{error:explain(r.error||"Could not read this line.")});
     }
     const field=globalThis.createFieldMap?.({readInput:readForPicker,ask,gridChoiceAlert,
       onMaps:points=>{mapsFromPicker=true;exportToMaps(points);},
@@ -3028,7 +3167,8 @@
           const c=gridBoundary(inside,id,S);
           return c?{key:c.key,detail:boundaryText([c])}:null;
         }catch(_){return null;}
-      },helper:MAP_HELPER,presets:["mgrs","wgs84",...COUNTRY_PRESETS],projection:projectionFor,
+      },helper:MAP_HELPER,presets:["mgrs","globalutm","wgs84",...COUNTRY_PRESETS],projection:projectionFor,
+      globalFormat:()=>state.settings.mgrs.format||'mgrs',setGlobalFormat:id=>{state.settings.mgrs.format=id;save();},
       countryPresets:COUNTRY_PRESETS,presetName:id=>PRESETS[id].name,
       homeGrid:points=>points.length?enabledGrid(points):null,otherGridNotice,fineGrid:id=>fineGrid(id==='globalutm'?'mgrs':id),
       localGrid:(lat,lon)=>COUNTRY_PRESETS.find(id=>presetLikely(id,lat,lon))||null,
@@ -3042,7 +3182,7 @@
         const columns=colsFor(id,settings);
         const plain=p=>{
           if(outsidePreset(id,p))return outsideCells(id,p);
-          try{return formatPoint(p.lat,p.lon,id,settings);}catch(error){return [error.message,""];}
+          try{return formatPoint(p.lat,p.lon,id,settings,p.digits);}catch(error){return [error.message,""];}
         };
         const away=outsideNotice(id,points||[]);
         if(id==="wgs84"||!settings[id]||!hasAreas(id))return {text:p=>plain(p).join(" "),cells:plain,columns,notice:away};
@@ -3061,7 +3201,7 @@
         const cells=p=>{
           if(!writable(p))return outsideCells(id,p);
           const here=keyAt(p)===area;
-          try{return formatPoint(p.lat,p.lon,id,here?short:full);}
+          try{return formatPoint(p.lat,p.lon,id,here&&!outside.length?short:full,p.digits);}
           catch(error){return [error.message,""];}
         };
         return {text:p=>cells(p).join(" "),cells,columns,notice:[away,areaNotice(id,area,outside,(points||[]).length)].filter(Boolean).join(" "),area};
@@ -3131,9 +3271,10 @@
           h+=`<div class="example">Example&nbsp; <b>${s.order==="lonlat"?lo+"&nbsp;&nbsp;&nbsp;"+la:la+"&nbsp;&nbsp;&nbsp;"+lo}</b></div>`;
         } else if(p.kind==="grid"||p.shortGrid){
           // Reference areas live in the converter: the input chooses one, the output
-          // takes point 1's. Settings only shapes how references are written.
+          // takes point 1's. Settings only shapes how references are written, and says
+          // so, because a precision control is the first place someone looks for them.
           if(id==="brunei")h+=`<div class="note">Short references are read in square 44 14. A point outside it is written in full, with its square's digits in front (e.g. 436925 140527 in square 43 14), and can be entered the same way.</div>`;
-          if(p.large)h+=`<div class="note">Reference areas are set in the converter. Your first point sets them; change an input's area from its reference area chip or a row's ⋯ button.</div>`;
+          if(p.large)h+=`<div class="note">Reference areas are set in the converter. Your first point sets them; change an input's area from its reference area chip or a row's map button.</div>`;
           const digits=s.sgDigits??4, meters=10**(5-digits), precision=meters>=1000?meters/1000+" km":meters+" meters";
           h+=`<section class="settings-section"><h4 class="settings-subhead">Output format</h4>`;
           h+=`<div class="srow"><span class="k">Precision</span>${seg(id==="mgrs"?[[5,"1 m"],[4,"10 m"],[3,"100 m"],[2,"1 km"],[1,"10 km"],[0,"100 km"]]:[[5,"1 m"],[4,"10 m"],[3,"100 m"]],digits,v=>{s.sgDigits=+v;changed();})}</div>`;
@@ -3164,9 +3305,11 @@
         if(specs) html+=`<dl class="specs">${specs.map(x=>`<dt>${x[0]}</dt><dd>${x[1]}</dd>`).join("")}</dl>`;
         if(p.note)html+=`<div class="datum-warning">${p.note} ${p.feedback?`<a href="${p.feedback}" target="_blank" rel="noopener noreferrer">Submit feedback</a>.`:""}</div>`;
         html+=controls(id);
+        // A datum mismatch is the one error here that produces a confident, wrong
+        // answer, so the warning lives beside the grid it applies to.
         if(id==="mgrs")html+=`<section class="settings-section datum-info" aria-labelledby="datumExportTitle">
           <h4 class="settings-subhead" id="datumExportTitle">Datum &amp; export</h4>
-          <p><strong>Global UTM and MGRS use WGS 84.</strong> This datum is fixed. UTM input is also interpreted as WGS 84.</p>
+          <p><strong>UTM and MGRS here use WGS 84.</strong> This datum is fixed. UTM input is also interpreted as WGS 84.</p>
           <p><strong>Copying UTM:</strong> set the receiving app to WGS 84 / UTM, match each point’s zone and N/S hemisphere, and use meters. Share the datum with the copied numbers.</p>
           <p><strong>Downloading GPX:</strong> waypoints use WGS 84 latitude/longitude regardless of the output grid. Import the GPX file directly in apps that support it.</p>
           <details><summary>What about NAD83 and NAD27?</summary>

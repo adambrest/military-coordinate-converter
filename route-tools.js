@@ -15,7 +15,7 @@
     const doc=new root.DOMParser().parseFromString(text,'application/xml');
     if(doc.querySelector('parsererror')||doc.documentElement.localName!=='gpx')throw Error('This is not a valid GPX file.');
     const children=(node,name)=>[...node.children].filter(n=>n.localName===name);
-    const name=node=>children(node,'name')[0]?.textContent.trim()||'';
+    const name=node=>oneLine(children(node,'name')[0]?.textContent);
     const points=[];let segment=0,hasRoute=false;
     function add(nodes,connected,label){
       const id=segment++;
@@ -36,12 +36,33 @@
     return {points,connected:hasRoute,name:name(children(doc.documentElement,'metadata')[0]||doc.documentElement)||'Imported GPX'};
   }
   const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
+  // Two waypoints under one name are the same waypoint on the device they are sent to,
+  // and some apps merge or drop the repeat outright, so a list read back has fewer
+  // points than the one sent. The first keeps the name as typed; each repeat after it
+  // is numbered, and the count carries on past a number someone typed themselves.
+  // Unnamed points are numbered by position rather than all called the same thing.
+  // A name arriving from a GPX file can hold a tab or a line break. Both survive into
+  // the next GPX and into the tab-separated text Copy produces, where a tab shifts
+  // every column after it, so a spreadsheet silently reads the wrong values. Any run of
+  // whitespace becomes one space.
+  const oneLine=value=>String(value==null?'':value).replace(/[\s]+/g,' ').trim();
+  function labels(points){
+    const used=new Set(),out=[];
+    (points||[]).forEach((p,i)=>{
+      const base=oneLine(p&&p.name)||('Point '+(i+1));
+      let name=base;
+      for(let n=2;used.has(name.toLowerCase());n++)name=base+' ('+n+')';
+      used.add(name.toLowerCase());out.push(name);
+    });
+    return out;
+  }
   function gpx(points,connected){
-    const point=(p,tag)=>`<${tag} lat="${p.lat}" lon="${p.lon}"><name>${escape(p.name||'Point')}</name></${tag}>`;
+    const names=labels(points);
+    const point=(p,tag,i)=>`<${tag} lat="${p.lat}" lon="${p.lon}"><name>${escape(names[i])}</name></${tag}>`;
     let body='';
-    if(connected){let open=false;for(const p of points){if(!open||p.breakBefore){if(open)body+='</trkseg>';body+='<trkseg>';open=true;}body+=point(p,'trkpt');}if(open)body+='</trkseg>';body='<trk><name>Mike Golf Romeo route</name>'+body+'</trk>';}
-    else body=points.map(p=>point(p,'wpt')).join('');
+    if(connected){let open=false;points.forEach((p,i)=>{if(!open||p.breakBefore){if(open)body+='</trkseg>';body+='<trkseg>';open=true;}body+=point(p,'trkpt',i);});if(open)body+='</trkseg>';body='<trk><name>Mike Golf Romeo route</name>'+body+'</trk>';}
+    else body=points.map((p,i)=>point(p,'wpt',i)).join('');
     return '<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="Mike Golf Romeo" xmlns="http://www.topografix.com/GPX/1/1">'+body+'</gpx>';
   }
-  root.RouteTools={valid,distance,length,summary,parse,gpx};
+  root.RouteTools={valid,distance,length,summary,parse,gpx,labels,oneLine};
 })(globalThis);

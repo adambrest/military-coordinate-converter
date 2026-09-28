@@ -22,7 +22,7 @@ function app(saved,realMap=false,militaryEnabled=true,helper){
   const dom=new JSDOM(page.replace(/<script[\s\S]*?<\/script>/g,''),{url:'https://example.test/',runScripts:'outside-only',pretendToBeVisual:true});
   const w=dom.window;
   if(saved)w.localStorage.setItem('mgrconv-v1',JSON.stringify(saved));
-  for(const f of ['version.js','proj4.js','vendor/mgrs.js','grid-core.js','map-context.js','map-support.js','map-export.js','map-grid.js'])w.eval(read(f));
+  for(const f of ['version.js','route-tools.js','proj4.js','vendor/mgrs.js','grid-core.js','map-context.js','map-support.js','map-export.js','map-grid.js'])w.eval(read(f));
   if(realMap){
     const ctx=new Proxy({measureText:s=>({width:String(s).length*6})},{get:(obj,key)=>key in obj?obj[key]:()=>{}});
     w.HTMLCanvasElement.prototype.getContext=()=>ctx;
@@ -211,13 +211,22 @@ test('global output formats preserve the point while input format changes preser
   }
   a.change('#toFormat','globalutm');a.$('#swapBtn').click();a.$('#convertBtn').click();
   assert.ok(a.$('#fromRows .prefix').value.includes('48N'));assert.match(a.$('#fromRows .a').value,/^\d+\.\d{3}$/);
-  const rows=a.state().rows;
+  const rows=a.state().rows,ground=a.state().points.map(p=>[p.lat,p.lon]);
+  assert.equal(ground.length,1);
+  // Switching the input between MGRS and UTM rewrites the entries into the chosen
+  // format and reconverts. Leaving MGRS digits in place to be read as UTM meters
+  // would name a different place, so the text changes and the ground does not move
+  // further than the chosen format can express.
   for(const format of ['mgrs','globalutm']){
-    a.change('#fromFormat',format);assert.equal(a.$('#copyBtn').disabled,true);
-    assert.deepEqual(a.state().rows,rows);assert.equal(a.state().points.length,0);
+    a.change('#fromFormat',format);
+    assert.equal(a.state().from,format);
+    assert.equal(a.$('#copyBtn').disabled,false,a.$('#badPair').textContent);
+    const now=a.state().points;assert.equal(now.length,1,format);
+    assert.ok(Math.abs(now[0].lat-ground[0][0])<1e-3&&Math.abs(now[0].lon-ground[0][1])<1e-3,format+' kept the point');
   }
-  a.$('#undoBtn').click();assert.equal(a.state().from,'mgrs');assert.deepEqual(a.state().rows,rows);
-  a.$('#redoBtn').click();assert.equal(a.state().from,'globalutm');assert.deepEqual(a.state().rows,rows);
+  assert.notDeepEqual(a.state().rows,rows,'the entries are rewritten in the chosen format');
+  a.$('#undoBtn').click();assert.equal(a.state().from,'mgrs');
+  a.$('#redoBtn').click();assert.equal(a.state().from,'globalutm');
   a.dom.window.close();
 });
 test('Taiwan shows Pao Li and the square north of Yunlin even with unrelated short digits',()=>{
@@ -344,7 +353,9 @@ test('every visible country square is selectable and selection uses exactly its 
     for(const layer of layers){
       layer.fire('click',{originalEvent:new a.w.MouseEvent('click')});
       assert.equal(a.$('#aoApply').disabled,!!layer.options.aoCandidate.invalid);assert.equal(a.$('#aoWarning').hidden,!layer.options.aoCandidate.invalid);
-      const highlighted=[];a.w.testMap.eachLayer(l=>{if(l.options?.color==='#7c3aed'&&l.getLatLngs)highlighted.push(l);});
+      // Two shapes carry the selection colour now: the 100 km square (weight 3) and,
+      // inside it, the cell the entered digits actually name (weight 2).
+      const highlighted=[];a.w.testMap.eachLayer(l=>{if(l.options?.color==='#7c3aed'&&l.getLatLngs&&l.options.weight===3)highlighted.push(l);});
       assert.equal(highlighted.length,1);assert.equal(JSON.stringify(highlighted[0].getLatLngs()),JSON.stringify(layer.getLatLngs()));
       const r=layer.options.aoCandidate;
       assert.equal(vm.runInContext('presetContains("'+id+'",'+r.point.lat+','+r.point.lon+')',c),!r.invalid);
@@ -1235,7 +1246,7 @@ test('a short map link resolves through the endpoint when one is configured',asy
   const withResolver=withHelper('https://resolver.test/go');
   const dom=new JSDOM(withResolver.replace(/<script[\s\S]*?<\/script>/g,''),{url:'https://example.test/',runScripts:'outside-only',pretendToBeVisual:true});
   const w=dom.window;
-  for(const f of ['version.js','proj4.js','vendor/mgrs.js','grid-core.js','map-context.js','map-support.js','map-export.js','map-grid.js'])w.eval(read(f));
+  for(const f of ['version.js','route-tools.js','proj4.js','vendor/mgrs.js','grid-core.js','map-context.js','map-support.js','map-export.js','map-grid.js'])w.eval(read(f));
   w.createAOPicker=o=>({open:()=>{}});w.createPointPicker=o=>({open:()=>{}});
   let asked=null;
   w.fetch=async(url)=>{
@@ -1405,6 +1416,65 @@ test('a run of digits that cannot be halved says so',()=>{
   const shown=(a.$('#bottomError')||a.$('#badPair')).textContent+a.$('#detect').textContent;
   assert.match(shown,/odd number of digits/i,'unhelpful message: '+JSON.stringify(shown));
   assert.doesNotMatch(shown,/not a number/i,'it should not blame a northing that was never separate');
+  a.dom.window.close();
+});
+
+// --- commas -------------------------------------------------------------
+// Both readings of a comma are defensible and only the reader knows the source, so what
+// matters as much as the reading is that the app says which one it used.
+test('commas that can only be decimal points are read that way and said out loud',()=>{
+  const c=core();
+  for(const [text,lat,lon] of [['12,5 13,5',12.5,13.5],['-33,8688 151,2093',-33.8688,151.2093],['1,35 103,82',1.35,103.82]]){
+    const r=c.parseLatLon(text,'latlon');
+    assert.ok(!r.error,text+' should read: '+r.error);
+    assert.ok(Math.abs(r.lat-lat)<1e-9&&Math.abs(r.lon-lon)<1e-9,
+      text+' read as '+r.lat+', '+r.lon+' - degrees and minutes puts it 46 km off');
+    assert.match(r.warning||'',/Commas read as decimal points/,text+' must name the reading');
+  }
+  // A line that already says what it is keeps its own meaning.
+  for(const text of ['1.35, 103.82','12 30 13 45',"12°30' 13°45'"])
+    assert.doesNotMatch(c.parseLatLon(text,'latlon').warning||'',/Commas read as decimal points/,
+      text+' was rewritten when it says what it is');
+});
+test('a lone comma reads as the separator and says so',()=>{
+  const c=core();
+  const r=c.parseLatLon('1,35','latlon');
+  assert.ok(!r.error&&r.lat===1&&r.lon===35,'1,35 should still read as latitude 1, longitude 35: '+JSON.stringify(r));
+  assert.match(r.warning||'',/Comma read as a separator, not a decimal point: 1\.000000, 35\.000000/,
+    'someone who meant 1.35 lands 3,800 km away and must be told which reading was used: '+JSON.stringify(r.warning));
+  // A space after the comma, degree marks or hemisphere letters settle it; a note then is noise.
+  for(const text of ['1, 35','1.35, 103.82','12°30,13°45','12,5 13,5'])
+    assert.doesNotMatch(c.parseLatLon(text,'latlon').warning||'',/Comma read as a separator/,text+' needs no note');
+});
+test('a typed lone comma is converted and the reading named',()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','wgs84');
+  const A=a.$('#fromRows').children[0].querySelector('.a');
+  A.value='1,35';A.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+  a.$('#convertBtn').click();
+  assert.match(a.$('#detect').textContent,/Comma read as a separator/,
+    'Convert must repeat the reading it used: '+JSON.stringify(a.$('#detect').textContent));
+  const point=a.state().points[0];
+  assert.ok(point&&point.lat===1&&point.lon===35,'the pair itself should be unchanged: '+JSON.stringify(point));
+  a.dom.window.close();
+});
+test('a pasted batch keeps its lone commas as far as the parser',()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','wgs84');
+  // Tokenising on the comma would leave "1 35" and the question would never be asked.
+  a.paste('1,35\n2,36');
+  assert.match(a.$('#detect').textContent,/Comma read as a separator/,
+    'the note was lost between the splitter and the parser: '+JSON.stringify(a.$('#detect').textContent));
+  assert.deepEqual(a.state().points.map(p=>[p.lat,p.lon]),[[1,35],[2,36]],
+    'the pairs themselves should be unchanged: '+JSON.stringify(a.state().points));
+  a.dom.window.close();
+});
+test('a reference written with a comma is still a grid reference',()=>{
+  const a=app(undefined,false,false);
+  a.change('#fromSys','sg');
+  a.paste('4825,1193');
+  const cells=[...a.$('#fromRows').children[0].querySelectorAll('.a,.b')].map(c=>c.value);
+  assert.deepEqual(cells.slice(0,2),['4825','1193'],'a four-figure pair is a reference, not a lat/long: '+JSON.stringify(cells));
   a.dom.window.close();
 });
 
@@ -2013,9 +2083,9 @@ test('only actual active input setting changes require conversion again',async()
 });
 
 /* ---- v2 reference areas ---- */
-test('the app reports version 3.15.0',()=>{
+test('the app reports version 3.16.0',()=>{
   const a=app();
-  try{assert.equal(a.$('#appVersion').textContent,'v3.15.0');assert.match(read('version.js'),/APP_VERSION = "3\.15\.0"/);
+  try{assert.equal(a.$('#appVersion').textContent,'v3.16.0');assert.match(read('version.js'),/APP_VERSION = "3\.16\.0"/);
     const logo=a.$('header h1 .logo');assert.ok(logo,'the header shows the app icon');assert.equal(logo.getAttribute('src'),'icons/logo-64.png');assert.equal(logo.getAttribute('alt'),'');}
   finally{a.dom.window.close();}
 });
