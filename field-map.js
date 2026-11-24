@@ -1,7 +1,7 @@
 /* Independent map-first point collection. Uses the existing local coordinate engine. */
 (function(root){
 'use strict';
-root.createFieldMap=function({formatter,projection,presets,onConvert,helper,countryPresets=[],presetName=id=>id,localGrid=()=>null,presetHolds=()=>true,homeGrid=()=>null,otherGridNotice=()=>'',fineGrid=()=>false,readInput=async()=>[],ask=async()=>false,gridChoiceAlert=null,boundary=()=>null,onMaps=()=>{},globalFormat=()=> 'mgrs',setGlobalFormat=()=>{}}){
+root.createFieldMap=function({formatter,projection,presets,onConvert,helper,countryPresets=[],presetName=id=>id,localGrid=()=>null,presetHolds=()=>true,homeGrid=()=>null,otherGridNotice=()=>'',fineGrid=()=>false,readInput=async()=>[],ask=async()=>false,gridChoiceAlert=null,boundary=()=>null,onMaps=()=>{},globalFormat=()=> 'mgrs',setGlobalFormat=()=>{},convertLabel=()=>'Send to converter'}){
  const $=id=>document.getElementById(id),key='mike-golf-romeo-field-v1';
  // `preferred` is a global grid someone chose by hand; `area` is the country grid the
  // view was last over, so a grid only changes on the way into or out of a country.
@@ -88,6 +88,8 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   });
   if(points.length>300){const li=document.createElement('li');li.className='trow';li.textContent=`Showing first 300 of ${points.length} points. All points are included in distance, copy and GPX.`;list.append(li);}
   for(const id of ['fieldCopy','fieldExport','fieldConvert','fieldClear','fieldMaps'])$(id).disabled=!points.length;
+  // The button names where the points end up, so the grid they arrive in is no surprise.
+  $('fieldConvert').textContent=convertLabel(system,points);
   autoZoom&&autoZoom.sync();
   historyButtons();
  }
@@ -336,10 +338,19 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   fullScreen=MapSupport.fullscreen(map);
   imageExport=MapSupport.saveImage(map,{onStatus:(text,kind)=>status(text,kind,'snapshot'),basemap:()=>bases[layer]});
   let touched=false;map.on('movestart',()=>{touched=true;});
-  guess.ready.then(p=>{if(!touched&&!view&&!points.length)map.setView([p.lat,p.lon],p.zoom);});
+  // Every visit opens where the reader is. A saved view is kept only while it is on
+  // the same ground (the same country grid, or none), so the zoom and spot they left
+  // still stand at home, and a reader who has travelled starts where they are now.
+  guess.ready.then(p=>{
+   if(touched||points.length)return;
+   const located=!!p.time,same=view&&localAt(view.lat,view.lon)===localAt(p.lat,p.lon);
+   if(!view||(located&&!same))map.setView([p.lat,p.lon],p.zoom);
+  });
   map.on('moveend',()=>{const p=map.getCenter();view={lat:p.lat,lon:MapSupport.longitude(p.lng),zoom:map.getZoom()};moved();});
   $('fieldAdd').onclick=()=>{const p=map.getCenter();add({lat:p.lat,lon:MapSupport.longitude(p.lng)});};
-  new ResizeObserver(()=>requestAnimationFrame(()=>{map.invalidateSize({pan:false});grid.refresh();})).observe($('fieldMap'));
+  // A hidden tab shrinks the map to nothing; resizing to that would move its centre
+  // and let the grid follow the shifted ground out of the country it is in.
+  new ResizeObserver(()=>requestAnimationFrame(()=>{if(!$('fieldMap').offsetWidth)return;map.invalidateSize({pan:false});grid.refresh();})).observe($('fieldMap'));
   historyButtons();draw();if(points.length)fit();moved();target.update();offerGrids();detail();grid.refresh();
  }
  $('fieldFormat').value=system;

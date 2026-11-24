@@ -1005,10 +1005,10 @@ test('southern Thailand accepts full meters and shortened full references',()=>{
 });
 
 
-test('preset enable controls live inside each dropdown and Coordinates cannot be disabled',()=>{
+test('preset enable controls live inside each dropdown and Coordinates and Singapore MGR cannot be disabled',()=>{
   const a=app(undefined,true,false);a.$('#tab-set').click();
-  assert.equal(a.$('[data-toggle="wgs84"]'),null);
-  for(const id of ['mgrs','sg','taiwan','thailand','australia','brunei']){
+  assert.equal(a.$('[data-toggle="wgs84"]'),null);assert.equal(a.$('[data-toggle="sg"]'),null);
+  for(const id of ['mgrs','taiwan','thailand','australia','brunei']){
     const toggle=a.$('[data-toggle="'+id+'"]');
     assert.equal(toggle.closest('.preset').dataset.id,id);
     assert.ok(toggle.closest('.preset-heading'));assert.equal(toggle.closest('.preset-body'),null);
@@ -1018,21 +1018,19 @@ test('preset enable controls live inside each dropdown and Coordinates cannot be
     assert.ok(a.$('[data-head="'+id+'"]'));
   }
   const saved=a.state();a.dom.window.close();const b=app(saved,true,false);
-  b.paste('3000 3000');
-  for(const el of b.w.document.querySelectorAll('[data-location]'))assert.equal(el.hidden,true);
-  b.$('#locationClose').click();b.$('#tab-set').click();b.$('[data-toggle="sg"]').click();
+  // With every other grid off, Singapore MGR is still there to read digits in.
   assert.ok(b.$('#fromSys option[value="sg"]'));
-  b.$('#tab-conv').click();b.paste('3000 3000');assert.equal(b.$('[data-location="sg"]').hidden,false);
+  b.paste('3000 3000');assert.equal(b.$('[data-location="sg"]').hidden,false);
   b.dom.window.close();
 });
 test('disabling an active country grid preserves its resolved input as coordinates',()=>{
-  const a=app(undefined,false,false);a.change('#fromSys','sg');a.paste('3000 3000');
-  const original=a.state().points[0];
-  a.$('#tab-set').click();a.$('[data-toggle="sg"]').click();
-  assert.equal(a.state().from,'wgs84');assert.ok(a.state().disabledPresets.includes('sg'));
-  assert.ok(Math.abs(parseFloat(a.state().rows[0][0])-original.lat)<.000001);
-  const b=app(a.state(),false,false);b.paste('1.35,103.82');
-  assert.notEqual(b.state().to,'sg');b.dom.window.close();a.dom.window.close();
+  const a=app(undefined,false,false);a.change('#fromSys','taiwan');a.paste('25.03,121.56');
+  assert.equal(a.state().from,'taiwan');
+  a.$('#tab-set').click();a.$('[data-toggle="taiwan"]').click();
+  assert.equal(a.state().from,'wgs84');assert.ok(a.state().disabledPresets.includes('taiwan'));
+  assert.ok(Math.abs(parseFloat(a.state().rows[0][0])-25.03)<.001);
+  const b=app(a.state(),false,false);b.paste('25.03,121.56');
+  assert.notEqual(b.state().to,'taiwan');b.dom.window.close();a.dom.window.close();
 });
 test('single taps, clicks and long presses never move the point-map camera or add points',async()=>{
   const a=app(undefined,true,false);a.paste('1.35,103.82');a.$('#selectMap').click();
@@ -1610,12 +1608,12 @@ test('a coordinate no grid covers stays an honest reformat',()=>{
   a.dom.window.close();
 });
 test('an output the reader named is not revised behind their back',()=>{
-  const a=app(undefined,false,false);
+  const a=app();
   a.change('#fromSys','wgs84');
-  a.change('#toSys','wgs84');          // said, in as many words: coordinates out
+  a.change('#toSys','mgrs');           // said, in as many words: military grid out
   typePair(a,'1.383700','103.981790');
   a.$('#convertBtn').click();
-  assert.equal(a.state().to,'wgs84','a stated output must survive a Singapore coordinate');
+  assert.equal(a.state().to,'mgrs','a stated output must survive a Singapore coordinate');
   assert.equal(a.state().explicitOutput,true);
   a.dom.window.close();
 });
@@ -1716,11 +1714,11 @@ test('auto-detect map points choose their country grid and replace a saved refer
 
 test('auto-detect map output respects disabled country grids and refreshes the global square',()=>{
   const c=core(),settings=vm.runInContext('defaultSettings()',c);settings.mgrs.ao='31UDQ';
-  const a=app({settings,to:'mgrs',militaryVersion:3,militaryEnabled:true,disabledPresets:['sg'],aoSelectionVersion:2,rows:[['','','']]});
+  const a=app({settings,to:'mgrs',militaryVersion:3,militaryEnabled:true,disabledPresets:['taiwan'],aoSelectionVersion:2,rows:[['','','']]});
   try{
-    a.$('#selectMap').click();a.w.pointPickerHooks.onConfirm({lat:1.35,lon:103.82},{zoom:15,layer:'street'});
+    a.$('#selectMap').click();a.w.pointPickerHooks.onConfirm({lat:25.03,lon:121.56},{zoom:15,layer:'street'});
     assert.equal(a.state().to,'mgrs');
-    assert.equal(a.state().settings.mgrs.ao,c.GlobalGrid.parts(1.35,103.82,0).prefix);
+    assert.equal(a.state().settings.mgrs.ao,c.GlobalGrid.parts(25.03,121.56,0).prefix);
     assert.equal(a.$('#copyBtn').disabled,false);
     assert.equal(a.$('#toOutside').hidden,true,'a grid turned off in Settings is not pressed on anyone');
   }finally{a.dom.window.close();}
@@ -2023,9 +2021,9 @@ test('a reload keeps a hand-picked output grid, its flag and the results',()=>{
 });
 test('a disabled country grid is neither picked nor flagged',()=>{
   const c=core(),settings=vm.runInContext('defaultSettings()',c);
-  const a=app({settings,disabledPresets:['sg'],rows:[['','','']]});
+  const a=app({settings,disabledPresets:['taiwan'],rows:[['','','']]});
   try{
-    a.paste('1.35,103.82');assert.notEqual(a.state().to,'sg');assert.equal(a.$('#toOutside').hidden,true);
+    a.paste('25.03,121.56');assert.notEqual(a.state().to,'taiwan');assert.equal(a.$('#toOutside').hidden,true);
     assert.equal(a.$('#copyBtn').disabled,false);
     a.paste('48.8582,2.2945');a.change('#toSys','mgrs');
     assert.equal(a.$('#toOutside').hidden,true);assert.equal(a.$('#copyBtn').disabled,false);
@@ -2077,15 +2075,13 @@ test('only actual active input setting changes require conversion again',async()
     assert.equal(a.$('#copyBtn').disabled,true);assert.deepEqual(a.state().points,[]);
     a.$('#tab-conv').click();a.$('#convertBtn').click();
     assert.equal(a.$('#copyBtn').disabled,false);
-    a.$('#tab-set').click();a.$('[data-toggle="sg"]').click();
-    assert.notEqual(a.state().from,'sg');assert.equal(a.$('#copyBtn').disabled,true);
   }finally{a.dom.window.close();}
 });
 
 /* ---- v2 reference areas ---- */
-test('the app reports version 3.16.0',()=>{
+test('the app reports version 3.17.0',()=>{
   const a=app();
-  try{assert.equal(a.$('#appVersion').textContent,'v3.16.0');assert.match(read('version.js'),/APP_VERSION = "3\.16\.0"/);
+  try{assert.equal(a.$('#appVersion').textContent,'v3.17.0');assert.match(read('version.js'),/APP_VERSION = "3\.17\.0"/);
     const logo=a.$('header h1 .logo');assert.ok(logo,'the header shows the app icon');assert.equal(logo.getAttribute('src'),'icons/logo-64.png');assert.equal(logo.getAttribute('alt'),'');}
   finally{a.dom.window.close();}
 });
@@ -2634,5 +2630,13 @@ test('country input and output changes navigate their next map opening',()=>{
     assert.equal(a.w.pointOptions.regionView,true);assert.equal(a.w.pointOptions.center.lon,103.82);assert.equal(a.w.pointOptions.zoom,11);
     a.$('#viewBtn').click();assert.equal(a.w.pointOptions.regionView,false);
     a.change('#toSys','sg');a.$('#snapshotBtn').click();assert.equal(a.w.pointOptions.snapshot,true);assert.equal(a.w.pointOptions.regionView,false,'export always fits points, even after choosing a country');
+  }finally{a.dom.window.close();}
+});
+
+test('an output is never the input system itself',()=>{
+  const a=app();
+  try{
+    a.change('#fromSys','wgs84');assert.equal(a.$('#toSys option[value="wgs84"]'),null);assert.notEqual(a.state().to,'wgs84');
+    a.change('#fromSys','sg');assert.equal(a.$('#toSys option[value="sg"]'),null);assert.equal(a.state().to,'wgs84');
   }finally{a.dom.window.close();}
 });

@@ -47,7 +47,7 @@
   /* workspace: input | convert | output */
   .workspace{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:16px;align-items:start;max-width:1180px;margin:0 auto}
   .side{display:flex;flex-direction:column;min-width:0}
-  .middle{display:flex;flex-direction:column;align-items:center;gap:10px;align-self:start;margin-top:60px}
+  .middle{display:flex;flex-direction:column;align-items:center;gap:10px;align-self:start}
   select.sys{width:100%;appearance:none;-webkit-appearance:none;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:9px 28px 9px 10px;font-size:14px;font-weight:600;margin-bottom:8px;
     background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 15px) 50%,calc(100% - 10px) 50%;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
   .swap{width:38px;height:38px;border:1px solid var(--line);background:#fff;color:var(--accent);border-radius:9px;font-size:16px;cursor:pointer}
@@ -276,13 +276,32 @@
     .del{width:38px;height:38px}
     .point-layers button,.field-tools .point-layers button{padding:10px 12px}
   }
-  .table-notices{height:70px;flex:0 0 70px;overflow:auto;scrollbar-width:thin}
-  .table-notices .regionchip{margin-bottom:6px}
-  .format-choice[hidden]{display:flex;visibility:hidden;pointer-events:none}
-  .detect{min-height:34px;margin:4px 2px;padding:3px 8px 6px}
-  .detect.warn{margin:4px 2px;padding-top:3px;padding-bottom:6px}
-  #toOutside{min-height:36px}
-  #toOutside[hidden]{display:block;visibility:hidden}
+  /* Converter columns: one gap between every block, and nothing above the tables
+     changes height. The format choice sits beside the system it belongs to, and the
+     hint and reference area share one fixed line, so picking a grid or an area never
+     moves the tables. Notes go at the foot of each column, where arriving moves
+     nothing beneath them. */
+  .workspace>.side{gap:10px}
+  .workspace>.side>*{margin-top:0;margin-bottom:0}
+  .workspace .lbl{margin-bottom:-4px}
+  .sys-row{display:flex;align-items:center;gap:10px;min-width:0}
+  .sys-row select.sys{flex:1 1 auto;min-width:0;margin:0}
+  .sys-row .format-choice{flex:0 0 auto;margin:0}
+  .sys-row .format-choice select{flex:0 0 auto;padding:8px 6px}
+  .table-notices{display:flex;align-items:center;gap:8px;height:30px;flex:0 0 30px;min-width:0;overflow:hidden}
+  .table-notices>*{margin:0}
+  .table-notices .regionchip{flex:0 1 auto;min-width:0;max-width:100%;white-space:nowrap;overflow-x:auto;scrollbar-width:none;margin:0}
+  .table-notices .regionchip.area-list{flex-wrap:nowrap;padding-top:3px;padding-bottom:3px}
+  .table-notices .pastehint{flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0}
+  .table-notices .pastehint[hidden]{display:none}
+  .workspace .detect{margin:0 2px;padding:0 8px;line-height:16px}
+  .workspace .detect:empty{display:none}
+  /* Stacked, the output sits under the input's notes, so two lines are kept for them. */
+  @media (max-width:1050px){.workspace .detect,.workspace .detect:empty{display:block;min-height:32px}}
+  .workspace .detect.warn{padding:1px 0 1px 8px}
+  .workspace .area-note{margin:0 2px}
+  .workspace .route-distance-control{margin-top:-2px}
+  .field-output .sys-row{margin-bottom:8px}
   #fieldHint{min-height:32px}
   #fieldStatus:empty{display:block;visibility:hidden}
   .export-sheet[open]{animation:sheet-enter .18s ease-out}
@@ -333,15 +352,15 @@
         <!-- INPUT -->
         <div class="side">
           <div class="lbl">From <span id="fromName" hidden></span></div>
-          <select class="sys" id="fromSys" aria-label="Input system"></select>
-          <label class="format-choice" id="fromFormatWrap" hidden>Format <select id="fromFormat" aria-label="Global input format"><option value="mgrs">MGRS</option><option value="globalutm">UTM</option></select></label>
-          <div class="table-notices"><div class="pastehint" id="pasteHint"></div>
-          <div class="regionchip" id="regionChip" hidden></div>
+          <div class="sys-row"><select class="sys" id="fromSys" aria-label="Input system"></select>
+          <label class="format-choice" id="fromFormatWrap" hidden>Format <select id="fromFormat" aria-label="Global input format"><option value="mgrs">MGRS</option><option value="globalutm">UTM</option></select></label></div>
+          <div class="table-notices"><div class="regionchip" id="regionChip" hidden></div>
+          <div class="pastehint" id="pasteHint"></div>
           </div>
           <div class="tbl"><div class="thead" id="fromHead"></div><div id="fromRows"></div></div>
-          <div class="detect" id="detect"></div>
           <div class="row-actions"><button id="importGpx" class="select-map" type="button">Import GPX</button><input type="file" id="importGpxFile" accept=".gpx,application/gpx+xml" hidden><button class="addrow" id="addRow">+ Add row</button><button class="select-map" id="selectMap" type="button">Select from map</button><span class="history"><button class="histbtn danger" id="clearAll" type="button" title="Delete all rows" aria-label="Delete all rows" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button><button class="histbtn" id="undoBtn" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-5 5 5 5M4 10h10a6 6 0 0 1 6 6v3"/></svg></button><button class="histbtn" id="redoBtn" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 5 5-5 5M20 10H10a6 6 0 0 0-6 6v3"/></svg></button></span></div>
           <div class="route-distance-control"><label><input type="checkbox" id="measureRoute" checked> Connect points in order</label><p id="routeDistance" aria-live="polite"></p></div>
+          <div class="detect" id="detect"></div>
           <p class="map-offline" id="mapOffline" hidden>Select from map needs an internet connection.</p>
           <p class="map-offline" id="mapWeak" hidden>Weak connection: the map may load slowly.</p>
         </div>
@@ -355,13 +374,12 @@
         <!-- OUTPUT -->
         <div class="side">
           <div class="lbl">To <span id="toName" hidden></span></div>
-          <select class="sys" id="toSys" aria-label="Output system"></select>
-          <label class="format-choice" id="toFormatWrap" hidden>Format <select id="toFormat" aria-label="Global output format"><option value="mgrs">MGRS</option><option value="globalutm">UTM</option></select></label>
+          <div class="sys-row"><select class="sys" id="toSys" aria-label="Output system"></select>
+          <label class="format-choice" id="toFormatWrap" hidden>Format <select id="toFormat" aria-label="Global output format"><option value="mgrs">MGRS</option><option value="globalutm">UTM</option></select></label></div>
           <div class="table-notices"><div class="regionchip" id="regionChipTo" hidden></div>
           <div class="pastehint" id="toStale" hidden>Out of date. Press Convert or Enter to update.</div>
           </div>
           <div class="tbl"><div class="thead" id="toHead"></div><div id="toRows"></div></div>
-          <p class="area-note" id="toOutside" role="status" hidden></p>
           <div class="exportbar">
             <div class="export-menu" id="converterExport"><button class="export-trigger" type="button" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M5 13v7h14v-7"/></svg>Export</button><dialog class="export-sheet" aria-labelledby="converterExportTitle"><header><h3 id="converterExportTitle">Export</h3><button type="button" class="export-close" aria-label="Close export">×</button></header><div class="export-options">
               <button id="gpxBtn" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7zM14 3v5h4M10 12h5m-5 4h5"/></svg>Export as GPX</button><button id="snapshotBtn" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v16H3zM3 16l5-5 5 5 3-3 5 5"/></svg>Map image (fit points)</button><button id="mapsBtn" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-7 7-12a7 7 0 0 0-14 0c0 5 7 12 7 12zM9 9a3 3 0 1 0 6 0 3 3 0 1 0-6 0"/></svg>Google Maps</button>
@@ -369,6 +387,7 @@
             <button id="viewBtn" disabled>View on map</button>
             <button id="copyBtn" disabled>Copy</button>
           </div>
+          <p class="area-note" id="toOutside" role="status" hidden></p>
         </div>
       </div>
       <div class="badpair" id="badPair" hidden>Two different grids can't be converted — set one side to Global Lat/Long.</div>
@@ -381,8 +400,8 @@
  <div class="field-readout"><div class="readout-text"><span id="fieldReadoutGrid" class="readout-grid"></span><output id="fieldCoordinate"></output></div><button id="fieldAdd" class="convert">Add point</button></div>
  </div><aside class="field-output side">
  <div class="lbl">Output <span id="fieldTotal" class="lbl-count">0 points</span></div>
- <select class="sys" id="fieldFormat" aria-label="Output grid"><option value="mgrs">Military grid</option><option value="wgs84">Coordinates</option><option value="sg">Singapore MGR</option><option value="brunei">Brunei MGR</option><option value="taiwan">Taiwan MGR</option><option value="thailand">Thailand MGR</option><option value="australia">Australia MGR</option></select>
- <label class="format-choice" id="fieldMilitaryFormatWrap" hidden>Format <select id="fieldMilitaryFormat" aria-label="Military grid format"><option value="mgrs">MGRS</option><option value="globalutm">UTM</option></select></label>
+ <div class="sys-row"><select class="sys" id="fieldFormat" aria-label="Output grid"><option value="mgrs">Military grid</option><option value="wgs84">Coordinates</option><option value="sg">Singapore MGR</option><option value="brunei">Brunei MGR</option><option value="taiwan">Taiwan MGR</option><option value="thailand">Thailand MGR</option><option value="australia">Australia MGR</option></select>
+ <label class="format-choice" id="fieldMilitaryFormatWrap" hidden>Format <select id="fieldMilitaryFormat" aria-label="Military grid format"><option value="mgrs">MGRS</option><option value="globalutm">UTM</option></select></label></div>
  <div class="pastehint" id="fieldHint"></div>
  <input class="field-import" id="fieldFile" type="file" accept=".gpx,application/gpx+xml">
  <div class="tbl"><div class="thead"><span>#</span><span id="fieldEastHead">Easting</span><span id="fieldNorthHead">Northing</span><span>Name</span><span></span></div><ol id="fieldPoints"></ol></div>
@@ -1170,6 +1189,8 @@
           // Military grids became opt-in; existing installs start with them off.
           if(j.militaryVersion!==3){j.militaryEnabled=false;j.militaryVersion=3;}
           if(!GLOBAL_FORMATS.includes(j.settings.mgrs.format))j.settings.mgrs.format="mgrs";
+          // Singapore MGR can no longer be switched off; an install that did gets it back.
+          if(Array.isArray(j.disabledPresets))j.disabledPresets=j.disabledPresets.filter(id=>id!=="sg");
           if(!PRESETS[j.to]||(!j.militaryEnabled&&GLOBAL_FORMATS.includes(j.to))||j.disabledPresets?.includes(j.to))j.to="wgs84";
           // Never restore computed output across engine versions.
           j.points=[];
@@ -1201,13 +1222,23 @@
     }
     function save(){ try{ localStorage.setItem(STORAGE, JSON.stringify(state)); }catch(_){} }
 
-    function presetEnabled(id){return id==="auto"||id==="wgs84"?true:GLOBAL_FORMATS.includes(id)?!!state.militaryEnabled:!state.disabledPresets?.includes(id);}
+    // Coordinates and Singapore MGR are always on, so there is always a grid and a
+    // coordinate system to convert between.
+    const ALWAYS_ON=["auto","wgs84","sg"];
+    function presetEnabled(id){return ALWAYS_ON.includes(id)?true:GLOBAL_FORMATS.includes(id)?!!state.militaryEnabled:!state.disabledPresets?.includes(id);}
     function enabledGrid(points){return suggestedGrid(points,COUNTRY_PRESETS.filter(presetEnabled));}
     // build system selects
+    // An output is never the input's own system, and two country grids never pair.
+    // MGRS and UTM are one choice in the list, so either one being open keeps it.
+    // The one exception is coordinates that no grid in use can write (military grids
+    // off and no country holding them, or beyond MGRS at the poles): there, coordinates
+    // out is the only honest answer.
     function outputAllowed(id){
-      return !COUNTRY_PRESETS.includes(state.from)||!COUNTRY_PRESETS.includes(id)||id===state.from;
+      if(state.from!=="auto"&&id===state.from)return id==="wgs84"&&!gridOutputFor(knownPoints());
+      return !COUNTRY_PRESETS.includes(state.from)||!COUNTRY_PRESETS.includes(id);
     }
-    function buildSel(sel){ const ids=sel.id==="fromSys"?["auto",...PRESET_ORDER]:PRESET_ORDER;sel.innerHTML=ids.filter(id=>presetEnabled(id)&&(sel.id!=="toSys"||outputAllowed(id))).map(id=>`<option value="${id}">${id==="mgrs"?"Military grid":PRESETS[id].name}</option>`).join(""); }
+    function outputListed(id){return id==="mgrs"?GLOBAL_FORMATS.some(outputAllowed):outputAllowed(id);}
+    function buildSel(sel){ const ids=sel.id==="fromSys"?["auto",...PRESET_ORDER]:PRESET_ORDER;sel.innerHTML=ids.filter(id=>presetEnabled(id)&&(sel.id!=="toSys"||outputListed(id))).map(id=>`<option value="${id}">${id==="mgrs"?"Military grid":PRESETS[id].name}</option>`).join(""); }
     function syncFormat(side){
       const id=state[side],global=GLOBAL_FORMATS.includes(id);
       if(global&&!state.militaryEnabled){state.militaryEnabled=true;save();}
@@ -1215,6 +1246,7 @@
       if(side==="from"&&id!=="auto")$("#fromSys option[value=auto]")?.remove();
       $("#"+side+"Sys").value=global?"mgrs":id;
       $("#"+side+"FormatWrap").hidden=!global;
+      if(side==="to")for(const o of $("#toFormat").options)o.disabled=!outputAllowed(o.value);
       if(global)$("#"+side+"Format").value=id;
     }
     buildSel($("#fromSys")); buildSel($("#toSys"));
@@ -1535,7 +1567,7 @@
       // An incomplete pre-existing row must not open another modal over this picker.
       pointOptions={...pointOptions,...current};save();return current;
     }
-    // Resolved lazily so the page never reaches the network before the map is wanted.
+    // Asked once at start (see the end of this script) and shared with every map.
     let locationGuess;
     const guessLocation=()=>{
       try{return (locationGuess||=MapSupport.approximateLocation({helper:MAP_HELPER})).current();}
@@ -2630,6 +2662,12 @@
       if(!state.explicitOutput&&(COUNTRY_PRESETS.includes(state.to)||(state.to==="wgs84"&&PRESETS[state.from].kind==="latlong"))){
         const home=enabledGrid(pts),fit=keptGrid(home)||home;
         if(fit&&fit!==state.to){state.to=fit;syncFormat("to");}
+        // A default grid that cannot hold the points gives way to one that can, or to
+        // coordinates when none can.
+        else if(!fit&&PRESETS[state.from].kind==="latlong"&&(state.to==="wgs84"||pts.some(p=>outsidePreset(state.to,p)))){
+          const next=gridOutputFor(pts)||"wgs84";
+          if(next!==state.to){state.to=next;syncFormat("to");}
+        }
       }
       const countryError=countryMismatchMessage(state.from,pts);
       if(countryError){
@@ -2652,7 +2690,7 @@
     }
 
     function renderTo(){
-      if(!outputAllowed(state.to))state.to="wgs84";
+      if(!outputAllowed(state.to))state.to=fallbackOutput();
       // Points in a country with its own grid are written in that grid. Only a grid
       // chosen by hand overrides it, and then the choice is kept and flagged.
       const home=state.points?.length&&!COUNTRY_PRESETS.includes(state.from)&&GLOBAL_FORMATS.includes(state.to)?enabledGrid(state.points):null;
@@ -2784,11 +2822,35 @@
     // overwrite it, and the reader would never learn their output grid had moved. It
     // stays until they choose an output themselves or change the input again.
     let outputFellBack="";
+    // Coordinates in go out as the grid the points are in; anything else goes out as
+    // Coordinates. With nothing entered yet, the ground the reader is on stands in.
+    // Null when no grid in use can write every point.
+    function gridOutputFor(points){
+      let near=points||[];
+      if(!near.length){try{const p=(locationGuess||=MapSupport.approximateLocation({helper:MAP_HELPER})).current();if(p?.time)near=[p];}catch(_){}}
+      if(!near.length)return "sg";
+      const home=enabledGrid(near),kept=keptGrid(home)||home;
+      if(kept)return kept;
+      return state.militaryEnabled&&near.every(p=>p.lat>=-80&&p.lat<=84)?state.settings.mgrs.format||"mgrs":null;
+    }
+    // The points on screen: converted ones, or else whatever the rows read as.
+    function knownPoints(){
+      if(state.points?.length)return state.points;
+      try{return existingMapPoints().points;}catch(_){return [];}
+    }
+    function fallbackOutput(){
+      if(PRESETS[state.from]?.kind!=="latlong")return "wgs84";
+      return gridOutputFor(knownPoints())||"wgs84";
+    }
     function updatePairState(){
       if(!outputAllowed(state.to)){
-        outputFellBack=PRESETS[state.to].name+" cannot be an output while the input is "+PRESETS[state.from].name+", so the output is now Coordinates.";
-        state.to="wgs84";state.explicitOutput=false;
-        const el=$("#toOutside");el.textContent=outputFellBack;el.hidden=false;
+        const was=state.to,next=fallbackOutput(),name=id=>GLOBAL_FORMATS.includes(id)?"Global "+PRESETS[id].name.replace("Military grid","MGRS"):PRESETS[id].name;
+        // A choice the reader made is overruled out loud; a default is just corrected.
+        if(state.explicitOutput){
+          outputFellBack=(was===state.from?"The input is already "+name(was):name(was)+" cannot be an output while the input is "+name(state.from))+", so the output is now "+name(next)+".";
+          const el=$("#toOutside");el.textContent=outputFellBack;el.hidden=false;
+        }
+        state.to=next;state.explicitOutput=false;
       }
       syncFormat("to");
       const countryError=state.to!=="wgs84"?countryMismatchMessage(state.to,state.points||[]):"";
@@ -3058,21 +3120,46 @@
     });
 
     /* ---- GPX and map-first workspace ---- */
-    function importPoints(points,connected,output){
+    const routeSignature=points=>JSON.stringify(points.map(p=>[Number(p.lat.toFixed(8)),Number(p.lon.toFixed(8))]));
+    function importPoints(points,connected,output,input){
       rememberSnapshot(snapshot());
-      state.from="wgs84";state.settings.wgs84={order:"latlon",format:"dd",decimals:6};
-      state.rows=points.map(p=>[p.lat.toFixed(8),p.lon.toFixed(8),p.name||""]);
-      state.points=points.map(p=>({...p}));
-      state.importedRoute={signature:JSON.stringify(points.map(p=>[Number(p.lat.toFixed(8)),Number(p.lon.toFixed(8))])),points:points.map(p=>({...p}))};
-      state.to=output||suggestedGrid(points)||(state.settings.mgrs.format||'mgrs');state.militaryEnabled=true;state.militaryVersion=3;
-      fillArea(points,state.to);
-      // Points sent from the picker arrive in the grid they were read in there, so the
-      // same point never reads one way on one tab and another way on the next.
-      if(output&&PRESETS[output]){state.to=output;state.explicitOutput=true;}
-      if(points.some(p=>p.lat < -80 || p.lat >84))state.to="wgs84";
+      const grid=input&&input!=="wgs84"&&PRESETS[input]&&!points.some(p=>outsidePreset(input,p))?input:null;
+      if(GLOBAL_FORMATS.includes(grid)||(!grid&&!output)){state.militaryEnabled=true;state.militaryVersion=3;}
+      if(grid){
+        // Points sent from the picker arrive written as they were there, so the same
+        // point never reads one way on one tab and another way on the next.
+        state.from=grid;fillArea(points,grid);
+        state.rows=points.map(p=>inputRow(p,grid));
+        state.to=output||"wgs84";state.explicitOutput=false;
+        state.points=[];
+      }else{
+        state.from="wgs84";state.settings.wgs84={order:"latlon",format:"dd",decimals:6};
+        state.rows=points.map(p=>[p.lat.toFixed(8),p.lon.toFixed(8),p.name||""]);
+        state.points=points.map(p=>({...p}));
+        state.to=output||suggestedGrid(points)||(state.settings.mgrs.format||'mgrs');
+        fillArea(points,state.to);
+        state.explicitOutput=false;
+      }
+      $("#fromSys").value=state.from;
       $("#measureRoute").checked=connected;state.measureRoute=connected;
-      renderFrom();updatePairState();renderTo();save();switchTab("conv");
+      renderFrom();
+      // The route is recognised by the points as the rows read back, and measured on the
+      // exact points, so its length matches the Point Picker's to the metre.
+      state.importedRoute={signature:routeSignature(grid?existingMapPoints().points:points),points:points.map(p=>({...p}))};
+      updatePairState();
+      if(grid)convert();else renderTo();
+      save();switchTab("conv");
     }
+    // Where the picker's points go in the converter: written as they are in the picker,
+    // converted to the other kind. A grid goes to Coordinates; Coordinates go to the
+    // grid the points are in.
+    function converterPair(system,points){
+      return {from:system,to:PRESETS[system]?.kind==="latlong"?gridOutputFor(points):"wgs84"};
+    }
+    // Rows restored from an earlier visit are stale: points sent from the picker replace
+    // them, and Undo brings them back. Rows entered on this visit are kept and added to.
+    let staleRows=null;
+    const rowsKey=()=>JSON.stringify(state.rows.map(r=>r.map(v=>String(v??"").trim())));
     $("#measureRoute").checked=state.measureRoute!==false;
     $("#measureRoute").addEventListener("change",()=>{state.measureRoute=$("#measureRoute").checked;if(state.measureRoute&&state.importedRoute?.points.every(p=>p.breakBefore))state.importedRoute.points.forEach((p,i)=>p.breakBefore=i===0);renderTo();save();});
     $("#importGpx").addEventListener("click",()=>$("#importGpxFile").click());
@@ -3206,16 +3293,24 @@
         };
         return {text:p=>cells(p).join(" "),cells,columns,notice:[away,areaNotice(id,area,outside,(points||[]).length)].filter(Boolean).join(" "),area};
       },
-      onConvert:(points,connected,output)=>{
-        // Transfer is explicit; keep existing converter entries rather than overwriting them.
-        const current=existingMapPoints();if(current.unresolved){toast("Resolve converter rows before sending points",true);return;}
-        if(current.points.length+points.length>2000){toast("Converter supports up to 2,000 points",true);return;}
-        const sig=JSON.stringify(current.points.map(p=>[Number(p.lat.toFixed(8)),Number(p.lon.toFixed(8))]));
-        const prior=state.importedRoute?.signature===sig?state.importedRoute.points:current.points;
+      convertLabel:(system,points)=>{const to=converterPair(system,points).to;return to?"Convert to "+(GLOBAL_FORMATS.includes(to)?"Military grid":PRESETS[to].name):"Send to converter";},
+      onConvert:(points,connected,system)=>{
+        readRows();
+        const filled=state.rows.filter(r=>r.some(v=>String(v??"").trim())).length;
+        const warm=filled>0&&rowsKey()!==staleRows;
+        let prior=[];
+        if(warm){
+          // Rows entered on this visit are kept, and the points are added after them.
+          const current=existingMapPoints();if(current.unresolved){toast("Resolve converter rows before sending points",true);return;}
+          if(current.points.length+points.length>2000){toast("Converter supports up to 2,000 points",true);return;}
+          prior=state.importedRoute?.signature===routeSignature(current.points)?state.importedRoute.points:current.points;
+        }
         const incoming=points.map((p,i)=>({...p,breakBefore:i===0||p.breakBefore}));
-        importPoints([...prior,...incoming],connected,output);
-        // Sending points across is a request to look at them there.
-        switchTab("conv");
+        const all=[...prior,...incoming];
+        // Added to rows in another grid, the picker's grid is used only if it holds them all.
+        const pair=converterPair(system,all);
+        importPoints(all,connected,pair.to,pair.from);
+        if(filled&&!warm)detect("Replaced "+filled+(filled===1?" row":" rows")+" from an earlier visit. Undo brings "+(filled===1?"it":"them")+" back.");
       }});
     $("#tab-field").addEventListener("click",()=>switchTab("field"));
     // The Point Picker is the opening view, and it needs switchTab to build its map.
@@ -3298,7 +3393,7 @@
         const {basis,specs}=p;
         html+=`<div class="preset${open?" open":""}${presetEnabled(id)?"":" disabled"}" data-id="${id}">`;
         html+=`<div class="preset-heading"><button class="preset-head" data-head="${id}"><span class="chev" aria-hidden="true"></span><span class="pname">${id==="mgrs"?"Military grid":p.name}${p.unverified?' <span class="tagu">unverified</span>':''}</span></button>`;
-        if(id!=="wgs84")html+=`<button type="button" class="preset-toggle" role="switch" aria-label="${p.name}" aria-checked="${presetEnabled(id)}" ${id==="mgrs"?'id="militaryToggle"':""} data-toggle="${id}" aria-pressed="${presetEnabled(id)}"></button>`;
+        if(!ALWAYS_ON.includes(id))html+=`<button type="button" class="preset-toggle" role="switch" aria-label="${p.name}" aria-checked="${presetEnabled(id)}" ${id==="mgrs"?'id="militaryToggle"':""} data-toggle="${id}" aria-pressed="${presetEnabled(id)}"></button>`;
         html+=`</div><div class="preset-body">`;
         if(!presetEnabled(id)){html+=`<p class="note">Enable ${p.name} to show it in the converter and reference chooser.</p></div></div>`;return;}
         html+=`<div class="basis">${basis}</div>`;
@@ -3406,26 +3501,48 @@
       if(state.from==="auto"&&state.rows.length>1){state.rows=[[text,"",""]];renderFrom();}
     }
 
-    // Side by side, the two tables start level and their rows line up: whatever sits
-    // above one table (a hint, a reference area) is matched by space above the other.
+    // Side by side, the two tables start level and end level, so the buttons under
+    // them sit on one line, and Convert sits beside their tops. Both columns are built
+    // the same way above the tables, so the top offset is only a safety net.
     function alignTables(){
       const [a,b]=[$("#fromHead"),$("#toHead")].map(h=>h?.closest(".tbl"));
+      const middle=$(".workspace > .middle");
       if(!a||!b)return;
-      a.style.marginTop=b.style.marginTop="";
+      a.style.marginTop=b.style.marginTop=a.style.minHeight=b.style.minHeight="";
+      if(middle)middle.style.marginTop="";
       const columns=getComputedStyle($(".workspace")).gridTemplateColumns.trim().split(/\s+/).length;
       if(columns<3)return;
       const d=a.getBoundingClientRect().top-b.getBoundingClientRect().top;
       if(Math.abs(d)>=1)(d>0?b:a).style.marginTop=Math.abs(d)+"px";
+      const ha=a.getBoundingClientRect().height,hb=b.getBoundingClientRect().height;
+      if(Math.abs(ha-hb)>=1)(ha>hb?b:a).style.minHeight=Math.max(ha,hb)+"px";
+      if(middle)middle.style.marginTop=Math.max(0,a.getBoundingClientRect().top-middle.getBoundingClientRect().top)+"px";
     }
     if(globalThis.ResizeObserver){
+      // Setting the heights inside the callback ends on the size it started from, so
+      // the observer is not woken by its own work.
       const watch=new ResizeObserver(()=>requestAnimationFrame(alignTables));
-      for(const el of document.querySelectorAll(".workspace > .side > *:not(.tbl)"))watch.observe(el);
+      for(const el of document.querySelectorAll(".workspace > .side > *"))watch.observe(el);
       watch.observe($(".workspace"));
     }
     // initial render
     renderFrom(); updatePairState(); renderTo(); settleAutoRows();
     // Output is recomputed rather than stored, so the page reopens as it was left.
     if(state.from!=="auto"&&rowsHaveContent()){restoring=true;try{convert();}catch(_){}finally{restoring=false;}}
+    readRows();if(rowsHaveContent())staleRows=rowsKey();
+    // A fresh page starts where the reader is. Cloudflare's edge says roughly where the
+    // request came from (checked against the device clock); the maps open over that
+    // town, the Point Picker writes in the grid used on that ground, and the converter
+    // pairs Auto-detect with it. Anything the reader has already typed, pasted or
+    // chosen by then is left alone.
+    (locationGuess||=MapSupport.approximateLocation({helper:MAP_HELPER})).ready.then(p=>{
+      if(!p||!(p.zoom>=5)||state.explicitOutput||state.from!=="auto"||rowsHaveContent()||state.points?.length)return;
+      if(state.to!=="wgs84"&&!COUNTRY_PRESETS.includes(state.to)&&!GLOBAL_FORMATS.includes(state.to))return;
+      const home=enabledGrid([p]);
+      const best=keptGrid(home)||home||(state.militaryEnabled?state.settings.mgrs.format||"mgrs":"wgs84");
+      if(best===state.to||!outputAllowed(best))return;
+      state.to=best;state.explicitOutput=false;renderTo();updatePairState();save();
+    }).catch(()=>{});
   })();
   </script>
 <!-- Cloudflare Web Analytics -->

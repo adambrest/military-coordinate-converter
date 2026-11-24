@@ -21,9 +21,20 @@
     const point=TIMEZONE_VIEWS[timezone];
     return point?{lat:point[0],lon:point[1],zoom:10}:{lat:20,lon:0,zoom:2};
   }
+  // One lookup per page and source: the converter and both maps share the answer
+  // instead of each asking the network.
+  const lookups=new Map();
   function approximateLocation(options){
-    const key='map-base-location-v1';
     const helper=(options&&options.helper)||'';
+    if(!lookups.has(helper)){
+      const found=lookup(helper);lookups.set(helper,found);
+      // A stand-in (offline, refused, timed out) is not kept, so a later map asks again.
+      found.ready.then(p=>{if(!p||!p.time)lookups.delete(helper);});
+    }
+    return lookups.get(helper);
+  }
+  function lookup(helper){
+    const key='map-base-location-v1';
     let deviceZone='';
     let guess={lat:20,lon:0,zoom:2};
     try{
