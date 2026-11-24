@@ -16,22 +16,31 @@ self.addEventListener("install", e => e.waitUntil(
 ));
 self.addEventListener("message", e => { if(e.data && e.data.type === "SKIP_WAITING") self.skipWaiting(); });
 self.addEventListener("activate", e => e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE&&k!==TILE_CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
-async function tile(req){
+async function tile(e){
+  const req = e.request;
   const cache = await caches.open(TILE_CACHE);
   const hit = await cache.match(req);
   // A tile stored from a plain image request is opaque, and an opaque answer to a
-  // CORS request fails outright; the recoloured topo layer asks with CORS.
+  // CORS request fails outright; the maps ask with CORS.
   if(hit && !(hit.type==="opaque" && req.mode==="cors")) return hit;
   const res = await fetch(req);
-  // A cross-origin tile can only ever answer opaquely, which is still storable.
-  if(res && (res.ok || res.type==="opaque")) await cache.put(req,res.clone()).then(()=>trimTiles(cache)).catch(()=>{});
+  // The tile goes to the map the moment it arrives. Storing it, and trimming the
+  // cache, happen afterwards: a zoom asks for dozens of tiles at once, and holding
+  // each one back until the whole cache had been listed left the stretched tiles of
+  // the last zoom on screen long after the sharp ones had downloaded.
+  if(res && (res.ok || res.type==="opaque")) e.waitUntil(cache.put(req,res.clone()).then(()=>trimSoon(cache)).catch(()=>{}));
   return res;
 }
-// Oldest-first eviction: Cache.keys() preserves insertion order.
+// Oldest-first eviction: Cache.keys() preserves insertion order. Listing the cache
+// is the slow part, so a burst of tiles shares one trim.
+let trimming=null;
+function trimSoon(cache){
+  return trimming ||= new Promise(r=>setTimeout(r,3000)).then(()=>trimTiles(cache)).finally(()=>{trimming=null;});
+}
 async function trimTiles(cache){
   const keys = await cache.keys();
   if(keys.length<=TILE_LIMIT) return;
-  for(const key of keys.slice(0,keys.length-TILE_LIMIT)) await cache.delete(key);
+  await Promise.all(keys.slice(0,keys.length-TILE_LIMIT).map(key=>cache.delete(key)));
 }
 self.addEventListener("fetch", e => {
   const req=e.request; if(req.method!=="GET") return;
@@ -39,7 +48,7 @@ self.addEventListener("fetch", e => {
   // A reachability probe must never be answered from a cache, wherever it is
   // addressed, or it reports the network is up while the device is in a tunnel.
   if(url.searchParams.has("connectivity")){ e.respondWith(fetch(req,{cache:"no-store"})); return; }
-  if(url.origin!==self.location.origin){ if(isTileHost(url.hostname)) e.respondWith(tile(req)); return; }
+  if(url.origin!==self.location.origin){ if(isTileHost(url.hostname)) e.respondWith(tile(e)); return; }
   // HTML and scripts must come from the same installed release. Fetching fresh
   // HTML here pairs it with old cached scripts while the update waits for approval.
   e.respondWith(caches.open(CACHE).then(async cache=>{

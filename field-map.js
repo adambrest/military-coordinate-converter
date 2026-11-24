@@ -328,11 +328,31 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   }
   broad=MapSupport.broadView(map);
   map.on('zoomend',detail);
+  // Esri's imagery goes deeper than the zoom-17 default in most places this is used
+  // (19 over Singapore). Asking how deep it goes under the view lets the layer fetch
+  // the sharpest tiles there, instead of stretching zoom-17 ones 2x and 4x.
+  let depthToken=0,depthTimer;
+  function imageryDepth(){
+   if(layer!=='satellite')return;
+   clearTimeout(depthTimer);const token=++depthToken;
+   depthTimer=setTimeout(async()=>{
+    const c=map.getCenter(),size=map.getSize(),tiles=bases.satellite;
+    try{
+     const zoom=await MapSupport.imageryZoom(c.lat,MapSupport.longitude(c.lng),size.x,size.y,url=>fetch(url,{signal:AbortSignal.timeout(5000)}));
+     if(token!==depthToken||tiles.options.maxNativeZoom===zoom)return;
+     tiles.options.maxNativeZoom=zoom;
+     // Leaflet keeps the depth it chose until the next zoom; re-adding the layer makes
+     // it choose again, so the imagery sharpens straight away.
+     if(map.hasLayer(tiles)){tiles.remove();tiles.addTo(map);}
+    }catch(_){}
+   },150);
+  }
+  map.on('moveend',imageryDepth);
   for(const b of document.querySelectorAll('.field-tools [data-layer]'))b.onclick=()=>{
    const next=MapSupport.basemapId(b.dataset.layer);
    if(next===layer)return;
    status('','error','tiles');map.removeLayer(bases[layer]);layer=next;layerButtons();
-   detail();save();
+   detail();imageryDepth();save();
   };
   markers=L.layerGroup().addTo(map);route=L.layerGroup().addTo(map);grid=createCoordinateGrid(map,{system:()=>system,projection,contains:presetHolds,enabled:()=>$('fieldGrid').checked,fine:fineGrid});
   fullScreen=MapSupport.fullscreen(map);
@@ -351,7 +371,7 @@ root.createFieldMap=function({formatter,projection,presets,onConvert,helper,coun
   // A hidden tab shrinks the map to nothing; resizing to that would move its centre
   // and let the grid follow the shifted ground out of the country it is in.
   new ResizeObserver(()=>requestAnimationFrame(()=>{if(!$('fieldMap').offsetWidth)return;map.invalidateSize({pan:false});grid.refresh();})).observe($('fieldMap'));
-  historyButtons();draw();if(points.length)fit();moved();target.update();offerGrids();detail();grid.refresh();
+  historyButtons();draw();if(points.length)fit();moved();target.update();offerGrids();detail();imageryDepth();grid.refresh();
  }
  $('fieldFormat').value=system;
  layerButtons();

@@ -121,11 +121,11 @@
       countries=L.geoJSON(null,{pane:"pointCountries",interactive:false,style:{color:"#90a5b5",weight:.8,fillColor:"#f2f0e9",fillOpacity:1}}).addTo(map);
       map.attributionControl.addAttribution('<a href="https://www.naturalearthdata.com/">Natural Earth</a>');
       labels=L.layerGroup().addTo(map);route=L.layerGroup().addTo(map);markers=L.layerGroup().addTo(map);
-      streets=MapSupport.seamless(L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{minZoom:1,maxNativeZoom:19,maxZoom:22,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'}));
+      streets=MapSupport.seamless(L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{crossOrigin:"anonymous",minZoom:1,maxNativeZoom:19,maxZoom:22,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'}));
       // Starts at the depth imagery reaches almost everywhere, and coverage raises it
       // where there is more. Guessing high the other way asks Esri for tiles it does
       // not have, and a hole is worse to look at than a softened one.
-      satellite=MapSupport.seamless(L.tileLayer("https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxNativeZoom:18,maxZoom:22,attribution:'Imagery © <a href="https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9">Esri, Vantor, Earthstar Geographics, GIS User Community</a>'}));
+      satellite=MapSupport.seamless(L.tileLayer("https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{crossOrigin:"anonymous",maxNativeZoom:18,maxZoom:22,attribution:'Imagery © <a href="https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9">Esri, Vantor, Earthstar Geographics, GIS User Community</a>'}));
       topo=MapSupport.basemap("topo",{minZoom:1,maxZoom:22});
       // Imagery must sit above the offline land; borders remain visible at broad zoom.
       satellite.setZIndex(220);streets.setZIndex(230);topo.setZIndex(230);

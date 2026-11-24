@@ -410,7 +410,10 @@
   }
   function basemap(id,options){
     const spec=BASEMAPS[basemapId(id)];
-    const settings={maxNativeZoom:spec.maxNativeZoom,attribution:spec.attribution,...options};
+    // Fetched with CORS, tiles are cached as plain responses. Opaque ones are charged
+    // about 7 MB each against the browser's storage quota, so the tile cache filled the
+    // quota long before it reached its tile limit and quietly stopped storing.
+    const settings={maxNativeZoom:spec.maxNativeZoom,attribution:spec.attribution,crossOrigin:"anonymous",...options};
     if(spec.subdomains)settings.subdomains=spec.subdomains;
     if(spec.className)settings.className=[spec.className,options&&options.className].filter(Boolean).join(" ");
     return seamless(spec.toned?new (tonedTiles())(spec.url,settings):L.tileLayer(spec.url,settings));
